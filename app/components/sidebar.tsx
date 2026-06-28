@@ -1,0 +1,37 @@
+const configLinks = [
+  ["Tipo", "/configuracoes/tipo"],
+  ["Marca", "/configuracoes/marca"],
+  ["Especial", "/configuracoes/especial"],
+  ["Preco", "/configuracoes/preco"],
+  ["Sku", "/configuracoes/sku"],
+  ["MarketPlace", "/configuracoes/marketplace"],
+  ["Tiny", "/configuracoes/tiny"],
+  ["GoogleDrive", "/configuracoes/google-drive"],
+  ["Cloudinary", "/configuracoes/cloudinary"],
+  ["ConfigGeral", "/configuracoes/config-geral"]
+];
+
+export function Sidebar() {
+  return (
+    <aside className="sidebar">
+      <div className="brand">Estoque ML/Shopee</div>
+      <nav className="nav">
+        <a href="/">Painel</a>
+        <a href="/produtos">Produtos e anuncios</a>
+        <a href="/estoque">Estoque</a>
+        <a href="/fotos">Fotos</a>
+        <details className="nav-group" open>
+          <summary>Configuracoes</summary>
+          <div className="nav-submenu">
+            {configLinks.map(([label, href]) => (
+              <a key={href} href={href}>
+                {label}
+              </a>
+            ))}
+          </div>
+        </details>
+        <a href="/integracoes">Integracoes</a>
+      </nav>
+    </aside>
+  );
+}

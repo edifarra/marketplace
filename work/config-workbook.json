@@ -1,0 +1,3659 @@
+﻿{
+    "TIPO":  [
+                 [
+                     "SIGLA",
+                     "DESCRIÃ‡ÃƒO",
+                     "SKU MAX",
+                     "TIPO TINY",
+                     "Peso Liq",
+                     "Peso Bruto",
+                     "Largura",
+                     "Altura",
+                     "Comprimento",
+                     "DescriÃ§Ã£o ",
+                     "Grupo_SKU",
+                     "TÃ­tulo AnÃºncio",
+                     "Garantia"
+                 ],
+                 [
+                     "PP",
+                     "Placa Principal TV",
+                     "1185.0",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                     "0.3",
+                     "0.4",
+                     "35.0",
+                     "6.0",
+                     "30.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003ePlaca Original funcionando normalmente.\u003cbr\u003eRetirada de display trincado. Testada ok.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003ePlaca com defeito, destinada a tÃ©cnicos para conserto ou aproveitamento de peÃ§as. \u003cbr\u003eProduto vendido no estado.\u003cbr\u003eSem garantia\u003c/especial\u003e",
+                     "PRINCIPAL",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "PF",
+                     "Placa de Fonte TV",
+                     "722.0",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas da Fonte TV",
+                     "0.3",
+                     "0.4",
+                     "35.0",
+                     "6.0",
+                     "30.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003ePlaca Original funcionando normalmente.\u003cbr\u003eRetirada de display trincado. Testada ok.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003ePlaca com defeito, destinada a tÃ©cnicos para conserto ou aproveitamento de peÃ§as. \u003cbr\u003eProduto vendido no estado.\u003cbr\u003eSem garantia\u003c/especial\u003e",
+                     "FONTE",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "TC",
+                     "Placa T-con TV",
+                     "1054.0",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Botoeiras para TV",
+                     "0.3",
+                     "0.4",
+                     "35.0",
+                     "6.0",
+                     "30.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003ePlaca Original funcionando normalmente.\u003cbr\u003eRetirada de display trincado. Testada ok.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003ePlaca com defeito, destinada a tÃ©cnicos para conserto ou aproveitamento de peÃ§as. \u003cbr\u003eProduto vendido no estado.\u003cbr\u003eSem garantia\u003c/especial\u003e",
+                     "TCON",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "KT",
+                     "Kit Cabo Flat LVDS + MÃ³dulo WI FI + BotÃ£o + Sensor",
+                     "1153.0",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Cabo Flat",
+                     "0.3",
+                     "0.4",
+                     "35.0",
+                     "6.0",
+                     "30.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003eTestado funcionando normalmente.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003eCOM DEFEITO!!!\u003cbr\u003eUtilizada para aproveitamento de peÃ§as ou para recuperaÃ§Ã£o tÃ©cnica!\u003c/especial\u003e",
+                     "FLAT",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "AU",
+                     "Par de Alto Falantes TV",
+                     "1052.0",
+                     "InformÃ¡tica \u003e Tablets e AcessÃ³rios \u003e PeÃ§as \u003e Alto-Falantes",
+                     "0.4",
+                     "0.4",
+                     "25.0",
+                     "6.0",
+                     "20.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003eOriginal, testado e funcionando.\u003cbr\u003eSom limpo e sem chiados, pronto para reposiÃ§Ã£o.\u003cbr\u003eGarantia: 90 dias",
+                     "AUTOFALANTE",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "P2",
+                     "Placa Principal + Placa Fonte TV",
+                     "1185.0",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                     "0.6",
+                     "0.6",
+                     "35.0",
+                     "6.0",
+                     "20.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003ePlaca Original funcionando normalmente.\u003cbr\u003eRetirada de display trincado. Testada ok.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003ePlaca com defeito, destinada a tÃ©cnicos para conserto ou aproveitamento de peÃ§as. \u003cbr\u003eProduto vendido no estado.\u003cbr\u003eSem garantia\u003c/especial\u003e",
+                     "PRINCIPAL",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "PV",
+                     "Placa Inverter Tv",
+                     "",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                     "0.4",
+                     "0.4",
+                     "25.0",
+                     "6.0",
+                     "20.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003ePlaca Original funcionando normalmente.\u003cbr\u003eRetirada de display trincado. Testada ok.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003ePlaca com defeito, destinada a tÃ©cnicos para conserto ou aproveitamento de peÃ§as. \u003cbr\u003eProduto vendido no estado.\u003cbr\u003eSem garantia\u003c/especial\u003e",
+                     "FONTE",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "PT",
+                     "Placa Principal com Defeito Tv",
+                     "",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                     "0.4",
+                     "0.4",
+                     "25.0",
+                     "6.0",
+                     "20.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003ePlaca com defeito, destinada a tÃ©cnicos para conserto ou aproveitamento de peÃ§as. \u003cbr\u003eProduto vendido no estado.\u003cbr\u003eSem garantia",
+                     "PRINCIPAL",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "CL",
+                     "Placa Controladora Leds",
+                     "",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas da Fonte TV",
+                     "0.4",
+                     "0.4",
+                     "25.0",
+                     "6.0",
+                     "20.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003ePlaca Original funcionando normalmente.\u003cbr\u003eRetirada de display trincado. Testada ok.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003ePlaca com defeito, destinada a tÃ©cnicos para conserto ou aproveitamento de peÃ§as. \u003cbr\u003eProduto vendido no estado.\u003cbr\u003eSem garantia\u003c/especial\u003e",
+                     "FONTE",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "K1",
+                     "Kit Cabo Flat LVDS + Flat V-con",
+                     "",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Cabo Flat",
+                     "0.3",
+                     "0.4",
+                     "35.0",
+                     "6.0",
+                     "30.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003eTestado funcionando normalmente.\u003cbr\u003eGarantia: 90 dias\u003cespecial\u003eCOM DEFEITO!!!\u003cbr\u003eUtilizada para aproveitamento de peÃ§as ou para recuperaÃ§Ã£o tÃ©cnica!\u003c/especial\u003e",
+                     "FLAT",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+                     "PE",
+                     "Base Pedestal PÃ© Pezinho Suporte Tv",
+                     "",
+                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e AcessÃ³rios para TV \u003e Bases ElevatÃ³rias",
+                     "0.4",
+                     "0.4",
+                     "35.0",
+                     "6.0",
+                     "30.0",
+                     "\u003cnome_produto_completo\u003eProduto: [NOME_PRODUTO_COMPLETO]\u003c/nome_produto_completo\u003e\u003cbr\u003eMarca: [MARCA]\u003cbr\u003eAcompanha os parafusos de fixaÃ§Ã£o na tv.",
+                     "FLAT",
+                     "\u003ctipo\u003e[TIPO]\u003c/tipo\u003e \u003cmarca\u003e[MARCA]\u003c/marca\u003e \u003cmodelo\u003e[MODELO]\u003c/modelo\u003e \u003cversao\u003e[VERSAO]\u003c/versao\u003e \u003ccodigo\u003e[CODIGO]\u003c/codigo\u003e \u003cespecial\u003e[ESPECIAL]\u003c/especial\u003e",
+                     "3.0"
+                 ],
+                 [
+
+                 ],
+                 [
+                     ""
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ],
+                 [
+
+                 ]
+             ],
+    "MARKETPLACE":  [
+                        [
+                            "DESCRIÃ‡ÃƒO",
+                            "MERCADO LIVRE",
+                            "SHOPEE",
+                            "ID Ecommerce ML",
+                            "ID Ecommerce Shopee",
+                            "ID Categoria Tiny"
+                        ],
+                        [
+                            "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                            "MLB264689",
+                            "100356.0"
+                        ]
+                    ],
+    "MARKETPLACE_PENDENTE":  [
+                                 [
+                                     "Data",
+                                     "SKU",
+                                     "ID Produto Tiny",
+                                     "Produto",
+                                     "Categoria Tiny",
+                                     "Categoria ML",
+                                     "Categoria Shopee",
+                                     "Status ML",
+                                     "Status Shopee",
+                                     "ObservaÃ§Ã£o"
+                                 ],
+                                 [
+                                     "46187.60576871528",
+                                     "1253PP",
+                                     "1.003755843E9",
+                                     "Placa Principal TV TESTEFASE2 VERSAO-12",
+                                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                                     "MLB264689",
+                                     "100356.0",
+                                     "PENDENTE",
+                                     "PENDENTE",
+                                     "Produto criado no Tiny. Aguardando definiÃ§Ã£o do mÃ©todo de envio para e-commerce."
+                                 ],
+                                 [
+                                     "46187.70935809027",
+                                     "1254PP",
+                                     "1.003777071E9",
+                                     "Placa Principal TV UN70TU7000",
+                                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                                     "MLB264689",
+                                     "100356.0",
+                                     "PENDENTE",
+                                     "PENDENTE",
+                                     "Produto criado no Tiny. Aguardando definiÃ§Ã£o do mÃ©todo de envio para e-commerce."
+                                 ],
+                                 [
+                                     "46187.72888068287",
+                                     "1256PP",
+                                     "1.003780688E9",
+                                     "Placa Principal TV UN70TU7000",
+                                     "EletrÃ´nicos, Ãudio e VÃ­deo \u003e PeÃ§as para TV \u003e Placas Main",
+                                     "MLB264689",
+                                     "100356.0",
+                                     "PENDENTE",
+                                     "PENDENTE",
+                                     "Produto criado no Tiny. Aguardando definiÃ§Ã£o do mÃ©todo de envio para e-commerce."
+                                 ]
+                             ],
+    "LOG_PRODUTOS_API":  [
+                             [
+                                 "Data",
+                                 "SKU",
+                                 "Produto",
+                                 "PreÃ§o",
+                                 "Modo SaÃ­da",
+                                 "Status Tiny",
+                                 "HTTP",
+                                 "ID Produto Tiny",
+                                 "Status Processamento",
+                                 "Erros",
+                                 "Marketplace AutomÃ¡tico",
+                                 "Status Marketplace",
+                                 "Termo Busca PreÃ§o",
+                                 "Qtd AnÃºncios CÃ¡lculo",
+                                 "Payload/Retorno Resumido"
+                             ],
+                             [
+                                 "46187.469599606484",
+                                 "1242PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-01",
+                                 "0.0",
+                                 "PLANILHA",
+                                 "PLANILHA",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"status\":\"PLANILHA\",\"mensagem\":\"Produto enviado para planilha de importaÃ§Ã£o, nÃ£o para API.\"}"
+                             ],
+                             [
+                                 "46187.48878959491",
+                                 "1243PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-02",
+                                 "20.0",
+                                 "PLANILHA",
+                                 "PLANILHA",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-02",
+                                 "0.0",
+                                 "{\"status\":\"PLANILHA\",\"mensagem\":\"Produto enviado para planilha de importaÃ§Ã£o, nÃ£o para API.\"}"
+                             ],
+                             [
+                                 "46187.50194210648",
+                                 "1244PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-03",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003741046E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-03",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003741046}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003741046}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003741046,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.52018716435",
+                                 "1245PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-04",
+                                 "0.0",
+                                 "API",
+                                 "Erro",
+                                 "200.0",
+                                 "",
+                                 "2.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"2\\\",\\\"status\\\":\\\"Erro\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"Erro\\\",\\\"codigo_erro\\\":\\\"31\\\",\\\"erros\\\":[{\\\"erro\\\":\\\"O pre\\\\u00e7o do produto deve ser informado\\\"}]}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"2\",\"status\":\"Erro\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"Erro\",\"codigo_erro\":\"31\",\"erros\":[{\"erro\":\"O preÃ§o do produto deve ser informado\"}]}}]}},\"status\":\"Erro\",\"statusProcessamento\":\"2\",\"idProduto\":\"\",\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.54184532407",
+                                 "1246PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-05",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003746201E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003746201}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003746201}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003746201,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.54890486111",
+                                 "1247PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-06",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003747172E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003747172}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003747172}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003747172,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.55774730324",
+                                 "1248PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-09",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003748292E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003748292}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003748292}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003748292,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.558022743055",
+                                 "1249PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-08",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.00374833E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003748330}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003748330}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003748330,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.55837193287",
+                                 "1250PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-07",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.0037484E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003748400}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003748400}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003748400,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.585773819446",
+                                 "1251PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-10",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003752731E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003752731}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003752731}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003752731,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.59304850694",
+                                 "1252PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-11",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003753819E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003753819}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003753819}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003753819,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.605754062504",
+                                 "1253PP",
+                                 "Placa Principal TV TESTEFASE2 VERSAO-12",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003755843E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003755843}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003755843}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003755843,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.70934494213",
+                                 "1254PP",
+                                 "Placa Principal TV UN70TU7000",
+                                 "20.0",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003777071E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003777071}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003777071}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003777071,\"erros\":\"\"}"
+                             ],
+                             [
+                                 "46187.71731252315",
+                                 "1255PP",
+                                 "Placa Principal TV UN70TU7000",
+                                 "20.0",
+                                 "PLANILHA",
+                                 "PLANILHA",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "",
+                                 "0.0",
+                                 "{\"status\":\"PLANILHA\",\"mensagem\":\"Produto enviado para planilha de importaÃ§Ã£o, nÃ£o para API.\"}"
+                             ],
+                             [
+                                 "46187.72887407408",
+                                 "1256PP",
+                                 "Placa Principal TV UN70TU7000",
+                                 "89.1",
+                                 "API",
+                                 "OK",
+                                 "200.0",
+                                 "1.003780688E9",
+                                 "3.0",
+                                 "",
+                                 "0",
+                                 "DESATIVADO",
+                                 "Placa Principal TV UN70TU7000",
+                                 "5.0",
+                                 "{\"http\":200,\"raw\":\"{\\\"retorno\\\":{\\\"status_processamento\\\":\\\"3\\\",\\\"status\\\":\\\"OK\\\",\\\"registros\\\":[{\\\"registro\\\":{\\\"sequencia\\\":\\\"1\\\",\\\"status\\\":\\\"OK\\\",\\\"id\\\":1003780688}}]}}\",\"json\":{\"retorno\":{\"status_processamento\":\"3\",\"status\":\"OK\",\"registros\":[{\"registro\":{\"sequencia\":\"1\",\"status\":\"OK\",\"id\":1003780688}}]}},\"status\":\"OK\",\"statusProcessamento\":\"3\",\"idProduto\":1003780688,\"erros\":\"\"}"
+                             ]
+                         ],
+    "MARCA":  [
+                  [
+                      "Sigla",
+                      "Marca",
+                      "Incluir no Titulo"
+                  ],
+                  [
+                      "TC",
+                      "Semp TCL",
+                      "N"
+                  ],
+                  [
+                      "PT",
+                      "Philco",
+                      "N"
+                  ],
+                  [
+                      "LG",
+                      "LG",
+                      "N"
+                  ],
+                  [
+                      "SO",
+                      "Sony",
+                      "N"
+                  ],
+                  [
+                      "TO",
+                      "Semp Toshiba",
+                      "N"
+                  ],
+                  [
+                      "SA",
+                      "Samsung",
+                      "N"
+                  ],
+                  [
+                      "PU",
+                      "Philips",
+                      "N"
+                  ],
+                  [
+                      "AO",
+                      "AOC",
+                      "N"
+                  ],
+                  [
+                      "TS",
+                      "Toshiba",
+                      "N"
+                  ],
+                  [
+                      "HI",
+                      "Hisense",
+                      "N"
+                  ],
+                  [
+                      "MU",
+                      "Mult Multilaser",
+                      "N"
+                  ]
+              ],
+    "ESPECIAL":  [
+                     [
+                         "CÃ³digo",
+                         "Incluir DescriÃ§Ã£o",
+                         "Remover DescriÃ§Ã£o",
+                         "Manter Garantia",
+                         "ObservaÃ§Ãµes"
+                     ],
+                     [
+                         "S",
+                         "",
+                         "",
+                         "S",
+                         "ClassificaÃ§Ã£o para SUSPEITO. Apenas serÃ¡ inserido no SKU. NÃ£o serÃ¡ incluido nenhuma informaÃ§Ã£o pois descriÃ§ao estÃ¡ vazio"
+                     ],
+                     [
+                         "D",
+                         "Com Defeito",
+                         "Placa Original funcionando normalmente.\u003cbr\u003eRetirada de display trincado. Testada ok.\u003cbr\u003eGarantia: 90 dias;Testado funcionando normalmente.\u003cbr\u003eGarantia: 90 dias",
+                         "N",
+                         "ClassificaÃ§Ã£o para DEFEITO. SerÃ¡ incluida a informaÃ§Ã£o existente dentro de DescriÃ§Ã£o se estiver configurada no Titulo."
+                     ]
+                 ],
+    "PRECO":  [
+                  [
+                      "QUANTIDADE_ANUNCIOS_RECUPERADOS",
+                      "100.0"
+                  ],
+                  [
+                      "QUANTIDADE_ANUNCIOS_PARA_CALCULO",
+                      "5.0"
+                  ],
+                  [
+                      "DEFINICAO_PRECO",
+                      "MENOR",
+                      "Valores VÃ¡lidos: MENOR; SEGUNDO; MÃ‰DIA; MAIOR"
+                  ],
+                  [
+                      "TIPO_DEFLATOR",
+                      "PORCENTAGEM",
+                      "Valor VÃ¡lido: VALOR; PORCENTAGEM"
+                  ],
+                  [
+                      "VALOR_DEPLATOR",
+                      "6.0"
+                  ],
+                  [
+                      "VALOR_MÃNIMO",
+                      "20.0"
+                  ],
+                  [
+                      "PERCENTUAL_OUTLIER_INFERIOR",
+                      "0.4"
+                  ],
+                  [
+                      "VALORES_EM_GAP",
+                      "3.0"
+                  ]
+              ],
+    "CONFIG_GERAL":  [
+                         [
+                             "PARAMETRO",
+                             "VALOR"
+                         ],
+                         [
+                             "MODO_SAIDA_PRODUTO",
+                             "API",
+                             "Valores VÃ¡lidos: PLANILHA; API"
+                         ],
+                         [
+                             "CRIAR_PRODUTO_TINY_API",
+                             "1"
+                         ],
+                         [
+                             "ENVIAR_MARKETPLACE_AUTOMATICO",
+                             "0"
+                         ],
+                         [
+                             "REGISTRAR_LOG_API",
+                             "1"
+                         ],
+                         [
+                             "TINY_ENDPOINT_INCLUIR_PRODUTO",
+                             "https://api.tiny.com.br/api2/produto.incluir.php"
+                         ],
+                         [
+                             "TINY_FORMATO",
+                             "json"
+                         ],
+                         [
+                             "ESTOQUE_INICIAL",
+                             "1.0"
+                         ],
+                         [
+                             "ORIGEM_PRODUTO",
+                             "0.0"
+                         ],
+                         [
+                             "SITUACAO_PRODUTO",
+                             "A"
+                         ],
+                         [
+                             "CLASSE_PRODUTO",
+                             "S"
+                         ],
+                         [
+                             "SOB_ENCOMENDA",
+                             "N"
+                         ]
+                     ]
+}

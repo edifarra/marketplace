@@ -1,0 +1,8 @@
+node_modules
+.next
+.npm-cache
+work/npm-cache
+.env
+.env.local
+.vercel
+service-account.json

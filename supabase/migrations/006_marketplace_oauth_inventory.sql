@@ -1,0 +1,11 @@
+alter table config_marketplace_accounts add column if not exists client_id text;
+alter table config_marketplace_accounts add column if not exists client_secret text;
+alter table config_marketplace_accounts add column if not exists redirect_uri text;
+alter table config_marketplace_accounts add column if not exists access_token text;
+alter table config_marketplace_accounts add column if not exists refresh_token text;
+alter table config_marketplace_accounts add column if not exists token_expires_at timestamptz;
+alter table config_marketplace_accounts add column if not exists scope text;
+alter table config_marketplace_accounts add column if not exists token_type text;
+alter table config_marketplace_accounts add column if not exists seller_id text;
+alter table config_marketplace_accounts add column if not exists last_inventory_sync_at timestamptz;
+alter table config_marketplace_accounts add column if not exists last_error text;

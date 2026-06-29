@@ -56,6 +56,24 @@ button, input, select, textarea {
   border-radius: 6px;
 }
 
+.nav-logout {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #d0d5dd;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.nav-logout:hover,
+.nav a:hover,
+.nav-group summary:hover {
+  background: rgba(255,255,255,.08);
+  color: white;
+}
+
 .nav > a:first-child {
   color: white;
   background: rgba(255,255,255,.12);
@@ -621,6 +639,25 @@ textarea {
   min-height: 220px;
   font-family: Consolas, "Courier New", monospace;
   font-size: 13px;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #eef2f6;
+}
+
+.login-panel {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
 }
 
 @media (max-width: 900px) {

@@ -1,3 +1,5 @@
+import { logoutAction } from "../login/actions";
+
 const configLinks = [
   ["Tipo", "/configuracoes/tipo"],
   ["Marca", "/configuracoes/marca"],
@@ -18,7 +20,7 @@ export function Sidebar() {
       <nav className="nav">
         <a href="/">Painel</a>
         <a href="/produtos">Produtos e anuncios</a>
-        <a href="/estoque">Estoque</a>
+        <a href="/estoque">Migracao e Estoque</a>
         <a href="/fotos">Fotos</a>
         <details className="nav-group" open>
           <summary>Configuracoes</summary>
@@ -31,6 +33,9 @@ export function Sidebar() {
           </div>
         </details>
         <a href="/integracoes">Integracoes</a>
+        <form action={logoutAction}>
+          <button className="nav-logout" type="submit">Sair</button>
+        </form>
       </nav>
     </aside>
   );

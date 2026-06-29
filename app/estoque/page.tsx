@@ -1,10 +1,56 @@
 import { Sidebar } from "../components/sidebar";
-import { getStockConsolidation, type StockIntegrationCell } from "@/lib/stock-consolidation";
+import { ConfirmActionButton } from "./confirm-action-button";
+import {
+  deleteSystemProductOnlyAction,
+  importMarketplaceSkuAction,
+  removeMarketplaceListingsAction,
+  removeMarketplaceOnlyListingsAction,
+  sendMissingMarketplacesAction,
+  updateDivergentStockAction
+} from "./actions";
+import {
+  effectiveMarketplaceStock,
+  getMigrationStockData,
+  type MarketplaceLink,
+  type MigrationStockView
+} from "@/lib/migration-stock";
 
 export const dynamic = "force-dynamic";
 
-export default async function StockPage() {
-  const data = await getStockConsolidation();
+type PageProps = {
+  searchParams?: {
+    view?: string;
+    erro?: string;
+    sucesso?: string;
+  };
+};
+
+const views: Array<{ key: MigrationStockView; title: string; description: string }> = [
+  {
+    key: "marketplace-only",
+    title: "Produtos dos marketplaces nao encontrados no sistema",
+    description: "SKUs existentes nas integracoes ativas e ainda ausentes no SIST."
+  },
+  {
+    key: "system-only",
+    title: "Produtos no sistema que nao existem em nenhum marketplace",
+    description: "Produtos cadastrados no SIST sem anuncio em qualquer marketplace ativo."
+  },
+  {
+    key: "missing-marketplace",
+    title: "Produtos no sistema que nao existem em pelo menos um marketplace",
+    description: "Produtos que existem em alguma integracao, mas nao em todas as contas ativas."
+  },
+  {
+    key: "stock-divergent",
+    title: "Produtos com estoque divergente",
+    description: "Compara o estoque oficial do SIST com os estoques existentes nos marketplaces."
+  }
+];
+
+export default async function StockPage({ searchParams }: PageProps) {
+  const selectedView = parseView(searchParams?.view);
+  const data = await getMigrationStockData(selectedView);
 
   return (
     <main className="shell">
@@ -12,12 +58,14 @@ export default async function StockPage() {
       <section className="main">
         <div className="topbar">
           <div>
-            <h1>Gestao de estoque</h1>
-            <div className="subtitle">Consolidacao dos produtos do sistema com os estoques recuperados nas integracoes.</div>
+            <h1>Migracao e Estoque</h1>
+            <div className="subtitle">Consolidacao por SKU entre SIST e marketplaces configurados.</div>
           </div>
           <a className="secondary" href="/configuracoes/marketplace">Configurar MarketPlace</a>
         </div>
 
+        {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
+        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
         {data.errors.length > 0 && (
           <section className="form-error">
             {data.errors.map((error) => (
@@ -27,45 +75,31 @@ export default async function StockPage() {
         )}
 
         <section className="card">
-          <div className="table-toolbar">
-            <div>
-              <h2>SIST</h2>
-              <div className="muted">{data.systemRows.length} produto(s) do sistema.</div>
-            </div>
-          </div>
+          <h2>Resumo</h2>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>SIST</th>
-                  <th>SKU</th>
-                  <th>Titulo</th>
-                  <th>Estoque</th>
-                  {data.columns.map((column) => (
-                    <th key={column.id}>{column.name}</th>
-                  ))}
+                  <th>Analise</th>
+                  <th>Quantidade</th>
+                  <th>Processamento</th>
+                  <th>Acao</th>
                 </tr>
               </thead>
               <tbody>
-                {data.systemRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={4 + data.columns.length}>Nenhum produto no sistema.</td>
+                {views.map((view) => (
+                  <tr key={view.key}>
+                    <td>
+                      <strong>{view.title}</strong>
+                      <div className="muted">{view.description}</div>
+                    </td>
+                    <td>{summaryValue(data.summary, view.key)}</td>
+                    <td>{view.key === selectedView ? "Exibindo abaixo" : "-"}</td>
+                    <td>
+                      <a className="secondary compact" href={`/estoque?view=${view.key}`}>Ver Produtos</a>
+                    </td>
                   </tr>
-                ) : (
-                  data.systemRows.map((row) => (
-                    <tr key={row.productId}>
-                      <td>{row.system}</td>
-                      <td>{row.sku}</td>
-                      <td>{row.title}</td>
-                      <td>{row.stock}</td>
-                      {data.columns.map((column) => (
-                        <td key={column.id}>
-                          <IntegrationCell cell={row.integrations[column.id]} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -74,71 +108,262 @@ export default async function StockPage() {
         <section className="section card">
           <div className="table-toolbar">
             <div>
-              <h2>INTEG</h2>
-              <div className="muted">{data.integrationOnlyRows.length} SKU(s) encontrados apenas nas integracoes.</div>
+              <h2>{views.find((view) => view.key === selectedView)?.title}</h2>
+              <div className="muted">{data.rows.length} SKU(s) encontrado(s).</div>
             </div>
           </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>INTEG</th>
-                  <th>SKU</th>
-                  <th>Titulo</th>
-                  {data.columns.map((column) => (
-                    <th key={column.id}>{column.name}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.integrationOnlyRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={3 + data.columns.length}>Nenhum produto exclusivo das integracoes.</td>
-                  </tr>
-                ) : (
-                  data.integrationOnlyRows.map((row) => (
-                    <tr key={row.sku}>
-                      <td>{row.system}</td>
-                      <td>{row.sku}</td>
-                      <td>{row.title}</td>
-                      {data.columns.map((column) => (
-                        <td key={column.id}>
-                          <IntegrationCell cell={row.integrations[column.id]} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+
+          {selectedView === "stock-divergent" ? (
+            <DivergentStockTable rows={data.rows} accounts={data.accounts} />
+          ) : selectedView === "system-only" ? (
+            <SystemOnlyTable rows={data.rows} />
+          ) : (
+            <MarketplacePresenceTable rows={data.rows} view={selectedView} />
+          )}
         </section>
       </section>
     </main>
   );
 }
 
-function IntegrationCell({ cell }: { cell?: StockIntegrationCell }) {
-  if (!cell) {
+function MarketplacePresenceTable({ rows, view }: { rows: Awaited<ReturnType<typeof getMigrationStockData>>["rows"]; view: MigrationStockView }) {
+  const isMarketplaceOnly = view === "marketplace-only";
+  const isMissingMarketplace = view === "missing-marketplace";
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{isMarketplaceOnly ? "INTEG" : "SIST"}</th>
+            <th>SKU</th>
+            <th>Titulo</th>
+            <th>Valor</th>
+            <th>Estoque</th>
+            <th>Marketplaces</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={7}>Nenhum produto encontrado.</td>
+            </tr>
+          ) : (
+            rows.map((row) => (
+              <tr key={row.sku}>
+                <td>{isMarketplaceOnly ? "INTEG" : "SIST"}</td>
+                <td>{row.sku}</td>
+                <td>{row.title}</td>
+                <td>{formatCurrency(row.price)}</td>
+                <td>{row.systemStock ?? maxMarketplaceStock(row.marketplaces)}</td>
+                <td><MarketplaceBadges links={row.marketplaces} /></td>
+                <td>
+                  <div className="row-actions">
+                    {isMarketplaceOnly && <ActionForm sku={row.sku} action={importMarketplaceSkuAction} label="Cadastrar" />}
+                    {isMarketplaceOnly && (
+                      <ActionForm
+                        sku={row.sku}
+                        action={removeMarketplaceOnlyListingsAction}
+                        label="Excluir"
+                        danger
+                        confirm="Deseja remover/inativar os anuncios deste SKU nos marketplaces?"
+                      />
+                    )}
+                    {isMissingMarketplace && <ActionForm sku={row.sku} action={sendMissingMarketplacesAction} label="Enviar" />}
+                    {isMissingMarketplace && (
+                      <ActionForm
+                        sku={row.sku}
+                        action={removeMarketplaceListingsAction}
+                        label="Excluir"
+                        danger
+                        confirm="Deseja remover/inativar os anuncios existentes deste SKU nos marketplaces?"
+                      />
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SystemOnlyTable({ rows }: { rows: Awaited<ReturnType<typeof getMigrationStockData>>["rows"] }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>SIST</th>
+            <th>SKU</th>
+            <th>Titulo</th>
+            <th>Valor</th>
+            <th>Estoque</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={6}>Nenhum produto encontrado.</td>
+            </tr>
+          ) : (
+            rows.map((row) => (
+              <tr key={row.sku}>
+                <td>SIST</td>
+                <td>{row.sku}</td>
+                <td>{row.title}</td>
+                <td>{formatCurrency(row.price)}</td>
+                <td>{row.systemStock ?? 0}</td>
+                <td>
+                  <div className="row-actions">
+                    <ActionForm sku={row.sku} action={sendMissingMarketplacesAction} label="Enviar" />
+                    <ActionForm
+                      sku={row.sku}
+                      action={deleteSystemProductOnlyAction}
+                      label="Excluir"
+                      danger
+                      confirm="Deseja excluir este produto do sistema?"
+                    />
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DivergentStockTable({
+  rows,
+  accounts
+}: {
+  rows: Awaited<ReturnType<typeof getMigrationStockData>>["rows"];
+  accounts: Awaited<ReturnType<typeof getMigrationStockData>>["accounts"];
+}) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Titulo</th>
+            <th>Valor</th>
+            <th>Estoque SIST</th>
+            {accounts.map((account) => (
+              <th key={account.id}>{account.name}</th>
+            ))}
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={5 + accounts.length}>Nenhum estoque divergente.</td>
+            </tr>
+          ) : (
+            rows.map((row) => (
+              <tr key={row.sku}>
+                <td>{row.sku}</td>
+                <td>{row.title}</td>
+                <td>{formatCurrency(row.price)}</td>
+                <td>{row.systemStock ?? 0}</td>
+                {accounts.map((account) => {
+                  const links = row.marketplaces.filter((link) => link.marketplace_account_id === account.id);
+                  return <td key={account.id}>{links.length ? links.map(formatStockStatus).join(" / ") : "-"}</td>;
+                })}
+                <td><ActionForm sku={row.sku} action={updateDivergentStockAction} label="Atualizar Estoque" /></td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ActionForm({
+  sku,
+  action,
+  label,
+  danger = false,
+  confirm
+}: {
+  sku: string;
+  action: (formData: FormData) => Promise<void>;
+  label: string;
+  danger?: boolean;
+  confirm?: string;
+}) {
+  return (
+    <form action={action}>
+      <input type="hidden" name="sku" value={sku} />
+      {confirm ? (
+        <ConfirmActionButton className={danger ? "danger compact" : "secondary compact"} message={confirm}>
+          {label}
+        </ConfirmActionButton>
+      ) : (
+        <button className={danger ? "danger compact" : "secondary compact"} type="submit">{label}</button>
+      )}
+    </form>
+  );
+}
+
+function MarketplaceBadges({ links }: { links: MarketplaceLink[] }) {
+  if (links.length === 0) {
     return <span className="muted">-</span>;
   }
 
   return (
-    <span className="stock-cell" data-listing-ids={cell.listingIds.join(",")}>
-      <strong>{cell.stock}</strong>
-      <span>{formatMarketplaceStatus(cell.status)}</span>
-    </span>
+    <div className="marketplace-logos">
+      {links.map((link) => (
+        <span
+          className={`marketplace-logo ${link.marketplace === "shopee" ? "shopee" : "mercado-livre"}`}
+          key={link.id}
+          title={`${link.marketplace_account_id} | ${link.marketplace_product_id}`}
+        >
+          {link.marketplace === "shopee" ? "SH" : "ML"}
+        </span>
+      ))}
+    </div>
   );
 }
 
-function formatMarketplaceStatus(status: string) {
-  const labels: Record<string, string> = {
-    active: "ativo",
-    paused: "inativo",
-    closed: "inativo",
-    under_review: "revisao",
-    misto: "misto"
-  };
+function formatStockStatus(link: MarketplaceLink) {
+  return `${effectiveMarketplaceStock(link)} ${statusInitial(link.status_anuncio)}`;
+}
 
-  return labels[status] || status || "-";
+function statusInitial(status: string) {
+  return ["active"].includes(status) ? "A" : "I";
+}
+
+function maxMarketplaceStock(links: MarketplaceLink[]) {
+  return Math.max(0, ...links.map((link) => effectiveMarketplaceStock(link)));
+}
+
+function formatCurrency(value: number) {
+  return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function summaryValue(summary: Awaited<ReturnType<typeof getMigrationStockData>>["summary"], view: MigrationStockView) {
+  const map = {
+    "marketplace-only": summary.marketplaceOnly,
+    "system-only": summary.systemOnly,
+    "missing-marketplace": summary.missingMarketplace,
+    "stock-divergent": summary.stockDivergent
+  };
+  return map[view];
+}
+
+function parseView(value: string | undefined): MigrationStockView {
+  if (value === "system-only" || value === "missing-marketplace" || value === "stock-divergent") {
+    return value;
+  }
+
+  return "marketplace-only";
 }

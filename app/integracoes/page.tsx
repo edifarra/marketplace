@@ -10,17 +10,24 @@ const supabase = createClient(
 );
 
 type MarketplaceAccount = {
+  id: string;
   name: string;
   marketplace: string;
   account_id?: string | null;
+  seller_id?: string | null;
   category_id?: string | null;
+  access_token?: string | null;
+  refresh_token?: string | null;
   active: boolean;
 };
 
 export default async function IntegracoesPage() {
   const [{ data: settings }, { data: marketplaces }] = await Promise.all([
     supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
-    supabase.from("config_marketplace_accounts").select("name,marketplace,account_id,category_id,active").order("name")
+    supabase
+      .from("config_marketplace_accounts")
+      .select("id,name,marketplace,account_id,seller_id,category_id,access_token,refresh_token,active")
+      .order("name")
   ]);
 
   const settingMap = new Map((settings ?? []).map((row) => [row.key, row.value]));
@@ -65,18 +72,35 @@ export default async function IntegracoesPage() {
                   <th>Nome</th>
                   <th>Marketplace</th>
                   <th>Conta/Loja</th>
+                  <th>Vinculo OAuth</th>
                   <th>Categoria</th>
                   <th>Status</th>
+                  <th>Acoes</th>
                 </tr>
               </thead>
               <tbody>
                 {((marketplaces ?? []) as MarketplaceAccount[]).map((account) => (
-                  <tr key={`${account.marketplace}-${account.name}`}>
+                  <tr key={account.id}>
                     <td>{account.name}</td>
                     <td>{account.marketplace}</td>
-                    <td>{account.account_id || "-"}</td>
+                    <td>{account.seller_id || account.account_id || "-"}</td>
+                    <td>{account.access_token || account.refresh_token ? "Conectado" : "Nao conectado"}</td>
                     <td>{account.category_id || "-"}</td>
                     <td>{account.active ? "Ativo" : "Inativo"}</td>
+                    <td>
+                      <div className="row-actions">
+                        {account.marketplace === "mercado_livre" ? (
+                          <a className="secondary compact" href={`/api/mercado-livre/oauth/start?accountId=${encodeURIComponent(account.id)}`}>
+                            {account.access_token || account.refresh_token ? "Reconectar Mercado Livre" : "Conectar Mercado Livre"}
+                          </a>
+                        ) : (
+                          <span className="muted">Em breve</span>
+                        )}
+                        <a className="secondary compact" href={`/configuracoes/marketplace?edit=${encodeURIComponent(account.id)}`}>
+                          Editar
+                        </a>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

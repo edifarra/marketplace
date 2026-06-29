@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getMercadoLivreRedirectUri } from "@/lib/app-url";
+import { getMercadoLivreOAuthConfig } from "@/lib/mercado-livre-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,25 +18,14 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = supabaseAdmin();
-  const { data: account } = await supabase
-    .from("config_marketplace_accounts")
-    .select("id,client_id,client_secret,redirect_uri")
-    .eq("id", accountId)
-    .single()
-    .throwOnError();
-
-  if (!account.client_id || !account.client_secret) {
-    return NextResponse.redirect(new URL(`/configuracoes/marketplace?erro=${encodeURIComponent("Client ID e Client Secret sao obrigatorios.")}`, request.url));
-  }
-
-  const redirectUri = getMercadoLivreRedirectUri(account.redirect_uri);
+  const config = await getMercadoLivreOAuthConfig(accountId);
 
   const body = new URLSearchParams({
     grant_type: "authorization_code",
-    client_id: account.client_id,
-    client_secret: account.client_secret,
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
     code,
-    redirect_uri: redirectUri
+    redirect_uri: config.redirectUri
   });
 
   const response = await fetch("https://api.mercadolibre.com/oauth/token", {

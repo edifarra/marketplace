@@ -24,8 +24,10 @@ export type MercadoLivreInventoryItem = {
   listingId: string;
   sku: string;
   title: string;
+  price: number;
   stock: number;
   status: string;
+  rawData: Record<string, unknown>;
 };
 
 export async function getActiveMercadoLivreAccounts() {
@@ -65,8 +67,10 @@ export async function listMercadoLivreInventory(account: MarketplaceAccountConfi
       listingId: String(item.id || ""),
       sku,
       title: String(item.title || ""),
-      stock: Number(item.available_quantity || 0),
-      status: String(item.status || "")
+      price: Number(item.price || 0),
+      stock: isMercadoLivreInactive(String(item.status || "")) ? 0 : Number(item.available_quantity || 0),
+      status: String(item.status || ""),
+      rawData: item
     });
   }
 
@@ -76,6 +80,40 @@ export async function listMercadoLivreInventory(account: MarketplaceAccountConfi
     .eq("id", account.id);
 
   return items;
+}
+
+export async function updateMercadoLivreStock(accountId: string, listingId: string, stock: number) {
+  const account = await getMercadoLivreAccountById(accountId);
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+
+  if (stock <= 0) {
+    await putMercadoLivreItem(listingId, accessToken, { status: "paused" });
+    return;
+  }
+
+  await putMercadoLivreItem(listingId, accessToken, { status: "active" });
+  await putMercadoLivreItem(listingId, accessToken, { available_quantity: stock });
+}
+
+export async function removeMercadoLivreListing(accountId: string, listingId: string) {
+  const account = await getMercadoLivreAccountById(accountId);
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  await putMercadoLivreItem(listingId, accessToken, { status: "paused" });
+}
+
+export function isMercadoLivreInactive(status: string) {
+  return ["paused", "closed", "inactive"].includes(status);
+}
+
+async function getMercadoLivreAccountById(accountId: string) {
+  const { data } = await supabaseAdmin()
+    .from("config_marketplace_accounts")
+    .select("id,name,marketplace,active,account_id,seller_id,client_id,client_secret,redirect_uri,access_token,refresh_token,token_expires_at")
+    .eq("id", accountId)
+    .single()
+    .throwOnError();
+
+  return data as MarketplaceAccountConfig;
 }
 
 async function getValidMercadoLivreAccessToken(account: MarketplaceAccountConfig) {
@@ -90,7 +128,7 @@ async function getValidMercadoLivreAccessToken(account: MarketplaceAccountConfig
       return account.access_token;
     }
 
-    throw new Error(`Token OAuth incompleto para ${account.name}.`);
+    throw new Error(`Token OAuth incompleto para ${account.name}. Abra Configuracoes > MarketPlace e clique em Conectar ML nessa conta para gerar access_token e refresh_token.`);
   }
 
   const body = new URLSearchParams({
@@ -158,7 +196,7 @@ async function getItemDetails(itemIds: string[], accessToken: string) {
     const batch = itemIds.slice(index, index + 20);
     const params = new URLSearchParams({
       ids: batch.join(","),
-      attributes: "id,title,available_quantity,status,seller_custom_field,attributes,variations"
+      attributes: "id,title,price,available_quantity,status,seller_custom_field,attributes,variations"
     });
     const json = await mlGet(`/items?${params.toString()}`, accessToken);
     for (const entry of json as Array<{ code?: number; body?: Record<string, unknown> }>) {
@@ -172,6 +210,23 @@ async function getItemDetails(itemIds: string[], accessToken: string) {
   }
 
   return details;
+}
+
+async function putMercadoLivreItem(listingId: string, accessToken: string, payload: Record<string, unknown>) {
+  const response = await fetch(`${ML_API}/items/${listingId}`, {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(JSON.stringify(json));
+  }
+
+  return json;
 }
 
 async function mlGet(path: string, accessToken: string) {

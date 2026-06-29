@@ -21,6 +21,7 @@ type ConfigDefinition = {
   searchFields: string[];
   fields: ConfigField[];
   listFields: string[];
+  hiddenFields?: string[];
   fixedRows?: string[];
   marker?: string;
 };
@@ -120,6 +121,7 @@ export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
     keyField: "id",
     searchFields: ["name", "marketplace", "account_id", "seller_id", "category_id"],
     listFields: ["name", "marketplace", "account_id", "seller_id", "category_id", "active", "last_inventory_sync_at", "last_error"],
+    hiddenFields: ["access_token", "refresh_token"],
     fields: [
       { name: "name", label: "Nome", type: "text", required: true },
       { name: "marketplace", label: "Marketplace (mercado_livre ou shopee)", type: "text", required: true },
@@ -212,7 +214,12 @@ export function isConfigSection(value: string): value is ConfigSection {
 export async function getConfigurationPageData(section: ConfigSection, query: string, editKey?: string) {
   const definition = configDefinitions[section];
   const supabase = supabaseAdmin();
-  const columns = [...new Set([...definition.listFields, ...definition.fields.map((field) => field.name)])].join(",");
+  const columns = [...new Set([
+    definition.keyField,
+    ...definition.listFields,
+    ...(definition.hiddenFields || []),
+    ...definition.fields.map((field) => field.name)
+  ])].join(",");
   let request = supabase.from(definition.table).select(columns);
 
   if (definition.fixedRows?.length && definition.table !== "settings") {
@@ -262,6 +269,17 @@ export async function deleteConfiguration(formData: FormData) {
   const key = requiredString(formData.get("key"), "key");
   const supabase = supabaseAdmin();
 
+  if (["undefined", "null"].includes(key.toLowerCase())) {
+    redirect(`/configuracoes/${section}?erro=${encodeURIComponent("Registro sem identificador valido para exclusao.")}`);
+  }
+
+  if (section === "marketplace") {
+    const cleanupError = await cleanupMarketplaceAccountDependencies(key);
+    if (cleanupError) {
+      redirect(`/configuracoes/${section}?erro=${encodeURIComponent(cleanupError)}`);
+    }
+  }
+
   const result = await supabase.from(definition.table).delete().eq(definition.keyField, key);
   if (result.error) {
     redirect(`/configuracoes/${section}?erro=${encodeURIComponent(result.error.message)}`);
@@ -270,6 +288,30 @@ export async function deleteConfiguration(formData: FormData) {
   revalidatePath("/");
   revalidatePath(`/configuracoes/${section}`);
   redirect(`/configuracoes/${section}`);
+}
+
+async function cleanupMarketplaceAccountDependencies(accountId: string) {
+  const supabase = supabaseAdmin();
+
+  const productMarketplaceResult = await supabase
+    .from("product_marketplaces")
+    .delete()
+    .eq("marketplace_account_id", accountId);
+
+  if (productMarketplaceResult.error && !/schema cache|Could not find|relation .* does not exist/i.test(productMarketplaceResult.error.message)) {
+    return productMarketplaceResult.error.message;
+  }
+
+  const listingsResult = await supabase
+    .from("listings")
+    .delete()
+    .eq("marketplace_account_id", accountId);
+
+  if (listingsResult.error) {
+    return listingsResult.error.message;
+  }
+
+  return "";
 }
 
 function filterRows(rows: Record<string, unknown>[], fields: string[], query: string) {

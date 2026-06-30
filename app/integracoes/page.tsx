@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Sidebar } from "../components/sidebar";
-import { saveIntegrationModeAction } from "./actions";
+import { removeMarketplaceAccountAction, saveIntegrationModeAction, syncMarketplaceAccountAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +15,16 @@ type MarketplaceAccount = {
   marketplace: string;
   account_id?: string | null;
   seller_id?: string | null;
+  shop_id?: string | null;
+  nickname?: string | null;
+  email?: string | null;
   category_id?: string | null;
   access_token?: string | null;
   refresh_token?: string | null;
+  status?: string | null;
+  last_sync_at?: string | null;
+  last_inventory_sync_at?: string | null;
+  last_error?: string | null;
   active: boolean;
 };
 
@@ -26,7 +33,7 @@ export default async function IntegracoesPage() {
     supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
     supabase
       .from("config_marketplace_accounts")
-      .select("id,name,marketplace,account_id,seller_id,category_id,access_token,refresh_token,active")
+      .select("id,name,marketplace,account_id,seller_id,shop_id,nickname,email,category_id,access_token,refresh_token,status,last_sync_at,last_inventory_sync_at,last_error,active")
       .order("name")
   ]);
 
@@ -64,42 +71,68 @@ export default async function IntegracoesPage() {
         </section>
 
         <section className="section card">
-          <h2>Marketplaces configurados</h2>
+          <div className="table-toolbar">
+            <div>
+              <h2>Contas conectadas</h2>
+              <p className="muted">
+                Para conectar outra conta do Mercado Livre, use uma guia anonima ou saia da conta atual antes de continuar.
+                Depois da conexao, o refresh token salvo nessa conta sera usado automaticamente.
+              </p>
+            </div>
+            <div className="row-actions">
+              <a className="primary compact" href="/api/mercado-livre/oauth/start">Adicionar Conta Mercado Livre</a>
+              <a className="primary compact" href="/api/shopee/oauth/start">Adicionar Conta Shopee</a>
+            </div>
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Nome</th>
                   <th>Marketplace</th>
-                  <th>Conta/Loja</th>
-                  <th>Vinculo OAuth</th>
-                  <th>Categoria</th>
-                  <th>Status</th>
+                  <th>Nome da conta</th>
+                  <th>Seller/Shop ID</th>
+                  <th>Nickname</th>
+                  <th>Email</th>
+                  <th>Status conexao</th>
+                  <th>Ultima sync</th>
                   <th>Acoes</th>
                 </tr>
               </thead>
               <tbody>
                 {((marketplaces ?? []) as MarketplaceAccount[]).map((account) => (
                   <tr key={account.id}>
-                    <td>{account.name}</td>
                     <td>{account.marketplace}</td>
-                    <td>{account.seller_id || account.account_id || "-"}</td>
-                    <td>{account.access_token || account.refresh_token ? "Conectado" : "Nao conectado"}</td>
-                    <td>{account.category_id || "-"}</td>
-                    <td>{account.active ? "Ativo" : "Inativo"}</td>
+                    <td>{account.name}</td>
+                    <td>{account.seller_id || account.shop_id || account.account_id || "-"}</td>
+                    <td>{account.nickname || "-"}</td>
+                    <td>{account.email || "-"}</td>
+                    <td>{connectionStatus(account)}</td>
+                    <td>{formatDate(account.last_sync_at || account.last_inventory_sync_at)}</td>
                     <td>
                       <div className="row-actions">
-                        {account.marketplace === "mercado_livre" ? (
+                        <form action={syncMarketplaceAccountAction}>
+                          <input type="hidden" name="accountId" value={account.id} />
+                          <button className="secondary compact" type="submit">Sincronizar</button>
+                        </form>
+                        {account.marketplace === "mercado_livre" && (
                           <a className="secondary compact" href={`/api/mercado-livre/oauth/start?accountId=${encodeURIComponent(account.id)}`}>
                             {account.access_token || account.refresh_token ? "Reconectar Mercado Livre" : "Conectar Mercado Livre"}
                           </a>
-                        ) : (
-                          <span className="muted">Em breve</span>
+                        )}
+                        {account.marketplace === "shopee" && (
+                          <a className="secondary compact" href={`/api/shopee/oauth/start?accountId=${encodeURIComponent(account.id)}`}>
+                            {account.access_token || account.refresh_token ? "Reconectar Shopee" : "Conectar Shopee"}
+                          </a>
                         )}
                         <a className="secondary compact" href={`/configuracoes/marketplace?edit=${encodeURIComponent(account.id)}`}>
                           Editar
                         </a>
+                        <form action={removeMarketplaceAccountAction}>
+                          <input type="hidden" name="accountId" value={account.id} />
+                          <button className="danger compact" type="submit">Remover</button>
+                        </form>
                       </div>
+                      {account.last_error && <div className="muted">{account.last_error}</div>}
                     </td>
                   </tr>
                 ))}
@@ -118,4 +151,21 @@ export default async function IntegracoesPage() {
       </section>
     </main>
   );
+}
+
+function connectionStatus(account: MarketplaceAccount) {
+  if (!account.active) {
+    return "Inativo";
+  }
+  if (account.status && account.status !== "disconnected") {
+    return account.status;
+  }
+  return account.access_token || account.refresh_token ? "active" : "disconnected";
+}
+
+function formatDate(value?: string | null) {
+  if (!value) {
+    return "-";
+  }
+  return new Date(value).toLocaleString("pt-BR");
 }

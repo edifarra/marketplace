@@ -46,6 +46,18 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
         </div>
 
         {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
+        {section === "marketplace" && (
+          <section className="card form-card">
+            <h2>Conectar nova conta</h2>
+            <p className="muted">
+              Para conectar outra conta do Mercado Livre, use uma guia anonima ou saia da conta atual antes de continuar.
+            </p>
+            <div className="form-actions">
+              <a className="primary" href="/api/mercado-livre/oauth/start">Adicionar Conta Mercado Livre</a>
+              <a className="primary" href="/api/shopee/oauth/start">Adicionar Conta Shopee</a>
+            </div>
+          </section>
+        )}
 
         {marketplaceFirst ? (
           <>
@@ -191,6 +203,11 @@ function ConfigurationTable({
                           {section === "marketplace" && row.marketplace === "mercado_livre" && (
                             <a className="secondary compact" href={`/api/mercado-livre/oauth/start?accountId=${encodeURIComponent(key)}`}>
                               {row.access_token || row.refresh_token ? "Reconectar ML" : "Conectar ML"}
+                            </a>
+                          )}
+                          {section === "marketplace" && row.marketplace === "shopee" && (
+                            <a className="secondary compact" href={`/api/shopee/oauth/start?accountId=${encodeURIComponent(key)}`}>
+                              {row.access_token || row.refresh_token ? "Reconectar Shopee" : "Conectar Shopee"}
                             </a>
                           )}
                           <form action={deleteConfigurationAction}>

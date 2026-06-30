@@ -5,6 +5,10 @@ import {
   removeMercadoLivreListing,
   updateMercadoLivreStock
 } from "./mercado-livre";
+import {
+  getActiveShopeeAccounts,
+  listShopeeInventory
+} from "./shopee";
 import { supabaseAdmin } from "./supabase-admin";
 
 export type MigrationStockView = "marketplace-only" | "system-only" | "missing-marketplace" | "stock-divergent";
@@ -180,12 +184,17 @@ export async function updateDivergentStockByLowest(sku: string) {
 }
 
 async function syncActiveMarketplaceInventory() {
-  const accounts = await getActiveMercadoLivreAccounts();
+  const accounts = [
+    ...await getActiveMercadoLivreAccounts(),
+    ...await getActiveShopeeAccounts()
+  ];
   const errors: string[] = [];
 
   for (const account of accounts) {
     try {
-      const items = await listMercadoLivreInventory(account);
+      const items = account.marketplace === "shopee"
+        ? await listShopeeInventory(account)
+        : await listMercadoLivreInventory(account);
       for (const item of items) {
         await upsertMarketplaceItem(item);
       }
@@ -202,7 +211,7 @@ async function syncActiveMarketplaceInventory() {
 
 async function upsertMarketplaceItem(item: {
   accountId: string;
-  marketplace: "mercado_livre";
+  marketplace: "mercado_livre" | "shopee";
   listingId: string;
   sku: string;
   title: string;

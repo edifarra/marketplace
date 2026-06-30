@@ -25,6 +25,20 @@ export function getMercadoLivreRedirectUri(configuredRedirectUri?: string | null
   return redirectUri;
 }
 
+export function getShopeeRedirectUri(configuredRedirectUri?: string | null) {
+  const redirectUri = configuredRedirectUri?.trim()
+    || process.env.SHOPEE_REDIRECT_URI
+    || `${getPublicAppUrl()}/api/shopee/oauth/callback`;
+
+  if (!redirectUri || !redirectUri.startsWith("https://")) {
+    throw new Error(
+      "Redirect URI da Shopee precisa ser HTTPS. Configure SHOPEE_REDIRECT_URI ou NEXT_PUBLIC_APP_URL com sua URL publica HTTPS."
+    );
+  }
+
+  return redirectUri;
+}
+
 function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }

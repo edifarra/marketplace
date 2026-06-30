@@ -1,4 +1,5 @@
 import { getMercadoLivreRedirectUri } from "./app-url";
+import { logMarketplaceAccountEvent } from "./marketplace-account-logs";
 import { supabaseAdmin } from "./supabase-admin";
 
 type MercadoLivreOAuthAccount = {
@@ -47,4 +48,21 @@ export async function getMercadoLivreOAuthConfig(accountId: string) {
     clientSecret: fallback.client_secret,
     redirectUri: getMercadoLivreRedirectUri(current.redirect_uri || fallback.redirect_uri)
   };
+}
+
+export async function createMercadoLivreAccountPlaceholder() {
+  const { data } = await supabaseAdmin()
+    .from("config_marketplace_accounts")
+    .insert({
+      name: `Mercado Livre ${new Date().toLocaleString("pt-BR")}`,
+      marketplace: "mercado_livre",
+      active: true,
+      status: "disconnected"
+    })
+    .select("id")
+    .single()
+    .throwOnError();
+
+  await logMarketplaceAccountEvent("info", "Inicio OAuth Mercado Livre", { accountId: data.id });
+  return String(data.id);
 }

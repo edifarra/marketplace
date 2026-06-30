@@ -76,7 +76,12 @@ export async function listMercadoLivreInventory(account: MarketplaceAccountConfi
 
   await supabaseAdmin()
     .from("config_marketplace_accounts")
-    .update({ last_inventory_sync_at: new Date().toISOString(), last_error: null })
+    .update({
+      last_inventory_sync_at: new Date().toISOString(),
+      last_sync_at: new Date().toISOString(),
+      status: "active",
+      last_error: null
+    })
     .eq("id", account.id);
 
   return items;
@@ -160,6 +165,7 @@ async function getValidMercadoLivreAccessToken(account: MarketplaceAccountConfig
       scope: json.scope || null,
       token_type: json.token_type || null,
       seller_id: json.user_id ? String(json.user_id) : account.seller_id || account.account_id || null,
+      status: "active",
       last_error: null,
       updated_at: new Date().toISOString()
     })

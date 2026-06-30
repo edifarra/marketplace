@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMercadoLivreOAuthConfig } from "@/lib/mercado-livre-oauth";
+import { logMarketplaceAccountEvent } from "@/lib/marketplace-account-logs";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = supabaseAdmin();
   const config = await getMercadoLivreOAuthConfig(accountId);
+  await logMarketplaceAccountEvent("info", "Callback OAuth Mercado Livre recebido", { accountId });
 
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -36,10 +38,17 @@ export async function GET(request: NextRequest) {
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
     await supabase.from("config_marketplace_accounts").update({ last_error: JSON.stringify(json) }).eq("id", accountId);
+    await logMarketplaceAccountEvent("error", "Erro de autenticacao Mercado Livre", { accountId, error: json });
     return NextResponse.redirect(new URL(`/configuracoes/marketplace?erro=${encodeURIComponent(`Falha OAuth Mercado Livre: ${JSON.stringify(json)}`)}`, request.url));
   }
 
   const expiresIn = Number(json.expires_in || 0);
+  const accessToken = String(json.access_token || "");
+  const userInfo = accessToken ? await getMercadoLivreUserInfo(accessToken) : {};
+  const sellerId = String(userInfo.id || json.user_id || "");
+  const existingAccountId = sellerId ? await findExistingMercadoLivreAccount(sellerId, accountId) : "";
+  const targetAccountId = existingAccountId || accountId;
+
   await supabase
     .from("config_marketplace_accounts")
     .update({
@@ -48,12 +57,47 @@ export async function GET(request: NextRequest) {
       token_expires_at: expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
       scope: json.scope || null,
       token_type: json.token_type || null,
-      seller_id: json.user_id ? String(json.user_id) : null,
+      seller_id: sellerId || null,
+      account_id: sellerId || null,
+      nickname: typeof userInfo.nickname === "string" ? userInfo.nickname : null,
+      email: typeof userInfo.email === "string" ? userInfo.email : null,
+      raw_data: userInfo,
+      status: "active",
       last_error: null,
       updated_at: new Date().toISOString()
     })
-    .eq("id", accountId)
+    .eq("id", targetAccountId)
     .throwOnError();
 
+  if (existingAccountId) {
+    await supabase.from("config_marketplace_accounts").delete().eq("id", accountId);
+    await logMarketplaceAccountEvent("warn", "Conta Mercado Livre ja existente atualizada", {
+      accountId,
+      targetAccountId,
+      sellerId
+    });
+  } else {
+    await logMarketplaceAccountEvent("info", "Token Mercado Livre salvo", { accountId, sellerId });
+  }
+
   return NextResponse.redirect(new URL("/configuracoes/marketplace", request.url));
+}
+
+async function getMercadoLivreUserInfo(accessToken: string): Promise<Record<string, unknown>> {
+  const response = await fetch("https://api.mercadolibre.com/users/me", {
+    headers: { authorization: `Bearer ${accessToken}` }
+  });
+  return response.json().catch(() => ({}));
+}
+
+async function findExistingMercadoLivreAccount(sellerId: string, currentAccountId: string) {
+  const { data } = await supabaseAdmin()
+    .from("config_marketplace_accounts")
+    .select("id")
+    .eq("marketplace", "mercado_livre")
+    .eq("seller_id", sellerId)
+    .neq("id", currentAccountId)
+    .limit(1);
+
+  return data?.[0]?.id ? String(data[0].id) : "";
 }

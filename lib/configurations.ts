@@ -26,6 +26,28 @@ type ConfigDefinition = {
   marker?: string;
 };
 
+const LEGACY_MARKETPLACE_COLUMNS = [
+  "id",
+  "name",
+  "marketplace",
+  "account_id",
+  "seller_id",
+  "category_id",
+  "client_id",
+  "client_secret",
+  "redirect_uri",
+  "access_token",
+  "refresh_token",
+  "token_expires_at",
+  "scope",
+  "token_type",
+  "active",
+  "last_inventory_sync_at",
+  "last_error",
+  "created_at",
+  "updated_at"
+];
+
 export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
   tipo: {
     title: "Tipo",
@@ -219,20 +241,13 @@ export function isConfigSection(value: string): value is ConfigSection {
 
 export async function getConfigurationPageData(section: ConfigSection, query: string, editKey?: string) {
   const definition = configDefinitions[section];
-  const supabase = supabaseAdmin();
   const columns = [...new Set([
     definition.keyField,
     ...definition.listFields,
     ...(definition.hiddenFields || []),
     ...definition.fields.map((field) => field.name)
   ])].join(",");
-  let request = supabase.from(definition.table).select(columns);
-
-  if (definition.fixedRows?.length && definition.table !== "settings") {
-    request = request.in(definition.keyField, definition.fixedRows);
-  }
-
-  const { data } = await request.order(definition.keyField).throwOnError();
+  const data = await selectConfigurationRows(section, definition, columns);
   const allRows = (data ?? []) as unknown as Record<string, unknown>[];
   const rows = ensureFixedSettingsRows(filterSectionRows(allRows, definition), definition);
   const filteredRows = filterRows(rows, definition.searchFields, query);
@@ -254,11 +269,7 @@ export async function saveConfiguration(formData: FormData) {
   applySettingsMarker(definition, payload);
   const supabase = supabaseAdmin();
 
-  const result = originalKey && definition.table === "settings"
-    ? await supabase.from(definition.table).upsert(payload, { onConflict: definition.keyField })
-    : originalKey
-    ? await supabase.from(definition.table).update(payload).eq(definition.keyField, originalKey)
-    : await supabase.from(definition.table).insert(payload);
+  const result = await writeConfigurationRows(section, definition, payload, originalKey);
 
   if (result.error) {
     redirect(`/configuracoes/${section}?erro=${encodeURIComponent(result.error.message)}`);
@@ -267,6 +278,76 @@ export async function saveConfiguration(formData: FormData) {
   revalidatePath("/");
   revalidatePath(`/configuracoes/${section}`);
   redirect(`/configuracoes/${section}`);
+}
+
+async function selectConfigurationRows(section: ConfigSection, definition: ConfigDefinition, columns: string) {
+  const supabase = supabaseAdmin();
+  let request = supabase.from(definition.table).select(columns);
+
+  if (definition.fixedRows?.length && definition.table !== "settings") {
+    request = request.in(definition.keyField, definition.fixedRows);
+  }
+
+  const result = await request.order(definition.keyField);
+  if (!result.error) {
+    return result.data;
+  }
+
+  if (section !== "marketplace" || !isMissingColumnError(result.error.message)) {
+    throw new Error(result.error.message);
+  }
+
+  let fallback = supabase.from(definition.table).select(LEGACY_MARKETPLACE_COLUMNS.join(","));
+  if (definition.fixedRows?.length && definition.table !== "settings") {
+    fallback = fallback.in(definition.keyField, definition.fixedRows);
+  }
+
+  const fallbackResult = await fallback.order(definition.keyField).throwOnError();
+  return ((fallbackResult.data ?? []) as unknown as Record<string, unknown>[]).map((row) => {
+    for (const field of [...definition.listFields, ...(definition.hiddenFields || []), ...definition.fields.map((item) => item.name)]) {
+      if (!(field in row)) {
+        row[field] = null;
+      }
+    }
+    return row;
+  });
+}
+
+async function writeConfigurationRows(
+  section: ConfigSection,
+  definition: ConfigDefinition,
+  payload: Record<string, unknown>,
+  originalKey?: string
+) {
+  const supabase = supabaseAdmin();
+  const write = (currentPayload: Record<string, unknown>) => {
+    if (originalKey && definition.table === "settings") {
+      return supabase.from(definition.table).upsert(currentPayload, { onConflict: definition.keyField });
+    }
+
+    if (originalKey) {
+      return supabase.from(definition.table).update(currentPayload).eq(definition.keyField, originalKey);
+    }
+
+    return supabase.from(definition.table).insert(currentPayload);
+  };
+
+  let currentPayload = { ...payload };
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await write(currentPayload);
+    if (!result.error) {
+      return result;
+    }
+
+    const missingColumn = section === "marketplace" ? extractMissingColumn(result.error.message) : "";
+    if (!missingColumn || !(missingColumn in currentPayload)) {
+      return result;
+    }
+
+    delete currentPayload[missingColumn];
+  }
+
+  return write(currentPayload);
 }
 
 export async function deleteConfiguration(formData: FormData) {
@@ -443,6 +524,27 @@ function applySettingsMarker(definition: ConfigDefinition, payload: Record<strin
   payload.description = description.includes(definition.marker)
     ? description
     : `${definition.marker} ${description}`.trim();
+}
+
+function isMissingColumnError(message: string) {
+  return /column .* does not exist|Could not find .* column|schema cache/i.test(message);
+}
+
+function extractMissingColumn(message: string) {
+  const patterns = [
+    /column\s+[^.]+\.(\w+)\s+does not exist/i,
+    /Could not find the ['"]?(\w+)['"]? column/i,
+    /Could not find ['"]?(\w+)['"]? in the schema cache/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return "";
 }
 
 function parseJsonish(value: string) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMercadoLivreOAuthConfig } from "@/lib/mercado-livre-oauth";
 import { logMarketplaceAccountEvent } from "@/lib/marketplace-account-logs";
@@ -83,6 +84,8 @@ export async function GET(request: NextRequest) {
     });
 
     await logMarketplaceAccountEvent("info", "Token Mercado Livre salvo", { accountId, sellerId });
+    revalidatePath("/configuracoes/marketplace");
+    revalidatePath("/integracoes");
 
     return NextResponse.redirect(new URL("/configuracoes/marketplace", request.url));
   } catch (callbackError) {
@@ -94,7 +97,8 @@ export async function GET(request: NextRequest) {
 
 async function getMercadoLivreUserInfo(accessToken: string): Promise<Record<string, unknown>> {
   const response = await fetch("https://api.mercadolibre.com/users/me", {
-    headers: { authorization: `Bearer ${accessToken}` }
+    headers: { authorization: `Bearer ${accessToken}` },
+    cache: "no-store"
   });
   return response.json().catch(() => ({}));
 }

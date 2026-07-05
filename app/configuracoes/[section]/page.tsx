@@ -8,6 +8,7 @@ import {
 } from "@/lib/configurations";
 import { formatMarketplaceDateTime, marketplaceDisplayStatus } from "@/lib/marketplace-accounts-view";
 import { notFound } from "next/navigation";
+import { unstable_noStore as noStore } from "next/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,8 @@ type PageProps = {
 type ConfigurationPageData = Awaited<ReturnType<typeof getConfigurationPageData>>;
 
 export default async function ConfigurationSectionPage({ params, searchParams }: PageProps) {
+  noStore();
+
   if (!isConfigSection(params.section)) {
     notFound();
   }

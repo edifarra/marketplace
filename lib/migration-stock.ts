@@ -71,7 +71,7 @@ export type MigrationStockData = {
 };
 
 export async function getMigrationStockData(view: MigrationStockView = "marketplace-only"): Promise<MigrationStockData> {
-  const errors = await syncActiveMarketplaceInventory();
+  const errors: string[] = [];
   const [productsResult, accountsResult] = await Promise.all([
     readSafely(getSystemProducts, "Produtos do sistema"),
     readSafely(getActiveMarketplaceAccounts, "Contas de marketplace")
@@ -93,12 +93,7 @@ export async function getMigrationStockData(view: MigrationStockView = "marketpl
       stockDivergent: context.stockDivergent.length
     },
     rows: context[viewKey(view)],
-    errors: [
-      ...errors,
-      ...productsResult.errors,
-      ...linksResult.errors,
-      ...accountsResult.errors
-    ]
+    errors: [...errors, ...productsResult.errors, ...linksResult.errors, ...accountsResult.errors]
   };
 }
 
@@ -307,7 +302,7 @@ function extractMissingColumn(message: string) {
   return "";
 }
 
-async function upsertMarketplaceItem(item: {
+export async function upsertMarketplaceItem(item: {
   accountId: string;
   marketplace: "mercado_livre" | "shopee";
   listingId: string;

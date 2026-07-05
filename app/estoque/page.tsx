@@ -1,5 +1,6 @@
 import { Sidebar } from "../components/sidebar";
 import { ConfirmActionButton } from "./confirm-action-button";
+import { StockSyncButton } from "./stock-sync-button";
 import {
   deleteSystemProductOnlyAction,
   importMarketplaceSkuAction,
@@ -73,6 +74,24 @@ export default async function StockPage({ searchParams }: PageProps) {
             ))}
           </section>
         )}
+
+        <section className="card form-card">
+          <div className="table-toolbar">
+            <div>
+              <h2>Sincronizar marketplaces</h2>
+              <div className="muted">Atualize manualmente o estoque das contas conectadas antes de comparar os produtos.</div>
+            </div>
+            <div className="row-actions">
+              {data.accounts.length === 0 ? (
+                <span className="muted">Nenhuma conta ativa conectada.</span>
+              ) : (
+                data.accounts.map((account) => (
+                  <StockSyncButton key={account.id} accountId={account.id} accountName={account.name} />
+                ))
+              )}
+            </div>
+          </div>
+        </section>
 
         <section className="card">
           <h2>Resumo</h2>

@@ -109,7 +109,7 @@ export function isMercadoLivreInactive(status: string) {
   return ["paused", "closed", "inactive"].includes(status);
 }
 
-async function getMercadoLivreAccountById(accountId: string) {
+export async function getMercadoLivreAccountById(accountId: string) {
   const { data } = await supabaseAdmin()
     .from("config_marketplace_accounts")
     .select("id,name,marketplace,active,account_id,seller_id,client_id,client_secret,redirect_uri,access_token,refresh_token,token_expires_at")
@@ -120,7 +120,7 @@ async function getMercadoLivreAccountById(accountId: string) {
   return data as MarketplaceAccountConfig;
 }
 
-async function getValidMercadoLivreAccessToken(account: MarketplaceAccountConfig) {
+export async function getValidMercadoLivreAccessToken(account: MarketplaceAccountConfig) {
   const expiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : 0;
   const hasValidToken = account.access_token && expiresAt > Date.now() + 60_000;
   if (hasValidToken) {
@@ -234,7 +234,7 @@ async function putMercadoLivreItem(listingId: string, accessToken: string, paylo
   return json;
 }
 
-async function mlGet(path: string, accessToken: string) {
+export async function mlGet(path: string, accessToken: string) {
   const response = await fetch(`${ML_API}${path}`, {
     headers: { authorization: `Bearer ${accessToken}` },
     cache: "no-store"
@@ -247,7 +247,7 @@ async function mlGet(path: string, accessToken: string) {
   return json;
 }
 
-function extractSku(item: Record<string, unknown>) {
+export function extractSku(item: Record<string, unknown>) {
   const sellerCustomField = String(item.seller_custom_field || "").trim();
   if (sellerCustomField) {
     return sellerCustomField;

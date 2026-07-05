@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { listMarketplaceAccountRows } from "./marketplace-accounts-view";
 import { supabaseAdmin } from "./supabase-admin";
 
 export type ConfigSection = "tipo" | "marca" | "especial" | "preco" | "sku" | "marketplace" | "tiny" | "cloudinary" | "config-geral";
@@ -259,6 +260,10 @@ export async function saveConfiguration(formData: FormData) {
 }
 
 async function selectConfigurationRows(section: ConfigSection, definition: ConfigDefinition, columns: string) {
+  if (section === "marketplace") {
+    return fillMissingFields(await listMarketplaceAccountRows(), definition);
+  }
+
   const supabase = supabaseAdmin();
   let selectedColumns = columns.split(",").filter(Boolean);
 
@@ -274,12 +279,7 @@ async function selectConfigurationRows(section: ConfigSection, definition: Confi
       return fillMissingFields(result.data ?? [], definition);
     }
 
-    const missingColumn = section === "marketplace" ? extractMissingColumn(result.error.message) : "";
-    if (!missingColumn || !selectedColumns.includes(missingColumn)) {
-      throw new Error(result.error.message);
-    }
-
-    selectedColumns = selectedColumns.filter((column) => column !== missingColumn);
+    throw new Error(result.error.message);
   }
 
   throw new Error("Nao foi possivel carregar as configuracoes.");

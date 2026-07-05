@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMercadoLivreOAuthConfig } from "@/lib/mercado-livre-oauth";
 import { logMarketplaceAccountEvent } from "@/lib/marketplace-account-logs";
+import { markMarketplaceReconnectStarted } from "@/lib/marketplace-accounts-view";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     const config = await getMercadoLivreOAuthConfig(accountId);
+    await markMarketplaceReconnectStarted(accountId);
     await logMarketplaceAccountEvent("info", "Redirecionando OAuth Mercado Livre", { accountId });
 
     const params = new URLSearchParams({

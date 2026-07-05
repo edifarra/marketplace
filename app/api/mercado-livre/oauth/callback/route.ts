@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     const sellerId = String(userInfo.id || json.user_id || "");
     const existingAccountId = sellerId ? await findExistingMercadoLivreAccount(sellerId, accountId) : "";
     const targetAccountId = existingAccountId || accountId;
+    const syncedAt = new Date().toISOString();
 
     await updateMarketplaceAccount(targetAccountId, {
       access_token: json.access_token || null,
@@ -62,8 +63,9 @@ export async function GET(request: NextRequest) {
       email: typeof userInfo.email === "string" ? userInfo.email : null,
       raw_data: userInfo,
       status: "active",
+      last_sync_at: syncedAt,
       last_error: null,
-      updated_at: new Date().toISOString()
+      updated_at: syncedAt
     });
 
     if (existingAccountId) {

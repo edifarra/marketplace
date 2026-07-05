@@ -15,6 +15,7 @@ export type MarketplaceAccountConfig = {
   access_token?: string | null;
   refresh_token?: string | null;
   token_expires_at?: string | null;
+  status?: string | null;
 };
 
 export type MercadoLivreInventoryItem = {
@@ -32,15 +33,13 @@ export type MercadoLivreInventoryItem = {
 
 export async function getActiveMercadoLivreAccounts() {
   const supabase = supabaseAdmin();
-  const { data } = await supabase
-    .from("config_marketplace_accounts")
-    .select("id,name,marketplace,active,account_id,seller_id,client_id,client_secret,redirect_uri,access_token,refresh_token,token_expires_at")
-    .eq("marketplace", "mercado_livre")
-    .eq("active", true)
-    .order("name")
-    .throwOnError();
+  const data = await selectMarketplaceAccounts(
+    "id,name,marketplace,active,account_id,seller_id,client_id,client_secret,redirect_uri,access_token,refresh_token,token_expires_at,status"
+  );
 
-  return (data ?? []) as MarketplaceAccountConfig[];
+  return ((data ?? []) as unknown as MarketplaceAccountConfig[])
+    .filter((account) => account.marketplace === "mercado_livre")
+    .filter(isConnectedAccount);
 }
 
 export async function listMercadoLivreInventory(account: MarketplaceAccountConfig): Promise<MercadoLivreInventoryItem[]> {
@@ -269,6 +268,61 @@ function extractSku(item: Record<string, unknown>) {
     const variationSku = variation.attributes?.find((attribute) => attribute.id === "SELLER_SKU");
     if (variationSku?.value_name) {
       return String(variationSku.value_name).trim();
+    }
+  }
+
+  return "";
+}
+
+async function selectMarketplaceAccounts(columns: string) {
+  let selectedColumns = columns.split(",").filter(Boolean);
+
+  for (let attempt = 0; attempt < selectedColumns.length; attempt += 1) {
+    const result = await supabaseAdmin()
+      .from("config_marketplace_accounts")
+      .select(selectedColumns.join(","))
+      .eq("marketplace", "mercado_livre")
+      .eq("active", true)
+      .order("name");
+
+    if (!result.error) {
+      return result.data ?? [];
+    }
+
+    const missingColumn = extractMissingColumn(result.error.message);
+    if (!missingColumn || !selectedColumns.includes(missingColumn)) {
+      throw new Error(result.error.message);
+    }
+
+    selectedColumns = selectedColumns.filter((column) => column !== missingColumn);
+  }
+
+  return [];
+}
+
+function isConnectedAccount(account: MarketplaceAccountConfig & { status?: string | null }) {
+  if (!account.active) {
+    return false;
+  }
+
+  if (account.status === "disconnected" || account.status === "inactive") {
+    return false;
+  }
+
+  return Boolean(account.access_token || account.refresh_token);
+}
+
+function extractMissingColumn(message: string) {
+  const patterns = [
+    /column\s+[^.]+\.(\w+)\s+does not exist/i,
+    /Could not find the ['"]?(\w+)['"]? column/i,
+    /Could not find ['"]?(\w+)['"]? in the schema cache/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) {
+      return match[1];
     }
   }
 

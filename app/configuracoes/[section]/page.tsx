@@ -6,6 +6,7 @@ import {
   getConfigurationPageData,
   isConfigSection
 } from "@/lib/configurations";
+import { formatMarketplaceDateTime, marketplaceDisplayStatus } from "@/lib/marketplace-accounts-view";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -200,7 +201,7 @@ function ConfigurationTable({
                             <button className="secondary compact" type="submit">Salvar</button>
                           </form>
                         ) : (
-                          formatValue(row[field])
+                          formatTableValue(section, field, row)
                         )}
                       </td>
                     ))}
@@ -257,6 +258,18 @@ function editValue(value: unknown) {
 
 function labelize(field: string) {
   return field.replace(/_/g, " ");
+}
+
+function formatTableValue(section: ConfigSection, field: string, row: Record<string, unknown>) {
+  if (section === "marketplace" && field === "status") {
+    return marketplaceDisplayStatus(row);
+  }
+
+  if (section === "marketplace" && ["last_sync_at", "last_inventory_sync_at", "token_expires_at"].includes(field)) {
+    return formatMarketplaceDateTime(row[field]);
+  }
+
+  return formatValue(row[field]);
 }
 
 function normalizeNewMarketplace(value?: string) {

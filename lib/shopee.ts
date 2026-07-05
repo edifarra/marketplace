@@ -12,6 +12,7 @@ export type ShopeeAccountConfig = {
   access_token?: string | null;
   refresh_token?: string | null;
   token_expires_at?: string | null;
+  status?: string | null;
 };
 
 export type ShopeeInventoryItem = {
@@ -28,15 +29,13 @@ export type ShopeeInventoryItem = {
 };
 
 export async function getActiveShopeeAccounts() {
-  const { data } = await supabaseAdmin()
-    .from("config_marketplace_accounts")
-    .select("id,name,marketplace,active,shop_id,account_id,access_token,refresh_token,token_expires_at")
-    .eq("marketplace", "shopee")
-    .eq("active", true)
-    .order("name")
-    .throwOnError();
+  const data = await selectMarketplaceAccounts(
+    "id,name,marketplace,active,shop_id,account_id,access_token,refresh_token,token_expires_at,status"
+  );
 
-  return (data ?? []) as ShopeeAccountConfig[];
+  return ((data ?? []) as unknown as ShopeeAccountConfig[])
+    .filter((account) => account.marketplace === "shopee")
+    .filter(isConnectedAccount);
 }
 
 export async function listShopeeInventory(account: ShopeeAccountConfig): Promise<ShopeeInventoryItem[]> {
@@ -121,4 +120,59 @@ function extractShopeeStock(item: Record<string, unknown>) {
   const stockInfo = item.stock_info_v2 as Record<string, unknown> | undefined;
   const summary = stockInfo?.summary_info as Record<string, unknown> | undefined;
   return Number(summary?.total_available_stock || item.stock || 0);
+}
+
+async function selectMarketplaceAccounts(columns: string) {
+  let selectedColumns = columns.split(",").filter(Boolean);
+
+  for (let attempt = 0; attempt < selectedColumns.length; attempt += 1) {
+    const result = await supabaseAdmin()
+      .from("config_marketplace_accounts")
+      .select(selectedColumns.join(","))
+      .eq("marketplace", "shopee")
+      .eq("active", true)
+      .order("name");
+
+    if (!result.error) {
+      return result.data ?? [];
+    }
+
+    const missingColumn = extractMissingColumn(result.error.message);
+    if (!missingColumn || !selectedColumns.includes(missingColumn)) {
+      throw new Error(result.error.message);
+    }
+
+    selectedColumns = selectedColumns.filter((column) => column !== missingColumn);
+  }
+
+  return [];
+}
+
+function isConnectedAccount(account: ShopeeAccountConfig) {
+  if (!account.active) {
+    return false;
+  }
+
+  if (account.status === "disconnected" || account.status === "inactive") {
+    return false;
+  }
+
+  return Boolean(account.access_token || account.refresh_token);
+}
+
+function extractMissingColumn(message: string) {
+  const patterns = [
+    /column\s+[^.]+\.(\w+)\s+does not exist/i,
+    /Could not find the ['"]?(\w+)['"]? column/i,
+    /Could not find ['"]?(\w+)['"]? in the schema cache/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return "";
 }

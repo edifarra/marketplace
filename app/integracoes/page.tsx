@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { Sidebar } from "../components/sidebar";
 import { removeMarketplaceAccountAction, saveIntegrationModeAction, syncMarketplaceAccountAction } from "./actions";
+import { listMarketplaceAccountViews } from "@/lib/marketplace-accounts-view";
 
 export const dynamic = "force-dynamic";
 
@@ -9,44 +10,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const MARKETPLACE_COLUMNS = [
-  "id",
-  "name",
-  "marketplace",
-  "account_id",
-  "seller_id",
-  "shop_id",
-  "nickname",
-  "email",
-  "category_id",
-  "access_token",
-  "refresh_token",
-  "status",
-  "last_sync_at",
-  "last_inventory_sync_at",
-  "last_error",
-  "active"
-];
-
-type MarketplaceAccount = {
-  id: string;
-  name: string;
-  marketplace: string;
-  account_id?: string | null;
-  seller_id?: string | null;
-  shop_id?: string | null;
-  nickname?: string | null;
-  email?: string | null;
-  category_id?: string | null;
-  access_token?: string | null;
-  refresh_token?: string | null;
-  status?: string | null;
-  last_sync_at?: string | null;
-  last_inventory_sync_at?: string | null;
-  last_error?: string | null;
-  active: boolean;
-};
-
 type IntegracoesPageProps = {
   searchParams?: {
     erro?: string;
@@ -54,9 +17,9 @@ type IntegracoesPageProps = {
 };
 
 export default async function IntegracoesPage({ searchParams }: IntegracoesPageProps) {
-  const [{ data: settings }, { data: marketplaces }] = await Promise.all([
+  const [{ data: settings }, marketplaces] = await Promise.all([
     supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
-    getMarketplaceAccounts()
+    listMarketplaceAccountViews()
   ]);
 
   const settingMap = new Map((settings ?? []).map((row) => [row.key, row.value]));
@@ -124,15 +87,15 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
                 </tr>
               </thead>
               <tbody>
-                {((marketplaces ?? []) as unknown as MarketplaceAccount[]).map((account) => (
+                {marketplaces.map((account) => (
                   <tr key={account.id}>
                     <td>{account.marketplace}</td>
                     <td>{account.name}</td>
                     <td>{account.seller_id || account.shop_id || account.account_id || "-"}</td>
                     <td>{account.nickname || "-"}</td>
                     <td>{account.email || "-"}</td>
-                    <td>{connectionStatus(account)}</td>
-                    <td>{formatDate(account.last_sync_at || account.last_inventory_sync_at)}</td>
+                    <td>{account.status || "-"}</td>
+                    <td>{account.last_sync_at || account.last_inventory_sync_at || "-"}</td>
                     <td>
                       <div className="row-actions">
                         <form action={syncMarketplaceAccountAction}>
@@ -176,79 +139,4 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
       </section>
     </main>
   );
-}
-
-async function getMarketplaceAccounts() {
-  let columns = [...MARKETPLACE_COLUMNS];
-
-  for (let attempt = 0; attempt < MARKETPLACE_COLUMNS.length; attempt += 1) {
-    const result = await supabase
-      .from("config_marketplace_accounts")
-      .select(columns.join(","))
-      .order("name");
-
-    if (!result.error) {
-      return {
-        ...result,
-        data: fillMissingMarketplaceFields(result.data ?? [])
-      };
-    }
-
-    const missingColumn = extractMissingColumn(result.error.message);
-    if (!missingColumn || !columns.includes(missingColumn)) {
-      return result;
-    }
-
-    columns = columns.filter((column) => column !== missingColumn);
-  }
-
-  return supabase
-    .from("config_marketplace_accounts")
-    .select(columns.join(","))
-    .order("name");
-}
-
-function fillMissingMarketplaceFields(data: unknown[]) {
-  return (data as Record<string, unknown>[]).map((row) => {
-    for (const column of MARKETPLACE_COLUMNS) {
-      if (!(column in row)) {
-        row[column] = null;
-      }
-    }
-    return row;
-  });
-}
-
-function connectionStatus(account: MarketplaceAccount) {
-  if (!account.active) {
-    return "Inativo";
-  }
-  if (account.status) {
-    return account.status;
-  }
-  return account.access_token || account.refresh_token ? "active" : "-";
-}
-
-function formatDate(value?: string | null) {
-  if (!value) {
-    return "-";
-  }
-  return new Date(value).toLocaleString("pt-BR");
-}
-
-function extractMissingColumn(message: string) {
-  const patterns = [
-    /column\s+[^.]+\.(\w+)\s+does not exist/i,
-    /Could not find the ['"]?(\w+)['"]? column/i,
-    /Could not find ['"]?(\w+)['"]? in the schema cache/i
-  ];
-
-  for (const pattern of patterns) {
-    const match = message.match(pattern);
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-
-  return "";
 }

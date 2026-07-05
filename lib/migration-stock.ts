@@ -27,6 +27,10 @@ type MarketplaceAccount = {
   id: string;
   name: string;
   marketplace: string;
+  active?: boolean | null;
+  access_token?: string | null;
+  refresh_token?: string | null;
+  status?: string | null;
 };
 
 export type MarketplaceLink = {
@@ -68,11 +72,16 @@ export type MigrationStockData = {
 
 export async function getMigrationStockData(view: MigrationStockView = "marketplace-only"): Promise<MigrationStockData> {
   const errors = await syncActiveMarketplaceInventory();
-  const [products, links, accounts] = await Promise.all([
-    getSystemProducts(),
-    getMarketplaceLinks(),
-    getActiveMarketplaceAccounts()
+  const [productsResult, accountsResult] = await Promise.all([
+    readSafely(getSystemProducts, "Produtos do sistema"),
+    readSafely(getActiveMarketplaceAccounts, "Contas de marketplace")
   ]);
+  const products = productsResult.data;
+  const accounts = accountsResult.data;
+  const linksResult = accounts.length > 0
+    ? await readSafely(getMarketplaceLinks, "Integracoes dos marketplaces")
+    : { data: [] as MarketplaceLink[], errors: [] as string[] };
+  const links = linksResult.data;
   const context = buildContext(products, links, accounts);
 
   return {
@@ -84,7 +93,12 @@ export async function getMigrationStockData(view: MigrationStockView = "marketpl
       stockDivergent: context.stockDivergent.length
     },
     rows: context[viewKey(view)],
-    errors
+    errors: [
+      ...errors,
+      ...productsResult.errors,
+      ...linksResult.errors,
+      ...accountsResult.errors
+    ]
   };
 }
 
@@ -184,11 +198,11 @@ export async function updateDivergentStockByLowest(sku: string) {
 }
 
 async function syncActiveMarketplaceInventory() {
-  const accounts = [
-    ...await getActiveMercadoLivreAccounts(),
-    ...await getActiveShopeeAccounts()
-  ];
   const errors: string[] = [];
+  const accounts = [
+    ...await readMarketplaceAccounts(getActiveMercadoLivreAccounts, "Mercado Livre", errors),
+    ...await readMarketplaceAccounts(getActiveShopeeAccounts, "Shopee", errors)
+  ];
 
   for (const account of accounts) {
     try {
@@ -201,12 +215,96 @@ async function syncActiveMarketplaceInventory() {
     } catch (error) {
       const message = `${account.name}: ${errorMessage(error)}`;
       errors.push(message);
-      await logMigration("", "sincronizar_marketplace", "erro", message, { accountId: account.id });
+      await logMigrationSafely("", "sincronizar_marketplace", "erro", message, { accountId: account.id });
     }
   }
 
-  await relinkMarketplaceProducts();
+  try {
+    if (accounts.length > 0) {
+      await relinkMarketplaceProducts();
+    }
+  } catch (error) {
+    errors.push(`Vinculo de produtos: ${errorMessage(error)}`);
+  }
   return errors;
+}
+
+async function readMarketplaceAccounts<T extends MarketplaceAccount>(
+  loader: () => Promise<T[]>,
+  label: string,
+  errors: string[]
+) {
+  try {
+    return await loader();
+  } catch (error) {
+    errors.push(`${label}: ${errorMessage(error)}`);
+    return [];
+  }
+}
+
+async function readSafely<T>(loader: () => Promise<T[]>, label: string) {
+  try {
+    return { data: await loader(), errors: [] as string[] };
+  } catch (error) {
+    return {
+      data: [] as T[],
+      errors: [`${label}: ${errorMessage(error)}`]
+    };
+  }
+}
+
+async function selectMarketplaceAccounts(columns: string) {
+  let selectedColumns = columns.split(",").filter(Boolean);
+
+  for (let attempt = 0; attempt < selectedColumns.length; attempt += 1) {
+    const result = await supabaseAdmin()
+      .from("config_marketplace_accounts")
+      .select(selectedColumns.join(","))
+      .eq("active", true)
+      .order("name");
+
+    if (!result.error) {
+      return result.data ?? [];
+    }
+
+    const missingColumn = extractMissingColumn(result.error.message);
+    if (!missingColumn || !selectedColumns.includes(missingColumn)) {
+      throw new Error(result.error.message);
+    }
+
+    selectedColumns = selectedColumns.filter((column) => column !== missingColumn);
+  }
+
+  return [];
+}
+
+function isConnectedAccount(account: MarketplaceAccount) {
+  if (!account.active) {
+    return false;
+  }
+
+  if (account.status === "disconnected" || account.status === "inactive") {
+    return false;
+  }
+
+  return Boolean(account.access_token || account.refresh_token);
+}
+
+function extractMissingColumn(message: string) {
+  const patterns = [
+    /column\s+[^.]+\.(\w+)\s+does not exist/i,
+    /Could not find the ['"]?(\w+)['"]? column/i,
+    /Could not find ['"]?(\w+)['"]? in the schema cache/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return "";
 }
 
 async function upsertMarketplaceItem(item: {
@@ -319,14 +417,11 @@ async function getSystemProducts() {
 }
 
 async function getActiveMarketplaceAccounts() {
-  const { data } = await supabaseAdmin()
-    .from("config_marketplace_accounts")
-    .select("id,name,marketplace")
-    .eq("active", true)
-    .order("name")
-    .throwOnError();
+  const data = await selectMarketplaceAccounts(
+    "id,name,marketplace,active,access_token,refresh_token,status"
+  );
 
-  return (data ?? []) as MarketplaceAccount[];
+  return ((data ?? []) as unknown as MarketplaceAccount[]).filter(isConnectedAccount);
 }
 
 async function getMarketplaceLinks() {
@@ -484,6 +579,14 @@ async function logMigration(sku: string, acao: string, status: string, mensagem:
     mensagem,
     detalhes
   });
+}
+
+async function logMigrationSafely(sku: string, acao: string, status: string, mensagem: string, detalhes: unknown) {
+  try {
+    await logMigration(sku, acao, status, mensagem, detalhes);
+  } catch {
+    // A tela de estoque deve continuar abrindo mesmo antes da tabela de logs existir.
+  }
 }
 
 function errorMessage(error: unknown) {

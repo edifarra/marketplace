@@ -28,7 +28,13 @@ type MarketplaceAccount = {
   active: boolean;
 };
 
-export default async function IntegracoesPage() {
+type IntegracoesPageProps = {
+  searchParams?: {
+    erro?: string;
+  };
+};
+
+export default async function IntegracoesPage({ searchParams }: IntegracoesPageProps) {
   const [{ data: settings }, { data: marketplaces }] = await Promise.all([
     supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
     supabase
@@ -39,6 +45,7 @@ export default async function IntegracoesPage() {
 
   const settingMap = new Map((settings ?? []).map((row) => [row.key, row.value]));
   const mode = String(settingMap.get("PRODUCT_SEND_TARGET") || "TINY");
+  const errorMessage = searchParams?.erro || "";
 
   return (
     <main className="shell">
@@ -50,6 +57,8 @@ export default async function IntegracoesPage() {
             <div className="subtitle">Defina se o produto sera enviado ao Tiny ou diretamente aos marketplaces.</div>
           </div>
         </div>
+
+        {errorMessage && <div className="form-error">{errorMessage}</div>}
 
         <section className="card form-card">
           <h2>Destino de envio</h2>

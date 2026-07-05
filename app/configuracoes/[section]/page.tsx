@@ -18,6 +18,7 @@ type PageProps = {
     q?: string;
     edit?: string;
     erro?: string;
+    novo?: string;
   };
 };
 
@@ -32,6 +33,7 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
   const data = await getConfigurationPageData(section, searchParams?.q || "", searchParams?.edit);
   const { definition } = data;
   const marketplaceFirst = section === "marketplace";
+  const newMarketplace = normalizeNewMarketplace(searchParams?.novo);
 
   return (
     <main className="shell">
@@ -53,8 +55,8 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
               Para conectar outra conta do Mercado Livre, use uma guia anonima ou saia da conta atual antes de continuar.
             </p>
             <div className="form-actions">
-              <a className="primary" href="/api/mercado-livre/oauth/start">Adicionar Conta Mercado Livre</a>
-              <a className="primary" href="/api/shopee/oauth/start">Adicionar Conta Shopee</a>
+              <a className="primary" href="/configuracoes/marketplace?novo=mercado_livre#marketplace-config-form">Adicionar Conta Mercado Livre</a>
+              <a className="primary" href="/configuracoes/marketplace?novo=shopee#marketplace-config-form">Adicionar Conta Shopee</a>
             </div>
           </section>
         )}
@@ -62,11 +64,11 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
         {marketplaceFirst ? (
           <>
             <ConfigurationTable section={section} data={data} searchQuery={searchParams?.q || ""} />
-            <ConfigurationForm section={section} data={data} />
+            <ConfigurationForm section={section} data={data} newMarketplace={newMarketplace} />
           </>
         ) : (
           <>
-            <ConfigurationForm section={section} data={data} />
+            <ConfigurationForm section={section} data={data} newMarketplace={newMarketplace} />
             <ConfigurationTable section={section} data={data} searchQuery={searchParams?.q || ""} />
           </>
         )}
@@ -75,11 +77,19 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
   );
 }
 
-function ConfigurationForm({ section, data }: { section: ConfigSection; data: ConfigurationPageData }) {
+function ConfigurationForm({
+  section,
+  data,
+  newMarketplace
+}: {
+  section: ConfigSection;
+  data: ConfigurationPageData;
+  newMarketplace: "mercado_livre" | "shopee" | "";
+}) {
   const { definition, editRow } = data;
 
   return (
-    <section className={section === "marketplace" ? "section card form-card" : "card form-card"}>
+    <section id={section === "marketplace" ? "marketplace-config-form" : undefined} className={section === "marketplace" ? "section card form-card" : "card form-card"}>
       <h2>{editRow ? "Editar configuracao" : "Adicionar nova configuracao"}</h2>
       <form action={saveConfigurationAction} className="config-form">
         <input type="hidden" name="section" value={section} />
@@ -99,18 +109,18 @@ function ConfigurationForm({ section, data }: { section: ConfigSection; data: Co
                 <span className="check-row">
                   <input
                     name={field.name}
-                    type="checkbox"
-                    defaultChecked={Boolean(editRow?.[field.name])}
-                  />
-                  Ativo
-                </span>
+                  type="checkbox"
+                  defaultChecked={editRow ? Boolean(editRow[field.name]) : section === "marketplace" && field.name === "active"}
+                />
+                Ativo
+              </span>
               ) : (
                 <input
                   name={field.name}
                   required={field.required}
                   type={field.type === "number" ? "number" : "text"}
                   step={field.type === "number" ? "0.001" : undefined}
-                  defaultValue={editRow ? editValue(editRow[field.name]) : ""}
+                  defaultValue={editRow ? editValue(editRow[field.name]) : defaultNewValue(section, newMarketplace, field.name)}
                 />
               )}
             </label>
@@ -247,4 +257,24 @@ function editValue(value: unknown) {
 
 function labelize(field: string) {
   return field.replace(/_/g, " ");
+}
+
+function normalizeNewMarketplace(value?: string) {
+  return value === "mercado_livre" || value === "shopee" ? value : "";
+}
+
+function defaultNewValue(section: ConfigSection, marketplace: "mercado_livre" | "shopee" | "", field: string) {
+  if (section !== "marketplace" || !marketplace) {
+    return "";
+  }
+
+  if (field === "marketplace") {
+    return marketplace;
+  }
+
+  if (field === "name") {
+    return marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee";
+  }
+
+  return "";
 }

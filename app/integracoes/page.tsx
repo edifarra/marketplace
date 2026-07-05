@@ -9,6 +9,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+const MARKETPLACE_COLUMNS = "id,name,marketplace,account_id,seller_id,shop_id,nickname,email,category_id,access_token,refresh_token,status,last_sync_at,last_inventory_sync_at,last_error,active";
+const LEGACY_MARKETPLACE_COLUMNS = "id,name,marketplace,account_id,seller_id,category_id,access_token,refresh_token,last_inventory_sync_at,last_error,active";
+
 type MarketplaceAccount = {
   id: string;
   name: string;
@@ -37,10 +40,7 @@ type IntegracoesPageProps = {
 export default async function IntegracoesPage({ searchParams }: IntegracoesPageProps) {
   const [{ data: settings }, { data: marketplaces }] = await Promise.all([
     supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
-    supabase
-      .from("config_marketplace_accounts")
-      .select("id,name,marketplace,account_id,seller_id,shop_id,nickname,email,category_id,access_token,refresh_token,status,last_sync_at,last_inventory_sync_at,last_error,active")
-      .order("name")
+    getMarketplaceAccounts()
   ]);
 
   const settingMap = new Map((settings ?? []).map((row) => [row.key, row.value]));
@@ -89,8 +89,8 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
               </p>
             </div>
             <div className="row-actions">
-              <a className="primary compact" href="/api/mercado-livre/oauth/start">Adicionar Conta Mercado Livre</a>
-              <a className="primary compact" href="/api/shopee/oauth/start">Adicionar Conta Shopee</a>
+              <a className="primary compact" href="/configuracoes/marketplace?novo=mercado_livre#marketplace-config-form">Adicionar Conta Mercado Livre</a>
+              <a className="primary compact" href="/configuracoes/marketplace?novo=shopee#marketplace-config-form">Adicionar Conta Shopee</a>
             </div>
           </div>
           <div className="table-wrap">
@@ -162,6 +162,26 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
   );
 }
 
+async function getMarketplaceAccounts() {
+  const result = await supabase
+    .from("config_marketplace_accounts")
+    .select(MARKETPLACE_COLUMNS)
+    .order("name");
+
+  if (!result.error) {
+    return result;
+  }
+
+  if (!isMissingColumnError(result.error.message)) {
+    return result;
+  }
+
+  return supabase
+    .from("config_marketplace_accounts")
+    .select(LEGACY_MARKETPLACE_COLUMNS)
+    .order("name");
+}
+
 function connectionStatus(account: MarketplaceAccount) {
   if (!account.active) {
     return "Inativo";
@@ -177,4 +197,8 @@ function formatDate(value?: string | null) {
     return "-";
   }
   return new Date(value).toLocaleString("pt-BR");
+}
+
+function isMissingColumnError(message: string) {
+  return /column .* does not exist|Could not find .* column|schema cache/i.test(message);
 }

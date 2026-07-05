@@ -19,7 +19,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(`/configuracoes/marketplace?erro=${encodeURIComponent("Retorno OAuth Mercado Livre incompleto.")}`, request.url));
     }
 
-    const supabase = supabaseAdmin();
     const config = await getMercadoLivreOAuthConfig(accountId);
     await logMarketplaceAccountEvent("info", "Callback OAuth Mercado Livre recebido", { accountId });
 
@@ -48,10 +47,25 @@ export async function GET(request: NextRequest) {
     const userInfo = accessToken ? await getMercadoLivreUserInfo(accessToken) : {};
     const sellerId = String(userInfo.id || json.user_id || "");
     const existingAccountId = sellerId ? await findExistingMercadoLivreAccount(sellerId, accountId) : "";
-    const targetAccountId = existingAccountId || accountId;
     const syncedAt = new Date().toISOString();
 
-    await updateMarketplaceAccount(targetAccountId, {
+    if (existingAccountId) {
+      const message = `Este login Mercado Livre pertence ao seller ${sellerId}, que ja esta vinculado a outra configuracao. Entre na conta correta do Mercado Livre para reconectar esta linha.`;
+      await updateMarketplaceAccount(accountId, {
+        status: "error",
+        last_sync_at: syncedAt,
+        last_error: message,
+        updated_at: syncedAt
+      });
+      await logMarketplaceAccountEvent("warn", "Login Mercado Livre pertence a outra configuracao", {
+        accountId,
+        existingAccountId,
+        sellerId
+      });
+      return NextResponse.redirect(new URL(`/configuracoes/marketplace?erro=${encodeURIComponent(message)}`, request.url));
+    }
+
+    await updateMarketplaceAccount(accountId, {
       access_token: json.access_token || null,
       refresh_token: json.refresh_token || null,
       token_expires_at: expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
@@ -68,16 +82,7 @@ export async function GET(request: NextRequest) {
       updated_at: syncedAt
     });
 
-    if (existingAccountId) {
-      await supabase.from("config_marketplace_accounts").delete().eq("id", accountId);
-      await logMarketplaceAccountEvent("warn", "Conta Mercado Livre ja existente atualizada", {
-        accountId,
-        targetAccountId,
-        sellerId
-      });
-    } else {
-      await logMarketplaceAccountEvent("info", "Token Mercado Livre salvo", { accountId, sellerId });
-    }
+    await logMarketplaceAccountEvent("info", "Token Mercado Livre salvo", { accountId, sellerId });
 
     return NextResponse.redirect(new URL("/configuracoes/marketplace", request.url));
   } catch (callbackError) {

@@ -26,28 +26,6 @@ type ConfigDefinition = {
   marker?: string;
 };
 
-const LEGACY_MARKETPLACE_COLUMNS = [
-  "id",
-  "name",
-  "marketplace",
-  "account_id",
-  "seller_id",
-  "category_id",
-  "client_id",
-  "client_secret",
-  "redirect_uri",
-  "access_token",
-  "refresh_token",
-  "token_expires_at",
-  "scope",
-  "token_type",
-  "active",
-  "last_inventory_sync_at",
-  "last_error",
-  "created_at",
-  "updated_at"
-];
-
 export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
   tipo: {
     title: "Tipo",
@@ -282,28 +260,33 @@ export async function saveConfiguration(formData: FormData) {
 
 async function selectConfigurationRows(section: ConfigSection, definition: ConfigDefinition, columns: string) {
   const supabase = supabaseAdmin();
-  let request = supabase.from(definition.table).select(columns);
+  let selectedColumns = columns.split(",").filter(Boolean);
 
-  if (definition.fixedRows?.length && definition.table !== "settings") {
-    request = request.in(definition.keyField, definition.fixedRows);
+  for (let attempt = 0; attempt < selectedColumns.length; attempt += 1) {
+    let request = supabase.from(definition.table).select(selectedColumns.join(","));
+
+    if (definition.fixedRows?.length && definition.table !== "settings") {
+      request = request.in(definition.keyField, definition.fixedRows);
+    }
+
+    const result = await request.order(definition.keyField);
+    if (!result.error) {
+      return fillMissingFields(result.data ?? [], definition);
+    }
+
+    const missingColumn = section === "marketplace" ? extractMissingColumn(result.error.message) : "";
+    if (!missingColumn || !selectedColumns.includes(missingColumn)) {
+      throw new Error(result.error.message);
+    }
+
+    selectedColumns = selectedColumns.filter((column) => column !== missingColumn);
   }
 
-  const result = await request.order(definition.keyField);
-  if (!result.error) {
-    return result.data;
-  }
+  throw new Error("Nao foi possivel carregar as configuracoes.");
+}
 
-  if (section !== "marketplace" || !isMissingColumnError(result.error.message)) {
-    throw new Error(result.error.message);
-  }
-
-  let fallback = supabase.from(definition.table).select(LEGACY_MARKETPLACE_COLUMNS.join(","));
-  if (definition.fixedRows?.length && definition.table !== "settings") {
-    fallback = fallback.in(definition.keyField, definition.fixedRows);
-  }
-
-  const fallbackResult = await fallback.order(definition.keyField).throwOnError();
-  return ((fallbackResult.data ?? []) as unknown as Record<string, unknown>[]).map((row) => {
+function fillMissingFields(data: unknown[], definition: ConfigDefinition) {
+  return (data as Record<string, unknown>[]).map((row) => {
     for (const field of [...definition.listFields, ...(definition.hiddenFields || []), ...definition.fields.map((item) => item.name)]) {
       if (!(field in row)) {
         row[field] = null;

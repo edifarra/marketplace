@@ -9,8 +9,24 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const MARKETPLACE_COLUMNS = "id,name,marketplace,account_id,seller_id,shop_id,nickname,email,category_id,access_token,refresh_token,status,last_sync_at,last_inventory_sync_at,last_error,active";
-const LEGACY_MARKETPLACE_COLUMNS = "id,name,marketplace,account_id,seller_id,category_id,access_token,refresh_token,last_inventory_sync_at,last_error,active";
+const MARKETPLACE_COLUMNS = [
+  "id",
+  "name",
+  "marketplace",
+  "account_id",
+  "seller_id",
+  "shop_id",
+  "nickname",
+  "email",
+  "category_id",
+  "access_token",
+  "refresh_token",
+  "status",
+  "last_sync_at",
+  "last_inventory_sync_at",
+  "last_error",
+  "active"
+];
 
 type MarketplaceAccount = {
   id: string;
@@ -108,7 +124,7 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
                 </tr>
               </thead>
               <tbody>
-                {((marketplaces ?? []) as MarketplaceAccount[]).map((account) => (
+                {((marketplaces ?? []) as unknown as MarketplaceAccount[]).map((account) => (
                   <tr key={account.id}>
                     <td>{account.marketplace}</td>
                     <td>{account.name}</td>
@@ -163,33 +179,54 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
 }
 
 async function getMarketplaceAccounts() {
-  const result = await supabase
-    .from("config_marketplace_accounts")
-    .select(MARKETPLACE_COLUMNS)
-    .order("name");
+  let columns = [...MARKETPLACE_COLUMNS];
 
-  if (!result.error) {
-    return result;
-  }
+  for (let attempt = 0; attempt < MARKETPLACE_COLUMNS.length; attempt += 1) {
+    const result = await supabase
+      .from("config_marketplace_accounts")
+      .select(columns.join(","))
+      .order("name");
 
-  if (!isMissingColumnError(result.error.message)) {
-    return result;
+    if (!result.error) {
+      return {
+        ...result,
+        data: fillMissingMarketplaceFields(result.data ?? [])
+      };
+    }
+
+    const missingColumn = extractMissingColumn(result.error.message);
+    if (!missingColumn || !columns.includes(missingColumn)) {
+      return result;
+    }
+
+    columns = columns.filter((column) => column !== missingColumn);
   }
 
   return supabase
     .from("config_marketplace_accounts")
-    .select(LEGACY_MARKETPLACE_COLUMNS)
+    .select(columns.join(","))
     .order("name");
+}
+
+function fillMissingMarketplaceFields(data: unknown[]) {
+  return (data as Record<string, unknown>[]).map((row) => {
+    for (const column of MARKETPLACE_COLUMNS) {
+      if (!(column in row)) {
+        row[column] = null;
+      }
+    }
+    return row;
+  });
 }
 
 function connectionStatus(account: MarketplaceAccount) {
   if (!account.active) {
     return "Inativo";
   }
-  if (account.status && account.status !== "disconnected") {
+  if (account.status) {
     return account.status;
   }
-  return account.access_token || account.refresh_token ? "active" : "disconnected";
+  return account.access_token || account.refresh_token ? "active" : "-";
 }
 
 function formatDate(value?: string | null) {
@@ -199,6 +236,19 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleString("pt-BR");
 }
 
-function isMissingColumnError(message: string) {
-  return /column .* does not exist|Could not find .* column|schema cache/i.test(message);
+function extractMissingColumn(message: string) {
+  const patterns = [
+    /column\s+[^.]+\.(\w+)\s+does not exist/i,
+    /Could not find the ['"]?(\w+)['"]? column/i,
+    /Could not find ['"]?(\w+)['"]? in the schema cache/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return "";
 }

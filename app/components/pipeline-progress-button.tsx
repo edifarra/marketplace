@@ -57,10 +57,23 @@ export function PipelineProgressButton({
       message: runningLabel
     });
 
-    await fetch(endpoint, {
+    const response = await fetch(endpoint, {
       method: "POST",
       cache: "no-store"
     }).catch(() => null);
+
+    if (!response?.ok) {
+      const error = await response?.json().catch(() => null);
+      setProgress({
+        status: "failed",
+        totalFiles: 0,
+        processedFiles: 0,
+        percent: 0,
+        message: error?.error || "Nao foi possivel executar agora."
+      });
+      setRunning(false);
+      return;
+    }
 
     const finalProgress = await fetch(progressEndpoint, { cache: "no-store" })
       .then((response) => response.json())

@@ -15,13 +15,13 @@ async function executePipeline(request: NextRequest) {
   const secret = request.headers.get("x-cron-secret");
   const authorization = request.headers.get("authorization");
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
+  const forced = request.nextUrl.searchParams.get("force") === "1";
 
-  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET && bearer !== process.env.CRON_SECRET) {
+  if (!forced && process.env.CRON_SECRET && secret !== process.env.CRON_SECRET && bearer !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
   const supabase = supabaseAdmin();
-  const forced = request.nextUrl.searchParams.get("force") === "1";
   const settings = await getGoogleDriveSettings();
 
   if (!forced) {

@@ -23,6 +23,7 @@ async function executePipeline(request: NextRequest) {
 
   const supabase = supabaseAdmin();
   const settings = await getGoogleDriveSettings();
+  const startedAt = new Date().toISOString();
 
   if (!forced) {
     const wait = await shouldWaitForNextRun(settings.intervalMinutes);
@@ -38,7 +39,7 @@ async function executePipeline(request: NextRequest) {
 
   const run = await supabase
     .from("pipeline_runs")
-    .insert({ status: "running", stage: "drive_collect", started_at: new Date().toISOString() })
+    .insert({ status: "running", stage: "drive_collect", started_at: startedAt })
     .select()
     .single()
     .throwOnError();
@@ -54,6 +55,9 @@ async function executePipeline(request: NextRequest) {
       processedFiles: 0,
       percent: 0,
       message: "Iniciando busca no Google Drive."
+    });
+    await upsertPipelineSettings(startedAt, "EM_EXECUCAO", {
+      message: "Execucao manual iniciada. Buscando imagens no Google Drive."
     });
 
     const driveResult = await collectDriveImages(saveDriveProgress);
@@ -154,7 +158,7 @@ async function upsertPipelineSettings(finishedAt: string, status: string, payloa
       value: payload,
       description: "[CONFIG_GERAL] Resultado da ultima coleta do Google Drive"
     }
-  ]);
+  ]).throwOnError();
 }
 
 async function saveDriveProgress(progress: Record<string, unknown>) {

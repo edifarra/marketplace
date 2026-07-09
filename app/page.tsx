@@ -41,6 +41,11 @@ export default async function HomePage() {
     .limit(1)
     .maybeSingle();
 
+  const { data: driveLastRunSettings } = await supabase
+    .from("settings")
+    .select("key,value")
+    .in("key", ["DRIVE_LAST_RUN_AT", "DRIVE_LAST_RUN_STATUS", "DRIVE_LAST_RUN_RESULT"]);
+
   const { data: lastProductLoadRun } = await supabase
     .from("pipeline_runs")
     .select("status, metrics, error_message, finished_at")
@@ -57,6 +62,7 @@ export default async function HomePage() {
 
   const driveConfigured = await hasGoogleDriveConfig();
   const driveSettings = await getGoogleDriveSettings();
+  const driveRunStatus = buildDriveRunStatus(lastDriveRun, driveLastRunSettings ?? []);
 
   return (
     <main className="shell">
@@ -95,9 +101,9 @@ export default async function HomePage() {
                 <td>Google Drive</td>
                 <td>Busca imagens validas e ignora duplicadas</td>
                 <td>
-                  <span className="status">{driveStatusLabel(lastDriveRun?.status, lastDriveRun?.error_message, driveConfigured)}</span>
+                  <span className="status">{driveStatusLabel(driveRunStatus.status, driveRunStatus.errorMessage, driveConfigured)}</span>
                   <div className="muted pipeline-result">
-                    {formatDriveResult(lastDriveRun, driveSettings.intervalMinutes)}
+                    {formatDriveResult(driveRunStatus, driveSettings.intervalMinutes)}
                   </div>
                 </td>
                 <td>
@@ -188,6 +194,39 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+type DriveRunView = {
+  status: string | null;
+  metrics: unknown;
+  errorMessage: string | null;
+  finishedAt: string | null;
+};
+
+function buildDriveRunStatus(
+  run: { status: string; metrics: unknown; error_message: string | null; finished_at: string | null } | null,
+  settingsRows: Array<{ key: string; value: unknown }>
+): DriveRunView {
+  const settings = new Map(settingsRows.map((row) => [row.key, row.value]));
+  const settingsFinishedAt = settingToString(settings.get("DRIVE_LAST_RUN_AT"));
+  const settingsStatus = settingToString(settings.get("DRIVE_LAST_RUN_STATUS"));
+  const settingsResult = settings.get("DRIVE_LAST_RUN_RESULT");
+
+  if (settingsFinishedAt && isSameOrAfter(settingsFinishedAt, run?.finished_at)) {
+    return {
+      status: settingsStatus === "OK" ? "done" : settingsStatus === "EM_EXECUCAO" ? "running" : "failed",
+      metrics: settingsStatus === "OK" ? { drive: settingsResult } : null,
+      errorMessage: settingsStatus === "ERRO" ? extractSettingsMessage(settingsResult) : null,
+      finishedAt: settingsFinishedAt
+    };
+  }
+
+  return {
+    status: run?.status ?? null,
+    metrics: run?.metrics ?? null,
+    errorMessage: run?.error_message ?? null,
+    finishedAt: run?.finished_at ?? null
+  };
+}
+
 function driveStatusLabel(status: string | null | undefined, errorMessage: string | null | undefined, configured: boolean) {
   if (!configured) {
     return "Configurar credenciais";
@@ -201,6 +240,10 @@ function driveStatusLabel(status: string | null | undefined, errorMessage: strin
     return "Aguardando primeira execucao";
   }
 
+  if (status === "running") {
+    return "Executando";
+  }
+
   return status === "done" ? "Executado" : "Erro na ultima execucao";
 }
 
@@ -212,23 +255,27 @@ function pipelineStatusLabel(status: string | null | undefined) {
   return status === "done" ? "Executado" : "Erro na ultima execucao";
 }
 
-function formatDriveResult(run: { status: string; metrics: unknown; error_message: string | null; finished_at: string | null } | null, intervalMinutes: number) {
-  if (!run?.finished_at) {
+function formatDriveResult(run: DriveRunView, intervalMinutes: number) {
+  if (!run.finishedAt) {
     return `Ultima execucao: ainda nao executado. Intervalo configurado: ${intervalMinutes} minuto(s).`;
   }
 
-  const date = new Date(run.finished_at).toLocaleString("pt-BR", {
+  const date = new Date(run.finishedAt).toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     dateStyle: "short",
     timeStyle: "short"
   });
 
-  if (isLegacyGoogleOAuthError(run.error_message)) {
+  if (run.status === "running") {
+    return `Ultima execucao: ${date}. Execucao em andamento. Buscando imagens no Google Drive.`;
+  }
+
+  if (isLegacyGoogleOAuthError(run.errorMessage)) {
     return `Conta Google Drive conectada. Clique em Executar Agora para iniciar uma nova busca. Intervalo configurado: ${intervalMinutes} minuto(s).`;
   }
 
   if (run.status !== "done") {
-    return `Ultima execucao: ${date}. Erro: ${run.error_message || "nao informado"}. Proxima tentativa em ${intervalMinutes} minuto(s).`;
+    return `Ultima execucao: ${date}. Erro: ${run.errorMessage || "nao informado"}. Proxima tentativa em ${intervalMinutes} minuto(s).`;
   }
 
   const drive = extractDriveMetrics(run.metrics);
@@ -245,6 +292,34 @@ function formatDriveResult(run: { status: string; metrics: unknown; error_messag
   }
 
   return `Ultima execucao: ${date}. Imagens encontradas: ${drive.totalFound}; no padrao: ${drive.totalValid}; movidas: ${drive.totalMoved}; copiadas: ${drive.totalCopied}; falhas: ${drive.totalFailed}.`;
+}
+
+function isSameOrAfter(value: string, comparison: string | null | undefined) {
+  if (!comparison) {
+    return true;
+  }
+
+  return new Date(value).getTime() >= new Date(comparison).getTime();
+}
+
+function extractSettingsMessage(value: unknown) {
+  if (!value || typeof value !== "object" || !("message" in value)) {
+    return "";
+  }
+
+  return String((value as { message?: unknown }).message || "");
+}
+
+function settingToString(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return JSON.stringify(value);
 }
 
 function isLegacyGoogleOAuthError(value: string | null | undefined) {

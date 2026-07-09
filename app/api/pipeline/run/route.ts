@@ -3,6 +3,9 @@ import { buildDriveCompletionMessage, collectDriveImages, hasGoogleDriveConfig }
 import { getGoogleDriveSettings } from "@/lib/google-drive-config";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function POST(request: NextRequest) {
   return executePipeline(request);
 }
@@ -91,7 +94,13 @@ async function executePipeline(request: NextRequest) {
       percent: 100,
       message: completionMessage
     });
-    return NextResponse.json({ ok: true, runId: run.data.id, drive: driveResult });
+    return NextResponse.json({
+      ok: true,
+      runId: run.data.id,
+      finishedAt,
+      message: completionMessage,
+      drive: driveResult
+    });
   } catch (error) {
     const finishedAt = new Date().toISOString();
     const message = error instanceof Error ? error.message : "Erro desconhecido na coleta do Google Drive.";
@@ -115,7 +124,7 @@ async function executePipeline(request: NextRequest) {
       percent: 0,
       message
     });
-    return NextResponse.json({ ok: false, runId: run.data.id, error: message }, { status: 500 });
+    return NextResponse.json({ ok: false, runId: run.data.id, error: message, finishedAt }, { status: 500 });
   }
 }
 

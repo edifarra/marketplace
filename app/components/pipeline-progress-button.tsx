@@ -10,6 +10,18 @@ type ProgressState = {
   message?: string;
 };
 
+type RunResponse = {
+  ok?: boolean;
+  message?: string;
+  error?: string;
+  drive?: {
+    totalTransferable?: number;
+    totalMoved?: number;
+    totalCopied?: number;
+    totalFailed?: number;
+  };
+};
+
 type PipelineProgressButtonProps = {
   endpoint: string;
   progressEndpoint: string;
@@ -59,20 +71,32 @@ export function PipelineProgressButton({
 
     const response = await fetch(endpoint, {
       method: "POST",
-      cache: "no-store"
+      cache: "no-store",
+      credentials: "same-origin"
     }).catch(() => null);
 
+    const result = await response?.json().catch(() => null) as RunResponse | null;
+
     if (!response?.ok) {
-      const error = await response?.json().catch(() => null);
       setProgress({
         status: "failed",
         totalFiles: 0,
         processedFiles: 0,
         percent: 0,
-        message: error?.error || "Nao foi possivel executar agora."
+        message: result?.error || "Nao foi possivel executar agora."
       });
       setRunning(false);
       return;
+    }
+
+    if (result?.message) {
+      setProgress({
+        status: "done",
+        totalFiles: Number(result.drive?.totalTransferable || 0),
+        processedFiles: Number(result.drive?.totalMoved || 0) + Number(result.drive?.totalCopied || 0) + Number(result.drive?.totalFailed || 0),
+        percent: 100,
+        message: result.message
+      });
     }
 
     const finalProgress = await fetch(progressEndpoint, { cache: "no-store" })
@@ -84,7 +108,12 @@ export function PipelineProgressButton({
       setProgress(finalProgress);
     }
     setRunning(false);
-    window.location.reload();
+    window.setTimeout(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("pipelineRefresh", String(Date.now()));
+      url.hash = "pipeline";
+      window.location.replace(url.toString());
+    }, 1200);
   }
 
   const percent = Math.max(0, Math.min(100, Number(progress?.percent || 0)));

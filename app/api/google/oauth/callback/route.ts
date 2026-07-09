@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeGoogleDriveCode } from "@/lib/google-drive-oauth";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
     }
 
     await exchangeGoogleDriveCode(code, requestedEmail);
+    await clearLegacyDriveConnectionError();
   } catch (connectError) {
     configUrl.searchParams.set("erro", connectError instanceof Error ? connectError.message : String(connectError));
   }
@@ -33,4 +35,25 @@ export async function GET(request: NextRequest) {
   response.cookies.delete("google_drive_state");
   response.cookies.delete("google_drive_email");
   return response;
+}
+
+async function clearLegacyDriveConnectionError() {
+  const supabase = supabaseAdmin();
+  const finishedAt = new Date().toISOString();
+  await supabase.from("pipeline_runs").insert({
+    status: "done",
+    stage: "drive_collect",
+    started_at: finishedAt,
+    finished_at: finishedAt,
+    metrics: {
+      drive: {
+        totalFound: 0,
+        totalValid: 0,
+        totalMoved: 0,
+        totalCopied: 0,
+        totalFailed: 0
+      },
+      message: "Conta Google Drive conectada."
+    }
+  });
 }

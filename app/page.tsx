@@ -95,7 +95,7 @@ export default async function HomePage() {
                 <td>Google Drive</td>
                 <td>Busca imagens validas e ignora duplicadas</td>
                 <td>
-                  <span className="status">{driveStatusLabel(lastDriveRun?.status, driveConfigured)}</span>
+                  <span className="status">{driveStatusLabel(lastDriveRun?.status, lastDriveRun?.error_message, driveConfigured)}</span>
                   <div className="muted pipeline-result">
                     {formatDriveResult(lastDriveRun, driveSettings.intervalMinutes)}
                   </div>
@@ -188,9 +188,13 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function driveStatusLabel(status: string | null | undefined, configured: boolean) {
+function driveStatusLabel(status: string | null | undefined, errorMessage: string | null | undefined, configured: boolean) {
   if (!configured) {
     return "Configurar credenciais";
+  }
+
+  if (isLegacyGoogleOAuthError(errorMessage)) {
+    return "Conta conectada";
   }
 
   if (!status) {
@@ -219,6 +223,10 @@ function formatDriveResult(run: { status: string; metrics: unknown; error_messag
     timeStyle: "short"
   });
 
+  if (isLegacyGoogleOAuthError(run.error_message)) {
+    return `Conta Google Drive conectada. Clique em Executar Agora para iniciar uma nova busca. Intervalo configurado: ${intervalMinutes} minuto(s).`;
+  }
+
   if (run.status !== "done") {
     return `Ultima execucao: ${date}. Erro: ${run.error_message || "nao informado"}. Proxima tentativa em ${intervalMinutes} minuto(s).`;
   }
@@ -229,6 +237,10 @@ function formatDriveResult(run: { status: string; metrics: unknown; error_messag
   }
 
   return `Ultima execucao: ${date}. Imagens encontradas: ${drive.totalFound}; no padrao: ${drive.totalValid}; movidas: ${drive.totalMoved}; copiadas: ${drive.totalCopied}; falhas: ${drive.totalFailed}.`;
+}
+
+function isLegacyGoogleOAuthError(value: string | null | undefined) {
+  return Boolean(value?.includes("GOOGLE_OAUTH_CLIENT_ID"));
 }
 
 function extractDriveMetrics(metrics: unknown) {

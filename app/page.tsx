@@ -236,6 +236,14 @@ function formatDriveResult(run: { status: string; metrics: unknown; error_messag
     return `Ultima execucao: ${date}.`;
   }
 
+  if (drive.message) {
+    return `Ultima execucao: ${date}. ${drive.message}`;
+  }
+
+  if (drive.totalTransferable === 0) {
+    return `Ultima execucao: ${date}. Imagens encontradas: ${drive.totalFound}; no padrao: ${drive.totalValid}; nenhuma imagem nova para mover.`;
+  }
+
   return `Ultima execucao: ${date}. Imagens encontradas: ${drive.totalFound}; no padrao: ${drive.totalValid}; movidas: ${drive.totalMoved}; copiadas: ${drive.totalCopied}; falhas: ${drive.totalFailed}.`;
 }
 
@@ -256,9 +264,11 @@ function extractDriveMetrics(metrics: unknown) {
   return {
     totalFound: Number(drive.totalFound || 0),
     totalValid: Number(drive.totalValid || 0),
+    totalTransferable: Number(drive.totalTransferable || 0),
     totalMoved: Number(drive.totalMoved || 0),
     totalCopied: Number(drive.totalCopied || 0),
-    totalFailed: Number(drive.totalFailed || 0)
+    totalFailed: Number(drive.totalFailed || 0),
+    message: typeof drive.message === "string" ? drive.message : ""
   };
 }
 

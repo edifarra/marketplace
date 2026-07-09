@@ -239,11 +239,25 @@ export async function collectDriveImages(onProgress?: (progress: DriveCollectPro
     status: result.totalFailed > 0 ? "failed" : "done",
     totalFiles: result.totalTransferable,
     processedFiles: driveProcessedFiles(result),
-    percent: result.totalTransferable > 0 ? 100 : 0,
-    message: "Coleta do Google Drive concluida."
+    percent: 100,
+    message: buildDriveCompletionMessage(result)
   });
 
   return result;
+}
+
+export function buildDriveCompletionMessage(result: Pick<DriveCollectResult, "totalFound" | "totalValid" | "totalTransferable" | "totalMoved" | "totalCopied" | "totalFailed">) {
+  if (result.totalFailed > 0) {
+    return `Google Drive concluido com ${result.totalFailed} falha(s).`;
+  }
+
+  if (result.totalTransferable === 0) {
+    return result.totalFound === 0
+      ? "Google Drive verificado. Nenhuma imagem encontrada para processar."
+      : `Google Drive verificado. ${result.totalFound} item(ns) encontrado(s), ${result.totalValid} imagem(ns) valida(s), nenhuma imagem nova para mover.`;
+  }
+
+  return `Google Drive concluido. Movidas: ${result.totalMoved}; copiadas: ${result.totalCopied}.`;
 }
 
 function buildDriveProgress(result: DriveCollectResult, message: string): DriveCollectProgress {

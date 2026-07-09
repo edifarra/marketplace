@@ -98,5 +98,9 @@ function formatProgressMessage(progress: ProgressState | null) {
     return "Fotos processados 0 de 0. (0%).";
   }
 
+  if (progress.message) {
+    return progress.message;
+  }
+
   return `Fotos processados ${progress.processedFiles || 0} de ${progress.totalFiles || 0}. (${Math.round(Number(progress.percent || 0))}%).`;
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { collectDriveImages, hasGoogleDriveConfig } from "@/lib/google-drive";
+import { buildDriveCompletionMessage, collectDriveImages, hasGoogleDriveConfig } from "@/lib/google-drive";
 import { getGoogleDriveSettings } from "@/lib/google-drive-config";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -58,25 +58,34 @@ async function executePipeline(request: NextRequest) {
 
     const driveResult = await collectDriveImages(saveDriveProgress);
     const finishedAt = new Date().toISOString();
+    const completionMessage = buildDriveCompletionMessage(driveResult);
 
     await supabase
       .from("pipeline_runs")
       .update({
         status: "done",
         stage: "drive_collect",
-        metrics: { drive: driveResult },
+        metrics: {
+          drive: {
+            ...driveResult,
+            message: completionMessage
+          }
+        },
         finished_at: finishedAt
       })
       .eq("id", run.data.id)
       .throwOnError();
 
-    await upsertPipelineSettings(finishedAt, "OK", driveResult);
+    await upsertPipelineSettings(finishedAt, "OK", {
+      ...driveResult,
+      message: completionMessage
+    });
     await saveDriveProgress({
       status: "done",
       totalFiles: driveResult.totalTransferable,
       processedFiles: driveResult.totalMoved + driveResult.totalCopied + driveResult.totalFailed,
-      percent: driveResult.totalTransferable > 0 ? 100 : 0,
-      message: "Google Drive concluido."
+      percent: 100,
+      message: completionMessage
     });
     return NextResponse.json({ ok: true, runId: run.data.id, drive: driveResult });
   } catch (error) {

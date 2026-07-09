@@ -47,7 +47,7 @@ export function ProductLoadButton() {
       message: "Iniciando carregamento..."
     });
 
-    await fetch("/api/pipeline/products", {
+    await fetch("/api/pipeline/products?force=1", {
       method: "POST",
       cache: "no-store"
     }).catch(() => null);

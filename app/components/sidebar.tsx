@@ -22,6 +22,7 @@ export function Sidebar() {
         <a href="/produtos">Produtos e anuncios</a>
         <a href="/estoque">Migracao e Estoque</a>
         <a href="/fotos">Fotos</a>
+        <a href="/logs">Logs</a>
         <details className="nav-group" open>
           <summary>Configuracoes</summary>
           <div className="nav-submenu">

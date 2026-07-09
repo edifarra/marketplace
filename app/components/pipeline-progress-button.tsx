@@ -123,7 +123,7 @@ export function PipelineProgressButton({
       <button className="primary compact" type="button" onClick={run} disabled={disabled || running}>
         {running ? runningLabel : idleLabel}
       </button>
-      {(running || progress) && (
+      {(running || progress?.status === "failed") && (
         <div className="progress-box">
           <div className="progress-bar">
             <span style={{ width: `${percent}%` }} />

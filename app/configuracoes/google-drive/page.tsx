@@ -1,6 +1,7 @@
 import {
   deleteGoogleDriveFolderAction,
   saveGoogleDriveFolderAction,
+  saveGoogleDriveServiceAccountAction,
   saveGoogleDriveSettingsAction,
   testGoogleDriveConnectionAction
 } from "./actions";
@@ -48,6 +49,20 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
 
         <section className="card form-card">
           <h2>Conexao Client Server Google Drive</h2>
+          <form action={saveGoogleDriveServiceAccountAction} className="config-form">
+            <label>
+              Conta Google Drive
+              <textarea
+                name="serviceAccountJson"
+                placeholder='Cole aqui o JSON da Service Account'
+                rows={6}
+                required
+              />
+            </label>
+            <div className="form-actions">
+              <button className="primary" type="submit">Salvar conta Google Drive</button>
+            </div>
+          </form>
           <div className="test-row">
             <div>
               <strong>{serverConnection.configured ? "Service Account configurada" : "Service Account nao configurada"}</strong>

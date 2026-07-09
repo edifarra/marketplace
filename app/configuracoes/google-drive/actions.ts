@@ -2,6 +2,7 @@
 
 import {
   deleteGoogleDriveFolder,
+  saveGoogleDriveServiceAccount,
   saveGoogleDriveFolder,
   saveGoogleDriveSettings,
   saveGoogleDriveTestResult
@@ -17,6 +18,20 @@ export async function saveGoogleDriveSettingsAction(formData: FormData) {
     }
 
     const message = error instanceof Error ? error.message : "Erro ao salvar GoogleDrive.";
+    const { redirect } = await import("next/navigation");
+    redirect(`/configuracoes/google-drive?erro=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function saveGoogleDriveServiceAccountAction(formData: FormData) {
+  try {
+    await saveGoogleDriveServiceAccount(formData);
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message : "Erro ao salvar conta Google Drive.";
     const { redirect } = await import("next/navigation");
     redirect(`/configuracoes/google-drive?erro=${encodeURIComponent(message)}`);
   }

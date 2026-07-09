@@ -1,6 +1,7 @@
 import { createSign } from "crypto";
 import { readFile } from "fs/promises";
 import { join } from "path";
+import { supabaseAdmin } from "./supabase-admin";
 
 type GoogleServiceAccount = {
   client_email?: string;
@@ -80,6 +81,11 @@ async function getGoogleServiceAccount() {
 }
 
 async function loadGoogleServiceAccount(): Promise<GoogleServiceAccount> {
+  const savedJson = await loadSavedGoogleServiceAccountJson();
+  if (savedJson) {
+    return JSON.parse(savedJson) as GoogleServiceAccount;
+  }
+
   const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   if (rawJson) {
     return JSON.parse(rawJson) as GoogleServiceAccount;
@@ -88,6 +94,18 @@ async function loadGoogleServiceAccount(): Promise<GoogleServiceAccount> {
   const filePath = process.env.GOOGLE_SERVICE_ACCOUNT_FILE?.trim() || join(process.cwd(), "service-account.json");
   const file = await readFile(filePath, "utf8");
   return JSON.parse(file) as GoogleServiceAccount;
+}
+
+async function loadSavedGoogleServiceAccountJson() {
+  const supabase = supabaseAdmin();
+  const { data } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "GOOGLE_SERVICE_ACCOUNT_JSON")
+    .maybeSingle()
+    .throwOnError();
+
+  return settingToString(data?.value).trim();
 }
 
 function signServiceAccountJwt(account: Required<Pick<GoogleServiceAccount, "client_email" | "private_key" | "token_uri">>) {
@@ -111,4 +129,16 @@ function base64Url(value: string | Buffer) {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
+}
+
+function settingToString(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return JSON.stringify(value);
 }

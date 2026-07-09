@@ -112,6 +112,26 @@ export async function saveGoogleDriveTestResult(status: "Sucesso" | "Falha", res
   revalidateGoogleDrive();
 }
 
+export async function saveGoogleDriveServiceAccount(formData: FormData) {
+  const serviceAccountJson = requiredString(formData.get("serviceAccountJson"), "JSON da Service Account");
+  const parsed = parseServiceAccountJson(serviceAccountJson);
+  const supabase = supabaseAdmin();
+  const result = await supabase.from("settings").upsert([
+    {
+      key: "GOOGLE_SERVICE_ACCOUNT_JSON",
+      value: JSON.stringify(parsed),
+      description: "[GOOGLE_DRIVE] Credenciais Client Server da Service Account"
+    }
+  ]);
+
+  if (result.error) {
+    redirect(`/configuracoes/google-drive?erro=${encodeURIComponent(result.error.message)}`);
+  }
+
+  revalidateGoogleDrive();
+  redirect("/configuracoes/google-drive");
+}
+
 export async function saveGoogleDriveDiagnosticResult(status: "Sucesso" | "Falha", result: unknown) {
   const supabase = supabaseAdmin();
   await supabase.from("settings").upsert([
@@ -273,6 +293,37 @@ function positiveInteger(value: FormDataEntryValue | null, field: string) {
   }
 
   return number;
+}
+
+function parseServiceAccountJson(value: string) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("JSON da Service Account invalido.");
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("JSON da Service Account invalido.");
+  }
+
+  const account = parsed as { client_email?: unknown; private_key?: unknown; token_uri?: unknown };
+  if (typeof account.client_email !== "string" || !account.client_email.trim()) {
+    throw new Error("JSON da Service Account precisa conter client_email.");
+  }
+
+  if (typeof account.private_key !== "string" || !account.private_key.trim()) {
+    throw new Error("JSON da Service Account precisa conter private_key.");
+  }
+
+  return {
+    ...account,
+    client_email: account.client_email.trim(),
+    private_key: account.private_key,
+    token_uri: typeof account.token_uri === "string" && account.token_uri.trim()
+      ? account.token_uri.trim()
+      : "https://oauth2.googleapis.com/token"
+  };
 }
 
 function normalize(value: string) {

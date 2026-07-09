@@ -697,7 +697,7 @@ function formatGoogleDriveError(json: unknown, context?: { folder: DriveSourceFo
   const code = status?.code;
 
   if (context && (code === 403 || code === 404)) {
-    return `Google Drive sem acesso para ${context.operation} na pasta "${context.folder.label}" (${context.folder.folderId}) usando ${context.clientEmail}. Compartilhe a pasta com a Service Account configurada no servidor. Erro Google Drive: ${message}. Retorno completo: ${raw}`;
+    return `Google Drive sem acesso para ${context.operation} na pasta "${context.folder.label}" (${context.folder.folderId}) usando ${context.clientEmail}. Verifique se a conta conectada tem permissao nessa pasta. Erro Google Drive: ${message}. Retorno completo: ${raw}`;
   }
 
   return `Erro Google Drive: ${message}. Retorno completo: ${raw}`;

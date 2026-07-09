@@ -1,7 +1,6 @@
 import {
   deleteGoogleDriveFolderAction,
   saveGoogleDriveFolderAction,
-  saveGoogleDriveServiceAccountAction,
   saveGoogleDriveSettingsAction,
   testGoogleDriveConnectionAction
 } from "./actions";
@@ -48,26 +47,29 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
         {setupError && <div className="form-error">{setupError}</div>}
 
         <section className="card form-card">
-          <h2>Conexao Client Server Google Drive</h2>
-          <form action={saveGoogleDriveServiceAccountAction} className="config-form">
-            <label>
-              Conta Google Drive
-              <textarea
-                name="serviceAccountJson"
-                placeholder='Cole aqui o JSON da Service Account'
-                rows={6}
-                required
-              />
-            </label>
+          <h2>Conta Google Drive</h2>
+          <form action="/api/google/oauth/start" className="config-form">
+            <div className="form-grid">
+              <label>
+                E-mail da conta
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  defaultValue={serverConnection.clientEmail || ""}
+                  placeholder="giselidesouza@gmail.com"
+                />
+              </label>
+            </div>
             <div className="form-actions">
-              <button className="primary" type="submit">Salvar conta Google Drive</button>
+              <button className="primary" type="submit">Conectar conta Google Drive</button>
             </div>
           </form>
           <div className="test-row">
             <div>
-              <strong>{serverConnection.configured ? "Service Account configurada" : "Service Account nao configurada"}</strong>
+              <strong>{serverConnection.configured ? "Conta Google Drive conectada" : "Conta Google Drive nao conectada"}</strong>
               <div className="muted pipeline-result">
-                Conta de servico: {serverConnection.clientEmail || "-"}.
+                Conta: {serverConnection.clientEmail || "-"}. Renovacao automatica ativa apos a conexao.
               </div>
             </div>
           </div>

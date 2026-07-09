@@ -1,6 +1,11 @@
 import { createSign } from "crypto";
 import { readFile } from "fs/promises";
 import { join } from "path";
+import {
+  getGoogleDriveOAuthAccessToken,
+  getGoogleDriveOAuthAccountEmail,
+  hasGoogleDriveOAuthConnection
+} from "./google-drive-oauth";
 import { supabaseAdmin } from "./supabase-admin";
 
 type GoogleServiceAccount = {
@@ -23,11 +28,20 @@ const TOKEN_URI = "https://oauth2.googleapis.com/token";
 let cachedToken: { accessToken: string; expiresAt: number; clientEmail: string } | null = null;
 
 export async function hasGoogleDriveServerCredentials() {
+  if (await hasGoogleDriveOAuthConnection()) {
+    return true;
+  }
+
   const account = await loadGoogleServiceAccount().catch(() => null);
   return Boolean(account?.client_email && account.private_key);
 }
 
 export async function getGoogleDriveAccessToken() {
+  const oauthAccessToken = await getGoogleDriveOAuthAccessToken();
+  if (oauthAccessToken) {
+    return oauthAccessToken;
+  }
+
   const now = Date.now();
   if (cachedToken && cachedToken.expiresAt - 60_000 > now) {
     return cachedToken.accessToken;
@@ -59,6 +73,11 @@ export async function getGoogleDriveAccessToken() {
 }
 
 export async function getGoogleDriveAccountEmail() {
+  const oauthEmail = await getGoogleDriveOAuthAccountEmail();
+  if (oauthEmail) {
+    return oauthEmail;
+  }
+
   if (cachedToken?.clientEmail) {
     return cachedToken.clientEmail;
   }

@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getGoogleOAuthToken, type GoogleOAuthToken } from "./google-oauth";
+import { getGoogleDriveAccountEmail, hasGoogleDriveServerCredentials } from "./google-drive-auth";
 import { supabaseAdmin } from "./supabase-admin";
 
 export type GoogleDriveFolder = {
@@ -26,7 +26,10 @@ export type GoogleDriveConfigPageData = {
   testResult: unknown;
   diagnosticStatus: string;
   diagnosticResult: unknown;
-  oauthToken: GoogleOAuthToken | null;
+  serverConnection: {
+    configured: boolean;
+    clientEmail: string;
+  };
 };
 
 export async function getGoogleDriveSettings(): Promise<GoogleDriveSettings> {
@@ -79,7 +82,15 @@ export async function getGoogleDriveConfigPageData(query: string, editId?: strin
     testResult: await getSettingValue("GOOGLE_DRIVE_TEST_RESULT"),
     diagnosticStatus: await getSettingString("GOOGLE_DRIVE_DIAGNOSTIC_STATUS"),
     diagnosticResult: await getSettingValue("GOOGLE_DRIVE_DIAGNOSTIC_RESULT"),
-    oauthToken: await getGoogleOAuthToken()
+    serverConnection: await getGoogleDriveServerConnection()
+  };
+}
+
+async function getGoogleDriveServerConnection() {
+  const configured = await hasGoogleDriveServerCredentials();
+  return {
+    configured,
+    clientEmail: configured ? await getGoogleDriveAccountEmail() : ""
   };
 }
 

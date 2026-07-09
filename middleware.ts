@@ -4,7 +4,6 @@ import { AUTH_COOKIE_NAME, isAuthConfigured, isValidAuthToken } from "@/lib/auth
 const PUBLIC_PATHS = [
   "/login",
   "/api/mercado-livre/oauth/callback",
-  "/api/google/oauth/callback",
   "/api/webhooks/mercado-livre",
   "/api/webhooks/shopee"
 ];

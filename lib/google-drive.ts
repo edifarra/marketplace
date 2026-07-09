@@ -1,5 +1,5 @@
 import { getGoogleDriveFolders, getGoogleDriveSettings } from "./google-drive-config";
-import { getGoogleDriveAccessToken, getGoogleDriveAccountEmail, getGoogleOAuthToken } from "./google-oauth";
+import { getGoogleDriveAccessToken, getGoogleDriveAccountEmail, hasGoogleDriveServerCredentials } from "./google-drive-auth";
 
 export type DriveFile = {
   id: string;
@@ -149,8 +149,7 @@ const TARGET_DIAGNOSTIC_FILE_NAME = "PPSA_TESTEMODELO_TESTECODPLACA_01";
 
 export async function hasGoogleDriveConfig() {
   const settings = await getGoogleDriveSettings();
-  const token = await getGoogleOAuthToken();
-  return Boolean(settings.imagesFolderId && token?.access_token);
+  return Boolean(settings.imagesFolderId && await hasGoogleDriveServerCredentials());
 }
 
 export async function collectDriveImages(onProgress?: (progress: DriveCollectProgress) => Promise<void>): Promise<DriveCollectResult> {
@@ -698,7 +697,7 @@ function formatGoogleDriveError(json: unknown, context?: { folder: DriveSourceFo
   const code = status?.code;
 
   if (context && (code === 403 || code === 404)) {
-    return `Google Drive sem acesso para ${context.operation} na pasta "${context.folder.label}" (${context.folder.folderId}) usando ${context.clientEmail}. Conecte uma conta Google com acesso a essa pasta ou compartilhe a pasta com essa conta. Erro Google Drive: ${message}. Retorno completo: ${raw}`;
+    return `Google Drive sem acesso para ${context.operation} na pasta "${context.folder.label}" (${context.folder.folderId}) usando ${context.clientEmail}. Compartilhe a pasta com a Service Account configurada no servidor. Erro Google Drive: ${message}. Retorno completo: ${raw}`;
   }
 
   return `Erro Google Drive: ${message}. Retorno completo: ${raw}`;

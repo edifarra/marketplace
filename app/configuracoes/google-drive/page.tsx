@@ -26,7 +26,7 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
     setupError,
     testStatus,
     testResult,
-    oauthToken
+    serverConnection
   } = await getGoogleDriveConfigPageData(searchParams?.q || "", searchParams?.edit);
 
   return (
@@ -38,7 +38,7 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
           <div>
             <h1>Configuracoes: GoogleDrive</h1>
             <div className="subtitle">
-              Conecte sua conta Google, configure a pasta Imagens e as pastas de origem ativas para a coleta.
+              Configure a pasta Imagens e as pastas de origem ativas para a coleta via conexao Client Server.
             </div>
           </div>
         </div>
@@ -47,14 +47,12 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
         {setupError && <div className="form-error">{setupError}</div>}
 
         <section className="card form-card">
-          <h2>Conexao Google Drive</h2>
+          <h2>Conexao Client Server Google Drive</h2>
           <div className="test-row">
-            <a className="primary" href="/api/google/oauth/start">Conectar Google Drive</a>
             <div>
-              <strong>{oauthToken ? "Google Drive conectado" : "Google Drive nao conectado"}</strong>
+              <strong>{serverConnection.configured ? "Service Account configurada" : "Service Account nao configurada"}</strong>
               <div className="muted pipeline-result">
-                Conta: {oauthToken?.google_account_email || "-"}. Expira em: {formatDateTime(oauthToken?.expires_at)}.
-                Escopo: {oauthToken?.scope || "-"}.
+                Conta de servico: {serverConnection.clientEmail || "-"}.
               </div>
             </div>
           </div>
@@ -219,13 +217,3 @@ function formatTestResult(result: unknown) {
   return `Conta: ${typed.clientEmail || "-"}. Imagens: ${typed.totalFound ?? 0}. No padrao: ${typed.totalValid ?? 0}. ${folderSummary}.`;
 }
 
-function formatDateTime(value?: string) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short"
-  }).format(new Date(value));
-}

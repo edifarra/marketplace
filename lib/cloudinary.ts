@@ -1,5 +1,4 @@
 import { createHash } from "crypto";
-import { saveProcessedProductImage } from "./local-images";
 import { supabaseAdmin } from "./supabase-admin";
 
 type CloudinaryUploadResult = {
@@ -56,12 +55,7 @@ export async function uploadProductImageToCloudinary(input: {
     cloudinaryFileName,
     originalUrl: json.secure_url,
     cloudinaryUrl,
-    ...await saveProcessedProductImage({
-      sku: input.sku,
-      position: input.position,
-      sourceUrl: cloudinaryUrl,
-      originalName: cloudinaryFileName
-    })
+    bytes: input.buffer.length
   };
 }
 

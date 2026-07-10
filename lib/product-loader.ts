@@ -362,8 +362,6 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
             cloudinaryFileName: upload.cloudinaryFileName,
             cloudinaryUrl: upload.cloudinaryUrl,
             cloudinaryPublicId: upload.publicId,
-            localUrl: upload.localUrl,
-            localPath: upload.localPath,
             localBytes: upload.bytes
           }
         });
@@ -666,8 +664,8 @@ async function insertProductImages(
       publicId: string;
       cloudinaryFileName: string;
       cloudinaryUrl: string;
-      localPath: string;
-      localUrl: string;
+      localPath?: string | null;
+      localUrl?: string | null;
       bytes: number;
     };
     position: number;
@@ -703,9 +701,9 @@ async function insertProductImages(
       product_id: productId,
       drive_file_id: image.driveFile.id,
       original_name: image.driveFile.name,
-      url: image.upload.localUrl,
+      url: image.upload.cloudinaryUrl,
       position: image.position,
-      status: "uploaded_local"
+      status: "uploaded"
     })))
     .throwOnError();
 }

@@ -4,11 +4,14 @@ import { createShopeeClient, getShopeeOAuthConfig } from "@/lib/shopee-oauth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
+const OAUTH_ACCOUNT_COOKIE = "shopee_oauth_account";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code") || "";
   const shopId = request.nextUrl.searchParams.get("shop_id") || request.nextUrl.searchParams.get("shopId") || "";
-  const accountId = request.nextUrl.searchParams.get("accountId") || "";
+  const accountId = request.cookies.get(OAUTH_ACCOUNT_COOKIE)?.value
+    || request.nextUrl.searchParams.get("accountId")
+    || "";
   const error = request.nextUrl.searchParams.get("error") || "";
 
   if (error) {
@@ -17,21 +20,39 @@ export async function GET(request: NextRequest) {
   }
 
   if (!code || !shopId) {
+    await logMarketplaceAccountEvent("error", "Callback OAuth Shopee incompleto", {
+      accountId,
+      hasCode: Boolean(code),
+      hasShopId: Boolean(shopId)
+    });
     return NextResponse.redirect(new URL(`/configuracoes/marketplace?erro=${encodeURIComponent("Retorno OAuth Shopee incompleto: code ou shop_id ausente.")}`, request.url));
   }
 
   const supabase = supabaseAdmin();
-  const config = await getShopeeOAuthConfig(accountId || null);
-  const client = createShopeeClient(config);
   await logMarketplaceAccountEvent("info", "Callback OAuth Shopee recebido", { accountId, shopId });
 
   try {
+    const config = await getShopeeOAuthConfig(accountId || null);
+    const client = createShopeeClient(config);
     const token = await client.exchangeCodeForToken(code, shopId);
     const accessToken = String(token.access_token || "");
-    const shopInfo = accessToken ? await client.getShopInfo(accessToken, shopId).catch((errorInfo) => ({ error: String(errorInfo) })) : {};
+    if (!accessToken) {
+      throw new Error(`A Shopee nao retornou Access Token: ${String(token.message || token.error || "resposta invalida")}`);
+    }
+
+    await logMarketplaceAccountEvent("info", "Token OAuth Shopee recebido", {
+      accountId,
+      shopId,
+      expiresIn: Number(token.expire_in || 0),
+      hasRefreshToken: Boolean(token.refresh_token)
+    });
+
+    const shopInfo = await client.getShopInfo(accessToken, shopId);
+    await logMarketplaceAccountEvent("info", "Dados da loja Shopee recebidos", { accountId, shopId });
     const existingAccountId = await findExistingShopeeAccount(shopId, accountId);
     const targetAccountId = existingAccountId || accountId || await createAccountFromCallback(shopId);
     const expiresIn = Number(token.expire_in || 0);
+    const shopProfile = extractShopProfile(shopInfo);
 
     await supabase
       .from("config_marketplace_accounts")
@@ -39,11 +60,14 @@ export async function GET(request: NextRequest) {
         marketplace: "shopee",
         account_id: shopId,
         shop_id: shopId,
+        seller_id: String(token.merchant_id || shopProfile.merchantId || shopId),
         access_token: token.access_token || null,
         refresh_token: token.refresh_token || null,
         token_expires_at: expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
         token_type: "Bearer",
-        nickname: extractShopName(shopInfo),
+        name: shopProfile.name || `Shopee ${shopId}`,
+        nickname: shopProfile.name,
+        email: shopProfile.email,
         raw_data: { token, shopInfo },
         status: "active",
         api_base_url: config.baseUrl,
@@ -64,7 +88,11 @@ export async function GET(request: NextRequest) {
       await logMarketplaceAccountEvent("info", "Token Shopee salvo", { accountId: targetAccountId, shopId });
     }
 
-    return NextResponse.redirect(new URL("/configuracoes/marketplace", request.url));
+    const response = NextResponse.redirect(
+      new URL(`/configuracoes/marketplace?sucesso=${encodeURIComponent("Conta Shopee conectada com sucesso.")}`, request.url)
+    );
+    response.cookies.delete(OAUTH_ACCOUNT_COOKIE);
+    return response;
   } catch (errorInfo) {
     const message = errorInfo instanceof Error ? errorInfo.message : String(errorInfo);
     if (accountId) {
@@ -105,7 +133,11 @@ async function createAccountFromCallback(shopId: string) {
   return String(data.id);
 }
 
-function extractShopName(shopInfo: Record<string, unknown>) {
+function extractShopProfile(shopInfo: Record<string, unknown>) {
   const response = shopInfo.response as Record<string, unknown> | undefined;
-  return String(response?.shop_name || shopInfo.shop_name || "");
+  return {
+    name: String(response?.shop_name || shopInfo.shop_name || ""),
+    email: String(response?.email || shopInfo.email || ""),
+    merchantId: String(response?.merchant_id || shopInfo.merchant_id || "")
+  };
 }

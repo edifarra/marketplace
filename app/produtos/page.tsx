@@ -5,6 +5,7 @@ import { DeleteProductButton } from "./delete-product-button";
 import { sendProductAction } from "./actions";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { unstable_noStore as noStore } from "next/cache";
+import { InlineProductEditor } from "./inline-product-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,8 @@ type ProductRow = {
   sku: string;
   title: string;
   stock: number;
+  estoque_fisico?: number;
+  estoque_disponivel?: number;
   status: string;
   price: number;
   sent_target?: string | null;
@@ -75,9 +78,8 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
               <thead>
                 <tr>
                   <th>SKU</th>
-                  <th>Produto</th>
-                  <th>Preco</th>
-                  <th>Estoque</th>
+                  <th>Produto / Preco / Est. Fisico</th>
+                  <th>Est. Dispon.</th>
                   <th>Status</th>
                   <th>MarketPlaces</th>
                   <th>Acoes</th>
@@ -97,9 +99,8 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
                           <Link href={`/produtos/${product.id}`}>{product.sku}</Link>
                         </div>
                       </td>
-                      <td>{product.title}</td>
-                      <td>{Number(product.price || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                      <td>{product.stock}</td>
+                      <td><InlineProductEditor product={{ id: product.id, title: product.title, price: Number(product.price || 0), physical: Number(product.estoque_fisico ?? product.stock ?? 0), canEditTitle: !hasProductIntegration(product) }} /></td>
+                      <td>{Number(product.estoque_disponivel ?? product.stock ?? 0)}</td>
                       <td>{formatProductStatus(product.status)}</td>
                       <td>
                         <MarketplaceLogos product={product} />
@@ -144,12 +145,13 @@ async function getProducts() {
     return { products, error: "" };
   }
 
-  const [listings, images] = await Promise.all([
+  const [listings, images, inventory] = await Promise.all([
     supabase
       .from("listings")
       .select("id,product_id,marketplace,external_listing_id,status")
       .in("product_id", ids),
-    getProductImages(supabase, ids)
+    getProductImages(supabase, ids),
+    supabase.from("estoque").select("product_id,estoque_fisico,estoque_disponivel").in("product_id", ids)
   ]);
 
   const listingsByProduct = new Map<string, ProductRow["listings"]>();
@@ -167,10 +169,13 @@ async function getProducts() {
     current.push(image as ProductRow["product_images"][number]);
     imagesByProduct.set(productId, current);
   }
+  const inventoryByProduct = new Map((inventory.data || []).map(row => [String(row.product_id), row]));
 
   return {
     products: products.map((product) => ({
       ...product,
+      estoque_fisico: Number(inventoryByProduct.get(product.id)?.estoque_fisico ?? product.stock ?? 0),
+      estoque_disponivel: Number(inventoryByProduct.get(product.id)?.estoque_disponivel ?? product.stock ?? 0),
       listings: listingsByProduct.get(product.id) || [],
       product_images: imagesByProduct.get(product.id) || []
     })),

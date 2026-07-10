@@ -42,17 +42,14 @@ export class ShopeeClient {
     this.baseUrl = (options.baseUrl || DEFAULT_SHOPEE_BASE_URL).replace(/\/+$/, "");
   }
 
-  buildAuthorizationUrl(accountId?: string) {
+  buildAuthorizationUrl() {
     const path = "/api/v2/shop/auth_partner";
     const timestamp = currentTimestamp();
-    const redirect = accountId
-      ? appendQuery(this.redirectUri, "accountId", accountId)
-      : this.redirectUri;
     const params = new URLSearchParams({
       partner_id: this.partnerId,
       timestamp: String(timestamp),
       sign: this.sign(path, timestamp),
-      redirect
+      redirect: this.redirectUri
     });
 
     return `${this.baseUrl}${path}?${params.toString()}`;
@@ -96,6 +93,14 @@ export class ShopeeClient {
         page_size: 100,
         item_status: "NORMAL"
       }
+    });
+  }
+
+  async getCategories(accessToken: string, shopId: string | number, language = "pt-br") {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/product/get_category", {
+      accessToken,
+      shopId,
+      query: { language }
     });
   }
 
@@ -215,10 +220,4 @@ export class ShopeeClient {
 
 export function currentTimestamp() {
   return Math.floor(Date.now() / 1000);
-}
-
-function appendQuery(url: string, key: string, value: string) {
-  const parsed = new URL(url);
-  parsed.searchParams.set(key, value);
-  return parsed.toString();
 }

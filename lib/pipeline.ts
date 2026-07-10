@@ -22,7 +22,7 @@ export function parsePhotoName(fileName: string): PhotoNameParts {
   const firstBlock = parts[0];
   const photoNumber = Number(parts[parts.length - 1]);
   const middleBlocks = parts.slice(1, -1);
-  const [typeCode, brandCode] = splitPrefix(firstBlock);
+  const [typeCode, brandCode, prefixSpecialCode] = splitPrefix(firstBlock);
   const tailTokens = middleBlocks.slice(2).flatMap((block) => block.split("-")).filter(Boolean);
   const specialCandidate = tailTokens.at(-1);
   const hasSpecial = !!specialCandidate && specialCandidate.length <= 3 && specialCandidate === specialCandidate.toUpperCase();
@@ -35,7 +35,7 @@ export function parsePhotoName(fileName: string): PhotoNameParts {
     model: middleBlocks[0] || "",
     version: versionTokens.join("-") || undefined,
     boardCode: middleBlocks[1],
-    specialCode: hasSpecial ? specialCandidate : undefined,
+    specialCode: prefixSpecialCode || (hasSpecial ? specialCandidate : undefined),
     photoNumber
   };
 }
@@ -89,9 +89,9 @@ export function applyTemplate(template: string, data: Record<string, string | un
 
 export function nextSku(type: TypeConfig, currentNumber: number, specialCode?: string) {
   const nextNumber = currentNumber + 1;
-  console.log("Entrou no NextSKU");
+  const specialSuffix = String(specialCode || "").trim().toUpperCase();
   return {
-    sku: `${nextNumber}${type.code.slice(0, 2).toUpperCase()}`,
+    sku: `${nextNumber}${type.code.slice(0, 2).toUpperCase()}${specialSuffix}`,
     nextNumber
   };
 }
@@ -160,8 +160,8 @@ export function buildProduct(input: {
 
 function splitPrefix(prefix: string) {
   if (prefix.length <= 4) {
-    return [prefix.slice(0, 2), prefix.slice(2)] as const;
+    return [prefix.slice(0, 2), prefix.slice(2), undefined] as const;
   }
-console.log("Entrou no splitPrefix");
-  return [prefix.slice(0, 2), prefix.slice(2, 4)] as const;
+
+  return [prefix.slice(0, 2), prefix.slice(2, 4), prefix.slice(4) || undefined] as const;
 }

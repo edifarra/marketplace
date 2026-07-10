@@ -512,6 +512,15 @@ th {
   font-size: 12px;
 }
 
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(15,23,42,.65); display: grid; place-items: center; padding: 24px; }
+.category-modal { width: min(820px, 96vw); max-height: 86vh; overflow: auto; }
+.category-modal > input { width: 100%; margin: 12px 0; }
+.category-tree { display: grid; gap: 8px; }
+.category-node { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #dbe3ef; border-radius: 8px; padding: 10px; }
+.category-node span { display: grid; gap: 2px; }
+.category-node small { color: #64748b; }
+.category-node > div { display: flex; gap: 8px; }
+
 .product-thumb-placeholder {
   display: grid;
   place-items: center;

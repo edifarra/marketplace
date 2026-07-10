@@ -80,7 +80,7 @@ export async function listShopeeInventory(account: ShopeeAccountConfig): Promise
   return items;
 }
 
-async function getValidShopeeAccessToken(account: ShopeeAccountConfig) {
+export async function getValidShopeeAccessToken(account: ShopeeAccountConfig) {
   const expiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : 0;
   if (account.access_token && expiresAt > Date.now() + 60_000) {
     return account.access_token;

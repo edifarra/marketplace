@@ -6,3 +6,5 @@ work/npm-cache
 .env.local
 .vercel
 service-account.json
+.vercel
+.env*

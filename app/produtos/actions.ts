@@ -4,6 +4,8 @@ import { deleteProductById } from "@/lib/products";
 import { removeProductIntegration, sendProductToConfiguredTarget } from "@/lib/product-sender";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { syncListingsStock } from "@/lib/inventory";
 
 export async function deleteProductAction(formData: FormData) {
   await deleteProductById(formData);
@@ -72,4 +74,20 @@ export async function removeProductIntegrationAction(formData: FormData) {
 
   const param = result.ok ? "sucesso" : "erro";
   redirect(`/produtos/${productId}?${param}=${encodeURIComponent(result.message)}`);
+}
+
+export async function updateProductInlineAction(formData: FormData) {
+  const productId = String(formData.get("productId") || "");
+  const title = String(formData.get("title") || "").trim();
+  const price = Number(String(formData.get("price") || "0").replace(",", "."));
+  const stock = Math.max(0, Math.trunc(Number(formData.get("stock") || 0)));
+  if (!productId || !title || !Number.isFinite(price) || price < 0) redirect(`/produtos?erro=${encodeURIComponent("Dados do produto invalidos.")}`);
+  const db = supabaseAdmin();
+  const product = await db.from("products").select("id,sku,title,sent_target,tiny_product_id,listings(external_listing_id)").eq("id", productId).single().throwOnError();
+  const linked = Boolean(product.data.sent_target || product.data.tiny_product_id || product.data.listings?.some(item => item.external_listing_id));
+  await db.from("products").update({ price, ...(linked ? {} : { title }), updated_at: new Date().toISOString() }).eq("id", productId).throwOnError();
+  await db.from("estoque").upsert({ product_id: productId, sku: product.data.sku, estoque_fisico: stock }, { onConflict: "product_id" }).throwOnError();
+  await syncListingsStock(productId, stock);
+  revalidatePath("/produtos"); revalidatePath(`/produtos/${productId}`);
+  redirect(`/produtos?sucesso=${encodeURIComponent("Produto atualizado com sucesso.")}`);
 }

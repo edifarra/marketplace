@@ -257,7 +257,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         continue;
       }
 
-      const skuInfo = await reserveNextSku(type);
+      const skuInfo = await reserveNextSku(type, main.specialCode);
       const title = applyTemplate(type.titleTemplate, {
         tipo: type.description,
         marca: brand.includeInTitle ? brand.name : "",
@@ -585,7 +585,7 @@ async function loadConfigs() {
   };
 }
 
-async function reserveNextSku(type: TypeConfig) {
+async function reserveNextSku(type: TypeConfig, specialCode?: string) {
   const supabase = supabaseAdmin();
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -596,7 +596,7 @@ async function reserveNextSku(type: TypeConfig) {
       .maybeSingle()
       .throwOnError();
     const currentNumber = Number(counter.data?.current_number ?? type.skuMax ?? 0);
-    const skuInfo = nextSku(type, currentNumber);
+    const skuInfo = nextSku(type, currentNumber, specialCode);
     const update = counter.data
       ? await supabase
           .from("sku_counters")

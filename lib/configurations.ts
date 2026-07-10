@@ -244,7 +244,7 @@ export async function saveConfiguration(formData: FormData) {
   const section = getSection(formData);
   const definition = configDefinitions[section];
   const originalKey = optionalString(formData.get("originalKey"));
-  const payload = parsePayload(definition, formData);
+  const payload = parsePayload(section, definition, formData);
   applySettingsMarker(definition, payload);
   const supabase = supabaseAdmin();
 
@@ -256,7 +256,20 @@ export async function saveConfiguration(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath(`/configuracoes/${section}`);
-  redirect(`/configuracoes/${section}`);
+  const successMessage = configurationSuccessMessage(section, Boolean(originalKey));
+  redirect(`/configuracoes/${section}${successMessage ? `?sucesso=${encodeURIComponent(successMessage)}` : ""}`);
+}
+
+function configurationSuccessMessage(section: ConfigSection, updated: boolean) {
+  if (section === "tipo") {
+    return `Tipo ${updated ? "atualizado" : "criado"} com sucesso.`;
+  }
+
+  if (section === "marca") {
+    return `Marca ${updated ? "atualizada" : "criada"} com sucesso.`;
+  }
+
+  return "";
 }
 
 async function selectConfigurationRows(section: ConfigSection, definition: ConfigDefinition, columns: string) {
@@ -462,10 +475,14 @@ export function formatValue(value: unknown) {
   return String(value);
 }
 
-function parsePayload(definition: ConfigDefinition, formData: FormData) {
+function parsePayload(section: ConfigSection, definition: ConfigDefinition, formData: FormData) {
   const payload: Record<string, unknown> = {};
 
   for (const field of definition.fields) {
+    if (section === "marketplace" && !formData.has(field.name) && field.type !== "checkbox") {
+      continue;
+    }
+
     const raw = formData.get(field.name);
 
     if (field.type === "checkbox") {

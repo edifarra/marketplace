@@ -93,6 +93,22 @@ function ConfigurationForm({
   newMarketplace: "mercado_livre" | "shopee" | "";
 }) {
   const { definition, editRow } = data;
+  const marketplace = section === "marketplace"
+    ? normalizeNewMarketplace(String(editRow?.marketplace || newMarketplace))
+    : "";
+
+  if (section === "marketplace" && !marketplace) {
+    return (
+      <section id="marketplace-config-form" className="section card form-card">
+        <h2>Configurar credenciais</h2>
+        <p className="muted">Escolha Mercado Livre ou Shopee acima para exibir somente os campos daquela integracao.</p>
+      </section>
+    );
+  }
+
+  const fields = section === "marketplace"
+    ? marketplaceConfigurationFields(definition.fields, marketplace)
+    : definition.fields;
 
   return (
     <section id={section === "marketplace" ? "marketplace-config-form" : undefined} className={section === "marketplace" ? "section card form-card" : "card form-card"}>
@@ -100,9 +116,10 @@ function ConfigurationForm({
       <form action={saveConfigurationAction} className="config-form">
         <input type="hidden" name="section" value={section} />
         {editRow && <input type="hidden" name="originalKey" value={String(editRow[definition.keyField])} />}
+        {section === "marketplace" && <input type="hidden" name="marketplace" value={marketplace} />}
 
         <div className="form-grid">
-          {definition.fields.map((field) => (
+          {fields.map((field) => (
             <label key={field.name} className={field.type === "textarea" ? "wide-field" : undefined}>
               {field.label}
               {field.type === "textarea" ? (
@@ -300,4 +317,24 @@ function defaultNewValue(section: ConfigSection, marketplace: "mercado_livre" | 
   }
 
   return "";
+}
+
+function marketplaceConfigurationFields(
+  fields: ConfigurationPageData["definition"]["fields"],
+  marketplace: "mercado_livre" | "shopee" | ""
+) {
+  const common = new Set([
+    "name",
+    "category_id",
+    "client_id",
+    "client_secret",
+    "redirect_uri",
+    "active"
+  ]);
+
+  if (marketplace === "shopee") {
+    common.add("api_base_url");
+  }
+
+  return fields.filter((field) => common.has(field.name));
 }

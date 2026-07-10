@@ -102,7 +102,7 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
   const typeConfig = toTypeConfig(type as DbTypeConfig);
   const brandConfig = toBrandConfig(brand as DbBrandConfig);
   const specialConfig = special ? toSpecialConfig(special as DbSpecialConfig) : undefined;
-  const skuInfo = await reserveNextSku(typeConfig);
+  const skuInfo = await reserveNextSku(typeConfig, input.specialCode);
 
   const title = applyTemplate(typeConfig.titleTemplate, {
     tipo: typeConfig.description,
@@ -321,7 +321,7 @@ function parseProductForm(formData: FormData): ProductFormInput {
   };
 }
 
-async function reserveNextSku(type: TypeConfig) {
+async function reserveNextSku(type: TypeConfig, specialCode?: string) {
   const supabase = supabaseAdmin();
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -333,7 +333,7 @@ async function reserveNextSku(type: TypeConfig) {
       .throwOnError();
 
     const currentNumber = Number(counterResult.data?.current_number ?? type.skuMax ?? 0);
-    const skuInfo = nextSku(type, currentNumber);
+    const skuInfo = nextSku(type, currentNumber, specialCode);
 
     const update = counterResult.data
       ? await supabase

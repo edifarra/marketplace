@@ -7,6 +7,7 @@ const configLinks = [
   ["Preco", "/configuracoes/preco"],
   ["Sku", "/configuracoes/sku"],
   ["MarketPlace", "/configuracoes/marketplace"],
+  ["Categorias Marketplace", "/configuracoes/categorias-marketplace"],
   ["Tiny", "/configuracoes/tiny"],
   ["GoogleDrive", "/configuracoes/google-drive"],
   ["Cloudinary", "/configuracoes/cloudinary"],
@@ -23,6 +24,7 @@ export function Sidebar() {
         <a href="/estoque">Migracao e Estoque</a>
         <a href="/fotos">Fotos</a>
         <a href="/logs">Logs</a>
+        <a href="/atividades-marketplace">Atividades Marketplace</a>
         <details className="nav-group" open>
           <summary>Configuracoes</summary>
           <div className="nav-submenu">

@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Sidebar } from "../components/sidebar";
-import { listLocalProductImages } from "@/lib/local-images";
+import { listCloudinaryProductImages } from "@/lib/cloudinary";
 import { PhotosSelection } from "./photos-selection";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,8 @@ const supabase = createClient(
 );
 
 type ImageRelation = {
+  cloudinary_public_id?: string | null;
+  cloudinary_url?: string | null;
   local_url?: string | null;
   url?: string | null;
   products?: {
@@ -20,22 +22,25 @@ type ImageRelation = {
 };
 
 export default async function FotosPage() {
-  const localImages = await listLocalProductImages();
+  const cloudinaryImages = await listCloudinaryProductImages();
   const relations = await getImageRelations();
-  const relationByUrl = new Map<string, ImageRelation>();
+  const relationByKey = new Map<string, ImageRelation>();
 
   for (const relation of relations) {
-    if (relation.local_url) relationByUrl.set(relation.local_url, relation);
-    if (relation.url?.startsWith("/uploads/products/")) relationByUrl.set(relation.url, relation);
+    if (relation.cloudinary_public_id) relationByKey.set(relation.cloudinary_public_id, relation);
+    if (relation.cloudinary_url) relationByKey.set(relation.cloudinary_url, relation);
+    if (relation.url) relationByKey.set(relation.url, relation);
   }
 
-  const photos = localImages.map((image) => {
-    const relation = relationByUrl.get(image.localUrl);
+  const photos = cloudinaryImages.map((image) => {
+    const relation = relationByKey.get(image.publicId) || relationByKey.get(image.url);
     return {
       name: image.name,
-      localUrl: image.localUrl,
+      publicId: image.publicId,
+      imageUrl: image.url,
       sizeBytes: image.sizeBytes,
-      modifiedAt: image.modifiedAt,
+      createdAt: image.createdAt,
+      format: image.format,
       relatedSku: relation?.products?.sku || undefined,
       relatedStock: Number(relation?.products?.stock ?? 0)
     };
@@ -59,7 +64,7 @@ export default async function FotosPage() {
         <div className="topbar">
           <div>
             <h1>Fotos</h1>
-            <div className="subtitle">Fotos locais processadas e prontas para uso nos produtos.</div>
+            <div className="subtitle">Fotos publicadas no Cloudinary, vinculadas ou nao a produtos.</div>
           </div>
         </div>
 
@@ -73,12 +78,12 @@ export default async function FotosPage() {
         <section className="section card">
           <div className="table-toolbar">
             <div>
-              <h2>Fotos locais</h2>
+              <h2>Fotos no Cloudinary</h2>
               <div className="muted">{photos.length} arquivo(s) encontrado(s)</div>
             </div>
           </div>
           {photos.length === 0 ? (
-            <div className="muted">Nenhuma foto local encontrada.</div>
+            <div className="muted">Nenhuma foto encontrada no Cloudinary.</div>
           ) : (
             <PhotosSelection photos={photos} />
           )}
@@ -101,6 +106,8 @@ async function getImageRelations() {
   const { data, error } = await supabase
     .from("product_images")
     .select(`
+      cloudinary_public_id,
+      cloudinary_url,
       local_url,
       url,
       products (

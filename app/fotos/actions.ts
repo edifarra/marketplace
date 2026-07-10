@@ -1,23 +1,29 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { deleteLocalImageByUrl } from "@/lib/local-images";
+import { deleteCloudinaryResource } from "@/lib/cloudinary";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function deleteSelectedPhotosAction(formData: FormData) {
-  const photos = formData.getAll("photos").map(String).filter(Boolean);
-  if (photos.length === 0) {
+  const publicIds = formData.getAll("photos").map(String).filter(Boolean);
+  if (publicIds.length === 0) {
     return;
   }
 
-  for (const photo of photos) {
-    await deleteLocalImageByUrl(photo);
+  for (const publicId of publicIds) {
+    await deleteCloudinaryResource(publicId);
   }
 
   const supabase = supabaseAdmin();
-  await supabase.from("product_images").delete().in("local_url", photos);
-  await supabase.from("product_images").delete().in("url", photos);
+  const cleanup = await supabase.from("product_images").delete().in("cloudinary_public_id", publicIds);
+  if (cleanup.error && !isMissingColumnError(cleanup.error.message)) {
+    throw cleanup.error;
+  }
 
   revalidatePath("/fotos");
   revalidatePath("/produtos");
+}
+
+function isMissingColumnError(message: string) {
+  return /column .* does not exist|schema cache|Could not find/i.test(message);
 }

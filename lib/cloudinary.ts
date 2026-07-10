@@ -7,6 +7,28 @@ type CloudinaryUploadResult = {
   resource_type: string;
 };
 
+type CloudinaryResource = {
+  public_id: string;
+  secure_url?: string;
+  bytes?: number;
+  created_at?: string;
+  format?: string;
+};
+
+type CloudinaryResourcesResponse = {
+  resources?: CloudinaryResource[];
+  next_cursor?: string;
+};
+
+export type CloudinaryProductImage = {
+  publicId: string;
+  name: string;
+  url: string;
+  sizeBytes: number;
+  createdAt: string;
+  format: string;
+};
+
 export async function uploadProductImageToCloudinary(input: {
   buffer: Buffer;
   fileName: string;
@@ -57,6 +79,54 @@ export async function uploadProductImageToCloudinary(input: {
     cloudinaryUrl,
     bytes: input.buffer.length
   };
+}
+
+export async function listCloudinaryProductImages() {
+  const { cloudName, apiKey, apiSecret } = await getCloudinarySettings();
+  const images: CloudinaryProductImage[] = [];
+  let nextCursor = "";
+
+  do {
+    const params = new URLSearchParams({
+      type: "upload",
+      max_results: "500"
+    });
+
+    if (nextCursor) {
+      params.set("next_cursor", nextCursor);
+    }
+
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/resources/image?${params.toString()}`, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${apiKey}:${apiSecret}`).toString("base64")}`
+      },
+      cache: "no-store"
+    });
+
+    const json = await response.json().catch(() => ({})) as CloudinaryResourcesResponse & { error?: { message?: string } };
+    if (!response.ok) {
+      throw new Error(`Falha ao listar imagens Cloudinary: ${json.error?.message || JSON.stringify(json)}`);
+    }
+
+    for (const resource of json.resources || []) {
+      if (!resource.public_id || !resource.secure_url) {
+        continue;
+      }
+
+      images.push({
+        publicId: resource.public_id,
+        name: resource.public_id.split("/").at(-1) || resource.public_id,
+        url: resource.secure_url,
+        sizeBytes: Number(resource.bytes || 0),
+        createdAt: resource.created_at || "",
+        format: resource.format || ""
+      });
+    }
+
+    nextCursor = json.next_cursor || "";
+  } while (nextCursor);
+
+  return images.sort((a, b) => a.publicId.localeCompare(b.publicId));
 }
 
 function transformCloudinaryUrl(cloudName: string, publicId: string, position: number) {

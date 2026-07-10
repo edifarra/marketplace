@@ -6,9 +6,11 @@ import { deleteSelectedPhotosAction } from "./actions";
 
 type Photo = {
   name: string;
-  localUrl: string;
+  publicId: string;
+  imageUrl: string;
   sizeBytes: number;
-  modifiedAt: string;
+  createdAt: string;
+  format: string;
   relatedSku?: string;
   relatedStock?: number;
 };
@@ -18,7 +20,7 @@ export function PhotosSelection({ photos }: { photos: Photo[] }) {
   const allSelected = photos.length > 0 && selected.length === photos.length;
 
   function toggleAll() {
-    setSelected(allSelected ? [] : photos.map((photo) => photo.localUrl));
+    setSelected(allSelected ? [] : photos.map((photo) => photo.publicId));
   }
 
   return (
@@ -32,7 +34,7 @@ export function PhotosSelection({ photos }: { photos: Photo[] }) {
           type="submit"
           disabled={selected.length === 0}
           onClick={(event) => {
-            if (!window.confirm(`Excluir ${selected.length} foto(s) local(is)?`)) {
+            if (!window.confirm(`Excluir ${selected.length} foto(s) do Cloudinary?`)) {
               event.preventDefault();
             }
           }}
@@ -43,23 +45,24 @@ export function PhotosSelection({ photos }: { photos: Photo[] }) {
 
       <div className="photos-grid">
         {photos.map((photo) => {
-          const checked = selected.includes(photo.localUrl);
+          const checked = selected.includes(photo.publicId);
           return (
-            <label className="photo-card" key={photo.localUrl}>
+            <label className="photo-card" key={photo.publicId}>
               <input
                 type="checkbox"
                 name="photos"
-                value={photo.localUrl}
+                value={photo.publicId}
                 checked={checked}
                 onChange={() =>
                   setSelected((current) =>
-                    checked ? current.filter((item) => item !== photo.localUrl) : [...current, photo.localUrl]
+                    checked ? current.filter((item) => item !== photo.publicId) : [...current, photo.publicId]
                   )
                 }
               />
-              <Image src={photo.localUrl} alt={photo.name} width={160} height={160} unoptimized />
+              <Image src={photo.imageUrl} alt={photo.name} width={160} height={160} unoptimized />
               <strong>{photo.name}</strong>
               <span>{formatBytes(photo.sizeBytes)}</span>
+              <span>{photo.format ? photo.format.toUpperCase() : "Imagem"} - {formatDate(photo.createdAt)}</span>
               <span>{photo.relatedSku ? `${photo.relatedSku} - estoque ${photo.relatedStock ?? 0}` : "Sem produto relacionado"}</span>
             </label>
           );
@@ -71,4 +74,12 @@ export function PhotosSelection({ photos }: { photos: Photo[] }) {
 
 function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} MB`;
+}
+
+function formatDate(value: string) {
+  if (!value) {
+    return "sem data";
+  }
+
+  return new Date(value).toLocaleDateString("pt-BR");
 }

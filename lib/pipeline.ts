@@ -2,14 +2,18 @@ import { BrandConfig, BuiltProduct, PhotoNameParts, SpecialConfig, TypeConfig } 
 
 const VALID_IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|webp|heic|heif)$/i;
 
+function removeKnownImageExtension(fileName: string) {
+  return fileName.replace(VALID_IMAGE_EXTENSIONS, "");
+}
+
 export function isValidPhotoName(fileName: string) {
-  const baseName = fileName.replace(/\.[^.]+$/, "");
+  const baseName = removeKnownImageExtension(fileName).trim();
   console.log("Entrou no IsValidPhotoName ", fileName);
-  return /^[A-Za-z0-9]{4,5}_.{3,}_(0?[1-6])$/.test(baseName) && (!fileName.includes(".") || VALID_IMAGE_EXTENSIONS.test(fileName));
+  return /^[A-Za-z0-9]{4,5}_.{3,}_(0?[1-6])$/.test(baseName);
 }
 
 export function parsePhotoName(fileName: string): PhotoNameParts {
-  const baseName = fileName.replace(/\.(jpg|jpeg|png|webp|heic|heif)$/i, "");
+  const baseName = removeKnownImageExtension(fileName).trim();
   if (!/^[A-Za-z0-9]{4,5}_.{3,}_(0?[1-6])$/.test(baseName)) {
     throw new Error(`Nome de foto invalido: ${fileName}`);
   }

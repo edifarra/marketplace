@@ -28,6 +28,7 @@ type PipelineProgressButtonProps = {
   idleLabel: string;
   runningLabel: string;
   disabled?: boolean;
+  hideSuccessMessage?: boolean;
 };
 
 export function PipelineProgressButton({
@@ -35,7 +36,8 @@ export function PipelineProgressButton({
   progressEndpoint,
   idleLabel,
   runningLabel,
-  disabled = false
+  disabled = false,
+  hideSuccessMessage = false
 }: PipelineProgressButtonProps) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
@@ -95,7 +97,7 @@ export function PipelineProgressButton({
         totalFiles: Number(result.drive?.totalTransferable || 0),
         processedFiles: Number(result.drive?.totalMoved || 0) + Number(result.drive?.totalCopied || 0) + Number(result.drive?.totalFailed || 0),
         percent: 100,
-        message: result.message
+        message: hideSuccessMessage ? "" : result.message
       });
     }
 
@@ -128,16 +130,20 @@ export function PipelineProgressButton({
           <div className="progress-bar">
             <span style={{ width: `${percent}%` }} />
           </div>
-          <div className="muted">{formatProgressMessage(progress)}</div>
+          <div className="muted">{formatProgressMessage(progress, hideSuccessMessage)}</div>
         </div>
       )}
     </div>
   );
 }
 
-function formatProgressMessage(progress: ProgressState | null) {
+function formatProgressMessage(progress: ProgressState | null, hideSuccessMessage = false) {
   if (!progress) {
     return "Fotos processados 0 de 0. (0%).";
+  }
+
+  if (progress.status === "done" && hideSuccessMessage) {
+    return "";
   }
 
   if (progress.message) {

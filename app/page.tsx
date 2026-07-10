@@ -112,6 +112,7 @@ export default async function HomePage() {
                     idleLabel="Executar Agora"
                     runningLabel="Processando..."
                     disabled={!driveConfigured}
+                    hideSuccessMessage
                   />
                 </td>
               </tr>
@@ -282,15 +283,11 @@ function formatDriveResult(run: DriveRunView, intervalMinutes: number) {
     return `Ultima execucao: ${date}.`;
   }
 
-  if (drive.message) {
-    return `Ultima execucao: ${date}. ${drive.message}`;
+  if (drive.totalTransferable === 0 || drive.message) {
+    return `Ultima execucao: ${date}.`;
   }
 
-  if (drive.totalTransferable === 0) {
-    return `Ultima execucao: ${date}. Imagens encontradas: ${drive.totalFound}; no padrao: ${drive.totalValid}; nenhuma imagem nova para mover.`;
-  }
-
-  return `Ultima execucao: ${date}. Imagens encontradas: ${drive.totalFound}; no padrao: ${drive.totalValid}; movidas: ${drive.totalMoved}; copiadas: ${drive.totalCopied}; falhas: ${drive.totalFailed}.`;
+  return `Ultima execucao: ${date}. Movidas: ${drive.totalMoved}; copiadas: ${drive.totalCopied}; falhas: ${drive.totalFailed}.`;
 }
 
 function isSameOrAfter(value: string, comparison: string | null | undefined) {

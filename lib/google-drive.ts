@@ -252,9 +252,7 @@ export function buildDriveCompletionMessage(result: Pick<DriveCollectResult, "to
   }
 
   if (result.totalTransferable === 0) {
-    return result.totalFound === 0
-      ? "Google Drive verificado. Nenhuma imagem encontrada para processar."
-      : `Google Drive verificado. ${result.totalFound} item(ns) encontrado(s), ${result.totalValid} imagem(ns) valida(s), nenhuma imagem nova para mover.`;
+    return "Google Drive verificado.";
   }
 
   return `Google Drive concluido. Movidas: ${result.totalMoved}; copiadas: ${result.totalCopied}.`;

@@ -1,6 +1,7 @@
 import { getActiveShopeeAccounts, getValidShopeeAccessToken } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { supabaseAdmin } from "./supabase-admin";
+import { getActiveMercadoLivreAccounts, getValidMercadoLivreAccessToken } from "./mercado-livre";
 
 export type CategoryNode = { id: string; name: string; parentId: string | null; hasChildren: boolean; path?: string };
 
@@ -12,12 +13,15 @@ export async function listMarketplaceCategories(marketplace: string, parentId?: 
 }
 
 async function listMercadoLivre(parentId?: string | null) {
+  const account = (await getActiveMercadoLivreAccounts())[0];
+  if (!account) throw new Error("Conecte uma conta Mercado Livre antes de buscar categorias.");
+  const token = await getValidMercadoLivreAccessToken(account);
   const url = parentId ? `https://api.mercadolibre.com/categories/${encodeURIComponent(parentId)}` : "https://api.mercadolibre.com/sites/MLB/categories";
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
   const json = await response.json();
   if (!response.ok) throw new Error(`Mercado Livre: ${JSON.stringify(json)}`);
   const rows = parentId ? json.children_categories || [] : json;
-  return rows.map((row: Record<string, unknown>) => ({ id: String(row.id), name: String(row.name), parentId: parentId || null, hasChildren: Number(row.total_items_in_this_category || 0) > 0 }));
+  return rows.map((row: Record<string, unknown>) => ({ id: String(row.id), name: String(row.name), parentId: parentId || null, hasChildren: true }));
 }
 
 async function listShopee(parentId?: string | null) {
@@ -41,13 +45,22 @@ async function listTiny(parentId?: string | null) {
   const token = String(data?.value || process.env.TINY_TOKEN || "");
   if (!token) throw new Error("Token Tiny nao configurado.");
   const body = new URLSearchParams({ token, formato: "json" });
-  const response = await fetch("https://api.tiny.com.br/api2/categorias.pesquisa.php", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, cache: "no-store" });
-  const json = await response.json();
+  const response = await fetch("https://api.tiny.com.br/api2/produtos.categorias.arvore.php", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, cache: "no-store" });
+  const text = await response.text();
+  let json: Record<string, any>;
+  try { json = JSON.parse(text); } catch { throw new Error(`Tiny retornou uma resposta invalida (${response.status}).`); }
   const retorno = json.retorno || {};
-  if (retorno.status === "Erro") throw new Error(`Tiny: ${JSON.stringify(retorno.erros || retorno)}`);
-  const rows = (retorno.categorias || retorno.registros || []) as Array<Record<string, any>>;
-  return rows.map(entry => entry.categoria || entry.registro || entry).map(row => ({
-    id: String(row.id || row.codigo || row.idCategoria), name: String(row.descricao || row.nome || row.categoria),
-    parentId: row.idCategoriaPai ? String(row.idCategoriaPai) : null, hasChildren: Boolean(row.possuiFilhos || row.filhos?.length)
-  })).filter(row => (row.parentId || null) === (parentId || null));
+  if (!Array.isArray(retorno) && retorno.status === "Erro") throw new Error(`Tiny: ${JSON.stringify(retorno.erros || retorno)}`);
+  const result: CategoryNode[] = [];
+  const walk = (rows: Array<Record<string, any>>, parent: string | null) => {
+    for (const row of rows || []) {
+      const id = String(row.id || row.codigo || row.idCategoria || "");
+      const children = (row.nodes || row.filhos || []) as Array<Record<string, any>>;
+      if (id) result.push({ id, name: String(row.descricao || row.nome || row.categoria || id), parentId: parent, hasChildren: children.length > 0 });
+      walk(children, id || parent);
+    }
+  };
+  const roots = Array.isArray(retorno) ? retorno : (retorno.categorias || []);
+  walk(roots as Array<Record<string, any>>, null);
+  return result.filter(row => row.parentId === (parentId || null));
 }

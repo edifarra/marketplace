@@ -1,16 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import Link from "next/link";
 import { Sidebar } from "../components/sidebar";
 import { DeleteProductButton } from "./delete-product-button";
 import { sendProductAction } from "./actions";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { unstable_noStore as noStore } from "next/cache";
 
 export const dynamic = "force-dynamic";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 type ProductRow = {
   id: string;
@@ -30,12 +26,14 @@ type ProductRow = {
   product_images: {
     original_name: string;
     url: string | null;
+    cloudinary_url?: string | null;
     local_url?: string | null;
     position: number;
   }[];
 };
 
 export default async function ProductsPage({ searchParams }: { searchParams?: { q?: string; erro?: string; sucesso?: string } }) {
+  noStore();
   const query = searchParams?.q?.trim() || "";
   const { products: data, error } = await getProducts();
 
@@ -128,11 +126,12 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
 }
 
 async function getProducts() {
+  const supabase = supabaseAdmin();
   let base: Awaited<ReturnType<typeof queryProductsWithSendFields>> | Awaited<ReturnType<typeof queryProductsBaseFields>> =
-    await queryProductsWithSendFields();
+    await queryProductsWithSendFields(supabase);
 
   if (base.error && /sent_target|tiny_product_id|schema cache|Could not find/i.test(base.error.message)) {
-    base = await queryProductsBaseFields();
+    base = await queryProductsBaseFields(supabase);
   }
 
   if (base.error) {
@@ -150,7 +149,7 @@ async function getProducts() {
       .from("listings")
       .select("id,product_id,marketplace,external_listing_id,status")
       .in("product_id", ids),
-    getProductImages(ids)
+    getProductImages(supabase, ids)
   ]);
 
   const listingsByProduct = new Map<string, ProductRow["listings"]>();
@@ -179,7 +178,7 @@ async function getProducts() {
   };
 }
 
-function queryProductsWithSendFields() {
+function queryProductsWithSendFields(supabase: ReturnType<typeof supabaseAdmin>) {
   return supabase
     .from("products")
     .select(`
@@ -195,7 +194,7 @@ function queryProductsWithSendFields() {
     .order("created_at", { ascending: false });
 }
 
-function queryProductsBaseFields() {
+function queryProductsBaseFields(supabase: ReturnType<typeof supabaseAdmin>) {
   return supabase
     .from("products")
     .select(`
@@ -209,10 +208,10 @@ function queryProductsBaseFields() {
     .order("created_at", { ascending: false });
 }
 
-async function getProductImages(productIds: string[]) {
+async function getProductImages(supabase: ReturnType<typeof supabaseAdmin>, productIds: string[]) {
   const withLocal = await supabase
     .from("product_images")
-    .select("product_id,original_name,url,local_url,position")
+    .select("product_id,original_name,url,cloudinary_url,local_url,position")
     .in("product_id", productIds);
 
   if (!withLocal.error) {
@@ -229,7 +228,7 @@ async function getProductImages(productIds: string[]) {
 
 function ProductThumb({ product }: { product: ProductRow }) {
   const image = [...(product.product_images || [])].sort((a, b) => a.position - b.position)[0];
-  const src = image?.local_url || image?.url;
+  const src = image?.cloudinary_url || image?.url || image?.local_url;
 
   if (!src) {
     return <span className="product-thumb-placeholder">01</span>;

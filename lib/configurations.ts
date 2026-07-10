@@ -357,7 +357,7 @@ export async function deleteConfiguration(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath(`/configuracoes/${section}`);
-  redirect(`/configuracoes/${section}`);
+  redirect(`/configuracoes/${section}?sucesso=${encodeURIComponent("Configuracao excluida.")}`);
 }
 
 async function cleanupMarketplaceAccountDependencies(accountId: string) {
@@ -418,7 +418,8 @@ function ensureFixedSettingsRows(rows: Record<string, unknown>[], definition: Co
     .map((key) => ({
       key,
       value: "",
-      description: `${definition.marker || ""} ${defaultSettingDescription(key)}`.trim()
+      description: `${definition.marker || ""} ${defaultSettingDescription(key)}`.trim(),
+      __virtual: true
     }));
 
   return [...rows, ...missingRows].sort((a, b) =>

@@ -21,6 +21,7 @@ type PageProps = {
     edit?: string;
     erro?: string;
     novo?: string;
+    sucesso?: string;
   };
 };
 
@@ -52,6 +53,7 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
         </div>
 
         {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
+        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
         {section === "marketplace" && (
           <section className="card form-card">
             <h2>Conectar nova conta</h2>
@@ -189,6 +191,7 @@ function ConfigurationTable({
               rows.map((row, index) => {
                 const key = String(row[definition.keyField] || "");
                 const hasValidKey = key && key !== "undefined" && key !== "null";
+                const isVirtualSetting = row.__virtual === true;
                 const rowKey = hasValidKey ? key : `row-${index}`;
 
                 return (
@@ -224,13 +227,17 @@ function ConfigurationTable({
                               {row.access_token || row.refresh_token ? "Reconectar Shopee" : "Conectar Shopee"}
                             </a>
                           )}
-                          <form action={deleteConfigurationAction}>
-                            <input type="hidden" name="section" value={section} />
-                            <input type="hidden" name="key" value={key} />
-                            <button className="danger compact" type="submit">
-                              Excluir
-                            </button>
-                          </form>
+                          {isVirtualSetting ? (
+                            <span className="muted compact-label">Sem valor salvo</span>
+                          ) : (
+                            <form action={deleteConfigurationAction}>
+                              <input type="hidden" name="section" value={section} />
+                              <input type="hidden" name="key" value={key} />
+                              <button className="danger compact" type="submit">
+                                Excluir
+                              </button>
+                            </form>
+                          )}
                         </div>
                       ) : (
                         <span className="muted">Registro sem id</span>

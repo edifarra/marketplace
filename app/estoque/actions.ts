@@ -3,6 +3,7 @@
 import {
   deleteSystemProductOnly,
   importMarketplaceSku,
+  linkMarketplaceSkuToProduct,
   removeMarketplaceListingsForSku,
   sendSystemProductToMissingMarketplaces,
   updateDivergentStockByLowest
@@ -32,6 +33,23 @@ export async function removeMarketplaceOnlyListingsAction(formData: FormData) {
 
 export async function updateDivergentStockAction(formData: FormData) {
   await runStockAction(formData, "stock-divergent", updateDivergentStockByLowest);
+}
+
+export async function linkMarketplaceSkuAction(formData: FormData) {
+  const sourceSku = String(formData.get("sku") || "").trim();
+  const targetSku = String(formData.get("targetSku") || "").trim();
+  const status = String(formData.get("status") || "all");
+  if (!sourceSku || !targetSku) {
+    redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&erro=${encodeURIComponent("Informe o SKU do produto para vincular.")}`);
+  }
+  try {
+    await linkMarketplaceSkuToProduct(sourceSku, targetSku);
+  } catch (error) {
+    redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&erro=${encodeURIComponent(error instanceof Error ? error.message : String(error))}`);
+  }
+  revalidatePath("/estoque");
+  revalidatePath("/produtos");
+  redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&sucesso=${encodeURIComponent(`Anuncio ${sourceSku} vinculado ao produto ${targetSku}.`)}`);
 }
 
 async function runStockAction(

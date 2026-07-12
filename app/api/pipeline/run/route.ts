@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildDriveCompletionMessage, collectDriveImages, hasGoogleDriveConfig } from "@/lib/google-drive";
 import { getGoogleDriveSettings } from "@/lib/google-drive-config";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { loadProductsFromDriveImages } from "@/lib/product-loader";
+import { sendPendingProductsToConfiguredTarget } from "@/lib/product-sender";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,8 +21,9 @@ async function executePipeline(request: NextRequest) {
   const authorization = request.headers.get("authorization");
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
   const forced = request.nextUrl.searchParams.get("force") === "1";
+  const dashboardAuthenticated = request.headers.get("x-dashboard-authenticated") === "1";
 
-  if (!forced && process.env.CRON_SECRET && secret !== process.env.CRON_SECRET && bearer !== process.env.CRON_SECRET) {
+  if (!dashboardAuthenticated && (!process.env.CRON_SECRET || (secret !== process.env.CRON_SECRET && bearer !== process.env.CRON_SECRET))) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -64,6 +67,7 @@ async function executePipeline(request: NextRequest) {
     });
 
     const driveResult = await collectDriveImages(saveDriveProgress);
+    const automatic = await runAutomaticStages(driveResult);
     const finishedAt = new Date().toISOString();
     const completionMessage = buildDriveCompletionMessage(driveResult);
 
@@ -77,6 +81,7 @@ async function executePipeline(request: NextRequest) {
             ...driveResult,
             message: completionMessage
           }
+          , automatic
         },
         finished_at: finishedAt
       })
@@ -100,6 +105,7 @@ async function executePipeline(request: NextRequest) {
       finishedAt,
       message: completionMessage,
       drive: driveResult
+      , automatic
     });
   } catch (error) {
     const finishedAt = new Date().toISOString();
@@ -126,6 +132,26 @@ async function executePipeline(request: NextRequest) {
     });
     return NextResponse.json({ ok: false, runId: run.data.id, error: message, finishedAt }, { status: 500 });
   }
+}
+
+async function runAutomaticStages(driveResult: { totalMoved: number; totalCopied: number }) {
+  if (driveResult.totalMoved + driveResult.totalCopied === 0) {
+    return { triggered: false, reason: "Nenhuma foto movimentada." };
+  }
+  const supabase = supabaseAdmin();
+  const { data } = await supabase.from("settings").select("key,value").in("key", [
+    "CARREGAMENTO_PRODUTOS_AUTOMATICO",
+    "ENVIAR_PRODUTOS_AUTOMATICO"
+  ]);
+  const values = new Map((data || []).map((item) => [item.key, String(item.value || "").trim().toUpperCase()]));
+  const result: Record<string, unknown> = { triggered: true };
+  if (values.get("CARREGAMENTO_PRODUTOS_AUTOMATICO") === "SIM") {
+    result.productLoad = await loadProductsFromDriveImages();
+  }
+  if (values.get("ENVIAR_PRODUTOS_AUTOMATICO") === "SIM") {
+    result.productSend = await sendPendingProductsToConfiguredTarget();
+  }
+  return result;
 }
 
 async function shouldWaitForNextRun(intervalMinutes: number) {

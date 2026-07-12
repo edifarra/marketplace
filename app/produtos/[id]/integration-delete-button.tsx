@@ -6,9 +6,11 @@ import { removeProductIntegrationAction } from "../actions";
 type IntegrationDeleteButtonProps = {
   productId: string;
   integration: string;
+  externalId?: string;
+  accountId?: string;
 };
 
-export function IntegrationDeleteButton({ productId, integration }: IntegrationDeleteButtonProps) {
+export function IntegrationDeleteButton({ productId, integration, externalId = "", accountId = "" }: IntegrationDeleteButtonProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -21,8 +23,8 @@ export function IntegrationDeleteButton({ productId, integration }: IntegrationD
             <p>Deseja excluir tambem no ambiente externo?</p>
             <div className="form-actions">
               <button className="secondary" type="button" onClick={() => setOpen(false)}>Cancelar</button>
-              <IntegrationDeleteForm productId={productId} integration={integration} deleteExternal={false} label="Nao" />
-              <IntegrationDeleteForm productId={productId} integration={integration} deleteExternal label="Sim" danger />
+              <IntegrationDeleteForm productId={productId} integration={integration} externalId={externalId} accountId={accountId} deleteExternal={false} label="Nao" />
+              <IntegrationDeleteForm productId={productId} integration={integration} externalId={externalId} accountId={accountId} deleteExternal label="Sim" danger />
             </div>
           </div>
         </div>
@@ -34,6 +36,8 @@ export function IntegrationDeleteButton({ productId, integration }: IntegrationD
 function IntegrationDeleteForm({
   productId,
   integration,
+  externalId,
+  accountId,
   deleteExternal,
   label,
   danger = false
@@ -42,6 +46,8 @@ function IntegrationDeleteForm({
     <form action={removeProductIntegrationAction}>
       <input type="hidden" name="productId" value={productId} />
       <input type="hidden" name="integration" value={integration} />
+      <input type="hidden" name="externalId" value={externalId || ""} />
+      <input type="hidden" name="accountId" value={accountId || ""} />
       <input type="hidden" name="deleteExternal" value={deleteExternal ? "true" : "false"} />
       <button className={danger ? "danger" : "secondary"} type="submit">{label}</button>
     </form>

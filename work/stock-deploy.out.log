@@ -1,0 +1,22 @@
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_45Bb6frUuTWkEa3co7ffL9Us77eN",
+    "url": "https://marketplace-5mb1cr96n-edifarra-8705s-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/edifarra-8705s-projects/marketplace/45Bb6frUuTWkEa3co7ffL9Us77eN",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_45Bb6frUuTWkEa3co7ffL9Us77eN"
+  },
+  "message": "Deployment marketplace-5mb1cr96n-edifarra-8705s-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel inspect marketplace-5mb1cr96n-edifarra-8705s-projects.vercel.app",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod",
+      "when": "Promote to production"
+    }
+  ]
+}

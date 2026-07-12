@@ -13,6 +13,16 @@ const PUBLIC_PATHS = [
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname === "/api/pipeline/run") {
+    const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+    if (await isValidAuthToken(token)) {
+      const headers = new Headers(request.headers);
+      headers.set("x-dashboard-authenticated", "1");
+      return NextResponse.next({ request: { headers } });
+    }
+    return NextResponse.next();
+  }
+
   if (isPublicPath(pathname) || !isAuthConfigured()) {
     return NextResponse.next();
   }

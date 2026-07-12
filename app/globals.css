@@ -387,6 +387,11 @@ th {
   color: white;
 }
 
+.product-pagination { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; margin:14px 0; }
+.product-pagination span { min-width:190px; text-align:center; color:var(--muted); }
+.product-pagination .disabled { pointer-events:none; opacity:.45; }
+.external-product-link { color:var(--primary); font-weight:700; text-decoration:underline; text-underline-offset:2px; }
+
 .detail-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -511,6 +516,12 @@ th {
   color: var(--muted);
   font-size: 12px;
 }
+
+.product-title-input { min-width: 320px; width: 100%; }
+.product-price-input { width: 88px; }
+.stock-cell { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.stock-cell input { width: 54px; height: 30px; padding: 3px 5px; text-align: center; }
+.stock-button { width: 24px; height: 26px; min-width: 24px; padding: 0; border: 1px solid #cbd5e1; border-radius: 5px; background: #f8fafc; cursor: pointer; line-height: 1; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(15,23,42,.65); display: grid; place-items: center; padding: 24px; }
 .category-modal { width: min(820px, 96vw); max-height: 86vh; overflow: auto; }

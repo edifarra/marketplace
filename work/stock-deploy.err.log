@@ -1,0 +1,91 @@
+Vercel CLI 55.0.0 (Node.js 24.18.0)
+Retrieving project…
+Deploying edifarra-8705s-projects/marketplace
+Uploading [--------------------] (0.0B/54.2KB)
+Uploading [=======-------------] (21.0KB/54.2KB)
+Uploading [==========----------] (27.8KB/54.2KB)
+Uploading [==================--] (50.0KB/54.2KB)
+Uploading [====================] (54.2KB/54.2KB)
+  Inspect         https://vercel.com/edifarra-8705s-projects/marketplace/45Bb6frUuTWkEa3co7ffL9Us77eN
+  Production      https://marketplace-5mb1cr96n-edifarra-8705s-projects.vercel.app
+Building…
+Building…
+Running build in Washington, D.C., USA (East) – iad1
+Build machine configuration: 2 cores, 8 GB
+Retrieving list of deployment files...
+Downloading 4345 deployment files...
+Restored build cache from previous deployment (7gjCm7MRfzSWtz71pEfJ29vpU1JE)
+Running "vercel build"
+Vercel CLI 55.0.0
+Installing dependencies...
+up to date in 902ms
+144 packages are looking for funding
+run `npm fund` for details
+Detected Next.js version: 14.2.35
+Running "npm run build"
+> controle-estoque-marketplaces@0.1.0 build
+> next build
+▲ Next.js 14.2.35
+Creating an optimized production build ...
+✓ Compiled successfully
+Linting and checking validity of types ...
+Collecting page data ...
+Generating static pages (0/18) ...
+Generating static pages (4/18)
+Generating static pages (8/18)
+Generating static pages (13/18)
+✓ Generating static pages (18/18)
+Finalizing page optimization ...
+Collecting build traces ...
+Route (app)                                    Size     First Load JS
+┌ ƒ /                                          1.41 kB        88.7 kB
+├ ○ /_not-found                                873 B          88.1 kB
+├ ƒ /api/estoque/sync                          0 B                0 B
+├ ƒ /api/google-drive/diagnose                 0 B                0 B
+├ ƒ /api/google-drive/test                     0 B                0 B
+├ ƒ /api/google/oauth/callback                 0 B                0 B
+├ ƒ /api/google/oauth/start                    0 B                0 B
+├ ƒ /api/marketplace-categories/[marketplace]  0 B                0 B
+├ ƒ /api/mercado-livre/oauth/callback          0 B                0 B
+├ ƒ /api/mercado-livre/oauth/start             0 B                0 B
+├ ƒ /api/pipeline/drive/progress               0 B                0 B
+├ ƒ /api/pipeline/products                     0 B                0 B
+├ ƒ /api/pipeline/products/progress            0 B                0 B
+├ ƒ /api/pipeline/run                          0 B                0 B
+├ ƒ /api/products/send-batch                   0 B                0 B
+├ ƒ /api/products/send-batch/progress          0 B                0 B
+├ ƒ /api/shopee/oauth/callback                 0 B                0 B
+├ ƒ /api/shopee/oauth/start                    0 B                0 B
+├ ƒ /api/webhooks/mercado-livre                0 B                0 B
+├ ƒ /api/webhooks/shopee                       0 B                0 B
+├ ƒ /atividades-marketplace                    293 B          96.2 kB
+├ ƒ /atividades-marketplace/[id]               157 B          87.4 kB
+├ ○ /configuracoes                             157 B          87.4 kB
+├ ƒ /configuracoes/[section]                   157 B          87.4 kB
+├ ƒ /configuracoes/categorias-marketplace      1.62 kB        88.9 kB
+├ ƒ /configuracoes/google-drive                379 B          87.6 kB
+├ ƒ /estoque                                   1.69 kB        88.9 kB
+├ ƒ /fotos                                     1.28 kB        93.8 kB
+├ ƒ /integracoes                               157 B          87.4 kB
+├ ƒ /login                                     157 B          87.4 kB
+├ ƒ /logs                                      157 B          87.4 kB
+├ ƒ /produtos                                  1.12 kB         102 kB
+├ ƒ /produtos/[id]                             959 B          93.5 kB
+└ ƒ /produtos/novo                             973 B          88.2 kB
++ First Load JS shared by all                  87.3 kB
+├ chunks/117-7fd3ca99ea227088.js             31.7 kB
+├ chunks/fd9d1056-e3d373074663785d.js        53.6 kB
+└ other shared chunks (total)                1.89 kB
+ƒ Middleware                                   26.9 kB
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+Traced Next.js server files in: 44.459ms
+Created all serverless functions in: 144.731ms
+Collected static files (public/, static/, .next/static): 6.056ms
+Build Completed in /vercel/output [30s]
+Deploying outputs...
+Deployment completed
+Creating build cache...
+[2K[1A[2K[G  Production      https://marketplace-5mb1cr96n-edifarra-8705s-projects.vercel.app
+Completing…
+▲ Aliased         https://marketplace-ashen-five.vercel.app

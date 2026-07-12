@@ -1,0 +1,65 @@
+
+> controle-estoque-marketplaces@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/18) ...
+   Generating static pages (4/18) 
+   Generating static pages (8/18) 
+   Generating static pages (13/18) 
+ ✓ Generating static pages (18/18)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                    Size     First Load JS
+┌ ƒ /                                          1.41 kB        88.7 kB
+├ ○ /_not-found                                873 B          88.1 kB
+├ ƒ /api/estoque/sync                          0 B                0 B
+├ ƒ /api/google-drive/diagnose                 0 B                0 B
+├ ƒ /api/google-drive/test                     0 B                0 B
+├ ƒ /api/google/oauth/callback                 0 B                0 B
+├ ƒ /api/google/oauth/start                    0 B                0 B
+├ ƒ /api/marketplace-categories/[marketplace]  0 B                0 B
+├ ƒ /api/mercado-livre/oauth/callback          0 B                0 B
+├ ƒ /api/mercado-livre/oauth/start             0 B                0 B
+├ ƒ /api/pipeline/drive/progress               0 B                0 B
+├ ƒ /api/pipeline/products                     0 B                0 B
+├ ƒ /api/pipeline/products/progress            0 B                0 B
+├ ƒ /api/pipeline/run                          0 B                0 B
+├ ƒ /api/products/send-batch                   0 B                0 B
+├ ƒ /api/products/send-batch/progress          0 B                0 B
+├ ƒ /api/shopee/oauth/callback                 0 B                0 B
+├ ƒ /api/shopee/oauth/start                    0 B                0 B
+├ ƒ /api/webhooks/mercado-livre                0 B                0 B
+├ ƒ /api/webhooks/shopee                       0 B                0 B
+├ ƒ /atividades-marketplace                    295 B          96.2 kB
+├ ƒ /atividades-marketplace/[id]               157 B          87.4 kB
+├ ○ /configuracoes                             157 B          87.4 kB
+├ ƒ /configuracoes/[section]                   157 B          87.4 kB
+├ ƒ /configuracoes/categorias-marketplace      1.62 kB        88.9 kB
+├ ƒ /configuracoes/google-drive                379 B          87.6 kB
+├ ƒ /estoque                                   1.69 kB          89 kB
+├ ƒ /fotos                                     1.28 kB        93.8 kB
+├ ƒ /integracoes                               157 B          87.4 kB
+├ ƒ /login                                     157 B          87.4 kB
+├ ƒ /logs                                      157 B          87.4 kB
+├ ƒ /produtos                                  1.12 kB         102 kB
+├ ƒ /produtos/[id]                             960 B          93.5 kB
+└ ƒ /produtos/novo                             975 B          88.2 kB
++ First Load JS shared by all                  87.3 kB
+  ├ chunks/117-7fd3ca99ea227088.js             31.7 kB
+  ├ chunks/fd9d1056-e3d373074663785d.js        53.6 kB
+  └ other shared chunks (total)                1.89 kB
+
+
+ƒ Middleware                                   26.9 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

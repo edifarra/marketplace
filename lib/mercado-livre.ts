@@ -102,7 +102,16 @@ export async function updateMercadoLivreStock(accountId: string, listingId: stri
 export async function removeMercadoLivreListing(accountId: string, listingId: string) {
   const account = await getMercadoLivreAccountById(accountId);
   const accessToken = await getValidMercadoLivreAccessToken(account);
-  await putMercadoLivreItem(listingId, accessToken, { status: "paused" });
+  await putMercadoLivreItem(listingId, accessToken, { status: "closed" });
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await putMercadoLivreItem(listingId, accessToken, { deleted: "true" });
+      return;
+    } catch (error) {
+      if (attempt === 3 || !/409|optimistic locking|conflict/i.test(error instanceof Error ? error.message : String(error))) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
 }
 
 export function isMercadoLivreInactive(status: string) {

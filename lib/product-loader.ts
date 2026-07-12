@@ -1,5 +1,5 @@
 import { uploadProductImageToCloudinary } from "./cloudinary";
-import { downloadDriveFile, listDriveImagesFolderFiles, type DriveFile } from "./google-drive";
+import { downloadDriveFile, listDriveImagesFolderFiles, moveDriveFilesToImagesSubfolder, type DriveFile } from "./google-drive";
 import { applyTemplate, groupPhotos, isValidPhotoName, nextSku, parsePhotoName } from "./pipeline";
 import { supabaseAdmin } from "./supabase-admin";
 import { BrandConfig, SpecialConfig, TypeConfig } from "./types";
@@ -205,6 +205,10 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         .throwOnError();
 
       if (existing.data) {
+        const duplicateFiles = group.photos.map((name) => filesByName.get(name)).filter((file): file is DriveFile => Boolean(file));
+        const movement = await moveDriveFilesToImagesSubfolder(duplicateFiles, "Duplicados");
+        processedFiles += duplicateFiles.length;
+        await reportProgress(onProgress, files.length, processedFiles);
         result.duplicates++;
         result.duplicateProducts.push(group.sourceKey);
         pushPhotoLogs(result, group.photos, group.sourceKey, "duplicidade", "duplicado", "source_key ja cadastrado", {
@@ -222,7 +226,9 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           variables: {
             existingProductId: existing.data.id,
             existingSku: existing.data.sku,
-            sourceKey: group.sourceKey
+            sourceKey: group.sourceKey,
+            destinationFolder: "Duplicados",
+            movedFiles: movement.moved
           }
         });
         continue;
@@ -428,6 +434,13 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         }
       };
       await createDraftListings(product.data.id, skuInfo.sku, initialStock, defaultPrice);
+      failureContext = {
+        stage: "drive_move_enviadas",
+        fileName: group.photos.join(", "),
+        parse: main,
+        variables: { productId: product.data.id, photos: group.photos, destinationFolder: "Enviadas" }
+      };
+      const movement = await moveDriveFilesToImagesSubfolder(imageUploads.map((image) => image.driveFile), "Enviadas");
       result.created++;
       result.createdProducts.push({ sku: skuInfo.sku, title, sourceKey: group.sourceKey });
       result.itemLogs.push({
@@ -441,6 +454,8 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           sku: skuInfo.sku,
           title,
           imageCount: imageUploads.length,
+          movedFiles: movement.moved,
+          destinationFolder: "Enviadas",
           status: "draft"
         }
       });

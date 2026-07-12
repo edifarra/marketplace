@@ -12,6 +12,7 @@ import {
 import { supabaseAdmin } from "./supabase-admin";
 
 export type MigrationStockView = "marketplace-only" | "system-only" | "missing-marketplace" | "stock-divergent";
+export type MigrationStockStatus = "all" | "active" | "paused";
 
 type SystemProduct = {
   id: string;
@@ -70,7 +71,10 @@ export type MigrationStockData = {
   errors: string[];
 };
 
-export async function getMigrationStockData(view: MigrationStockView = "marketplace-only"): Promise<MigrationStockData> {
+export async function getMigrationStockData(
+  view: MigrationStockView = "marketplace-only",
+  status: MigrationStockStatus = "all"
+): Promise<MigrationStockData> {
   const errors: string[] = [];
   const [productsResult, accountsResult] = await Promise.all([
     readSafely(getSystemProducts, "Produtos do sistema"),
@@ -83,18 +87,45 @@ export async function getMigrationStockData(view: MigrationStockView = "marketpl
     : { data: [] as MarketplaceLink[], errors: [] as string[] };
   const links = linksResult.data;
   const context = buildContext(products, links, accounts);
+  const filteredContext = filterContextByStatus(context, status);
 
   return {
     accounts,
     summary: {
-      marketplaceOnly: context.marketplaceOnly.length,
-      systemOnly: context.systemOnly.length,
-      missingMarketplace: context.missingMarketplace.length,
-      stockDivergent: context.stockDivergent.length
+      marketplaceOnly: filteredContext.marketplaceOnly.length,
+      systemOnly: filteredContext.systemOnly.length,
+      missingMarketplace: filteredContext.missingMarketplace.length,
+      stockDivergent: filteredContext.stockDivergent.length
     },
-    rows: context[viewKey(view)],
+    rows: filteredContext[viewKey(view)],
     errors: [...errors, ...productsResult.errors, ...linksResult.errors, ...accountsResult.errors]
   };
+}
+
+export async function linkMarketplaceSkuToProduct(sourceSku: string, targetSku: string) {
+  const normalizedSource = normalizeSku(sourceSku);
+  const normalizedTarget = normalizeSku(targetSku);
+  if (!normalizedTarget) throw new Error("Informe o SKU do produto que recebera o vinculo.");
+
+  const supabase = supabaseAdmin();
+  const [product, links] = await Promise.all([
+    supabase.from("products").select("id,sku,title").eq("sku", normalizedTarget).maybeSingle().throwOnError(),
+    getMarketplaceLinksBySku(normalizedSource)
+  ]);
+  if (!product.data?.id) throw new Error(`Produto com SKU ${normalizedTarget} nao encontrado no sistema.`);
+  if (links.length === 0) throw new Error("Nenhum anuncio ativo foi encontrado para vincular.");
+
+  await supabase.from("product_marketplaces")
+    .update({ product_id: product.data.id, updated_at: new Date().toISOString() })
+    .eq("sku", normalizedSource)
+    .eq("existe_no_marketplace", true)
+    .throwOnError();
+  await syncListingsFromMarketplaceRows(normalizedSource, product.data.id);
+  await logMigration(normalizedSource, "vincular_produto", "sucesso", `Anuncio vinculado ao produto ${normalizedTarget}.`, {
+    productId: product.data.id,
+    targetSku: normalizedTarget,
+    listingIds: links.map((link) => link.marketplace_product_id)
+  });
 }
 
 export async function importMarketplaceSku(sku: string) {
@@ -388,6 +419,21 @@ function buildContext(products: SystemProduct[], links: MarketplaceLink[], accou
     missingMarketplace: missingMarketplace.sort(bySku),
     stockDivergent: stockDivergent.sort(bySku)
   };
+}
+
+function filterContextByStatus(context: ReturnType<typeof buildContext>, status: MigrationStockStatus) {
+  if (status === "all") return context;
+  const matches = (row: MigrationStockRow) => row.marketplaces.some((link) => normalizeListingStatus(link.status_anuncio) === status);
+  return {
+    marketplaceOnly: context.marketplaceOnly.filter(matches),
+    systemOnly: context.systemOnly,
+    missingMarketplace: context.missingMarketplace.filter(matches),
+    stockDivergent: context.stockDivergent.filter(matches)
+  };
+}
+
+function normalizeListingStatus(status: string): Exclude<MigrationStockStatus, "all"> {
+  return String(status || "").toLowerCase() === "active" ? "active" : "paused";
 }
 
 function toRow(sku: string, product: SystemProduct | undefined, links: MarketplaceLink[]): MigrationStockRow {

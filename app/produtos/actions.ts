@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { syncListingsStock } from "@/lib/inventory";
+import { updateTinyProductPriceById, updateTinyProductStockById } from "@/lib/tiny";
 
 export async function deleteProductAction(formData: FormData) {
   await deleteProductById(formData);
@@ -56,6 +57,8 @@ export async function removeProductIntegrationAction(formData: FormData) {
   const productId = String(formData.get("productId") || "");
   const integration = String(formData.get("integration") || "");
   const deleteExternal = String(formData.get("deleteExternal") || "") === "true";
+  const externalId = String(formData.get("externalId") || "");
+  const accountId = String(formData.get("accountId") || "");
 
   if (!productId) {
     redirect(`/produtos?erro=${encodeURIComponent("Produto nao informado.")}`);
@@ -63,7 +66,7 @@ export async function removeProductIntegrationAction(formData: FormData) {
 
   let result: Awaited<ReturnType<typeof removeProductIntegration>>;
   try {
-    result = await removeProductIntegration(productId, integration, deleteExternal);
+    result = await removeProductIntegration(productId, integration, deleteExternal, externalId, accountId);
   } catch (error) {
     redirect(`/produtos/${productId}?erro=${encodeURIComponent(error instanceof Error ? error.message : String(error))}`);
   }
@@ -88,6 +91,15 @@ export async function updateProductInlineAction(formData: FormData) {
   await db.from("products").update({ price, ...(linked ? {} : { title }), updated_at: new Date().toISOString() }).eq("id", productId).throwOnError();
   await db.from("estoque").upsert({ product_id: productId, sku: product.data.sku, estoque_fisico: stock }, { onConflict: "product_id" }).throwOnError();
   await syncListingsStock(productId, stock);
+  if (product.data.tiny_product_id) {
+    try {
+      await updateTinyProductPriceById(String(product.data.tiny_product_id), price);
+      await updateTinyProductStockById(String(product.data.tiny_product_id), stock);
+    } catch (error) {
+      revalidatePath("/produtos"); revalidatePath(`/produtos/${productId}`);
+      redirect(`/produtos?erro=${encodeURIComponent(`Preco e estoque foram salvos no sistema, mas o Tiny recusou parte da sincronizacao: ${error instanceof Error ? error.message : String(error)}`)}`);
+    }
+  }
   revalidatePath("/produtos"); revalidatePath(`/produtos/${productId}`);
   redirect(`/produtos?sucesso=${encodeURIComponent("Produto atualizado com sucesso.")}`);
 }

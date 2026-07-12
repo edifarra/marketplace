@@ -448,6 +448,42 @@ export async function downloadDriveFile(fileId: string) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+export async function moveDriveFilesToImagesSubfolder(files: DriveFile[], destinationName: "Enviadas" | "Duplicados") {
+  const settings = await getGoogleDriveSettings();
+  const imagesFolderId = requiredValue(settings.imagesFolderId, "GOOGLE_DRIVE_IMAGES_FOLDER_ID");
+  const accessToken = await getGoogleDriveAccessToken();
+  const accountEmail = await getGoogleDriveAccountEmail();
+  const imageItems = await listRawDriveFiles(
+    accessToken,
+    { label: "Pasta Imagens", folderId: imagesFolderId, kind: "destination" },
+    accountEmail,
+    1000
+  );
+  const destination = imageItems.find((item) =>
+    item.mimeType === DRIVE_FOLDER_MIME_TYPE && item.name.trim().toLowerCase() === destinationName.toLowerCase()
+  );
+  if (!destination) {
+    throw new Error(`Subpasta ${destinationName} nao localizada dentro da Pasta Imagens.`);
+  }
+
+  for (const file of files) {
+    if (file.parents?.includes(destination.id)) continue;
+    const removeParents = (file.parents || []).join(",") || imagesFolderId;
+    const params = new URLSearchParams({
+      addParents: destination.id,
+      removeParents,
+      fields: "id,name,parents",
+      supportsAllDrives: "true"
+    });
+    await driveFetch(accessToken, `/files/${file.id}?${params.toString()}`, { method: "PATCH" }, {
+      folder: { label: destinationName, folderId: destination.id, kind: "destination" },
+      clientEmail: accountEmail,
+      operation: `mover arquivo para ${destinationName}`
+    });
+  }
+  return { destinationId: destination.id, moved: files.length };
+}
+
 async function getSourceFolders(): Promise<DriveSourceFolder[]> {
   const configuredFolders = await getGoogleDriveFolders();
   const folders = configuredFolders

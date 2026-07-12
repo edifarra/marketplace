@@ -1,5 +1,6 @@
-import { createTinyProduct, deactivateTinyProductById, updateTinyProduct } from "./tiny";
+import { createTinyProduct, deactivateTinyProductById, findTinyProductId, updateTinyProduct } from "./tiny";
 import { supabaseAdmin } from "./supabase-admin";
+import { removeMercadoLivreListing } from "./mercado-livre";
 
 type SendResult = {
   ok: boolean;
@@ -50,11 +51,30 @@ export async function sendProductToConfiguredTarget(productId: string): Promise<
       return { ok: false, productId, message: "Nenhum MarketPlace configurado." };
     }
 
-    await markProductAsSent(productId, "MARKETPLACE_DIRETO");
-    return { ok: true, productId, message: "Produto marcado como enviado ao MarketPlace." };
+    return {
+      ok: false,
+      productId,
+      message: "Envio direto nao confirmado: nenhuma API de publicacao foi executada. O produto permaneceu pendente. Selecione Tiny ou configure a publicacao direta por conta."
+    };
   }
 
-  const tinyResult = await createTinyProduct(productId);
+  let tinyResult;
+  try {
+    tinyResult = await createTinyProduct(productId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Registro em duplicidade/i.test(message)) throw error;
+    const { data: product } = await supabase.from("products").select("sku,title").eq("id", productId).single().throwOnError();
+    if (/nome do produto/i.test(message)) {
+      tinyResult = await createTinyProduct(productId, true);
+    } else {
+      const reconciledId = await findTinyProductId(String(product.sku || ""));
+      if (!reconciledId) {
+        throw new Error(`${message}. O cadastro existente nao foi localizado de forma unica para vinculacao automatica.`);
+      }
+      tinyResult = await updateTinyProduct(productId, reconciledId);
+    }
+  }
 
   await markProductAsSent(productId, "TINY", tinyResult.idProduto);
   await supabase.from("settings").upsert({
@@ -70,7 +90,13 @@ export async function sendProductToConfiguredTarget(productId: string): Promise<
   };
 }
 
-export async function removeProductIntegration(productId: string, integration: string, deleteExternal: boolean): Promise<SendResult> {
+export async function removeProductIntegration(productId: string, integration: string, deleteExternal: boolean, externalId = "", accountId = ""): Promise<SendResult> {
+  if (integration === "MERCADO_LIVRE") {
+    if (!externalId || !accountId) return { ok: false, productId, message: "Anuncio ou conta do Mercado Livre nao informados." };
+    if (deleteExternal) await removeMercadoLivreListing(accountId, externalId);
+    await supabaseAdmin().from("product_marketplaces").update({ existe_no_marketplace: false, status_anuncio: deleteExternal ? "deleted" : "unlinked", updated_at: new Date().toISOString() }).eq("product_id", productId).eq("marketplace_account_id", accountId).eq("marketplace_product_id", externalId).throwOnError();
+    return { ok: true, productId, message: deleteExternal ? "Anuncio excluido no Mercado Livre e vinculo removido." : "Vinculo do Mercado Livre removido apenas do sistema." };
+  }
   if (integration !== "TINY") {
     return { ok: false, productId, message: "Integracao nao suportada para exclusao." };
   }

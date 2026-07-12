@@ -1,6 +1,7 @@
 import { Sidebar } from "../components/sidebar";
 import { ConfirmActionButton } from "./confirm-action-button";
 import { StockSyncButton } from "./stock-sync-button";
+import { LinkMarketplaceButton } from "./link-marketplace-button";
 import {
   deleteSystemProductOnlyAction,
   importMarketplaceSkuAction,
@@ -13,6 +14,7 @@ import {
   effectiveMarketplaceStock,
   getMigrationStockData,
   type MarketplaceLink,
+  type MigrationStockStatus,
   type MigrationStockView
 } from "@/lib/migration-stock";
 
@@ -23,6 +25,7 @@ type PageProps = {
     view?: string;
     erro?: string;
     sucesso?: string;
+    status?: string;
   };
 };
 
@@ -51,7 +54,8 @@ const views: Array<{ key: MigrationStockView; title: string; description: string
 
 export default async function StockPage({ searchParams }: PageProps) {
   const selectedView = parseView(searchParams?.view);
-  const data = await getMigrationStockData(selectedView);
+  const selectedStatus = parseStatus(searchParams?.status);
+  const data = await getMigrationStockData(selectedView, selectedStatus);
 
   return (
     <main className="shell">
@@ -94,7 +98,19 @@ export default async function StockPage({ searchParams }: PageProps) {
         </section>
 
         <section className="card">
-          <h2>Resumo</h2>
+          <div className="table-toolbar">
+            <div><h2>Resumo</h2><div className="muted">Filtre os anuncios pelo status informado pelo marketplace.</div></div>
+            <form method="get" className="row-actions">
+              <input type="hidden" name="view" value={selectedView} />
+              <label htmlFor="status">Status</label>
+              <select id="status" name="status" defaultValue={selectedStatus}>
+                <option value="all">Todos</option>
+                <option value="active">Ativo</option>
+                <option value="paused">Pausado / inativo</option>
+              </select>
+              <button className="secondary compact" type="submit">Filtrar</button>
+            </form>
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -115,7 +131,7 @@ export default async function StockPage({ searchParams }: PageProps) {
                     <td>{summaryValue(data.summary, view.key)}</td>
                     <td>{view.key === selectedView ? "Exibindo abaixo" : "-"}</td>
                     <td>
-                      <a className="secondary compact" href={`/estoque?view=${view.key}`}>Ver Produtos</a>
+                      <a className="secondary compact" href={`/estoque?view=${view.key}&status=${selectedStatus}`}>Ver Produtos</a>
                     </td>
                   </tr>
                 ))}
@@ -137,7 +153,7 @@ export default async function StockPage({ searchParams }: PageProps) {
           ) : selectedView === "system-only" ? (
             <SystemOnlyTable rows={data.rows} />
           ) : (
-            <MarketplacePresenceTable rows={data.rows} view={selectedView} />
+            <MarketplacePresenceTable rows={data.rows} view={selectedView} status={selectedStatus} />
           )}
         </section>
       </section>
@@ -145,7 +161,7 @@ export default async function StockPage({ searchParams }: PageProps) {
   );
 }
 
-function MarketplacePresenceTable({ rows, view }: { rows: Awaited<ReturnType<typeof getMigrationStockData>>["rows"]; view: MigrationStockView }) {
+function MarketplacePresenceTable({ rows, view, status }: { rows: Awaited<ReturnType<typeof getMigrationStockData>>["rows"]; view: MigrationStockView; status: MigrationStockStatus }) {
   const isMarketplaceOnly = view === "marketplace-only";
   const isMissingMarketplace = view === "missing-marketplace";
 
@@ -180,6 +196,7 @@ function MarketplacePresenceTable({ rows, view }: { rows: Awaited<ReturnType<typ
                 <td>
                   <div className="row-actions">
                     {isMarketplaceOnly && <ActionForm sku={row.sku} action={importMarketplaceSkuAction} label="Cadastrar" />}
+                    {isMarketplaceOnly && <LinkMarketplaceButton sku={row.sku} status={status} />}
                     {isMarketplaceOnly && (
                       <ActionForm
                         sku={row.sku}
@@ -385,4 +402,8 @@ function parseView(value: string | undefined): MigrationStockView {
   }
 
   return "marketplace-only";
+}
+
+function parseStatus(value: string | undefined): MigrationStockStatus {
+  return value === "active" || value === "paused" ? value : "all";
 }

@@ -47,6 +47,10 @@ type ProductDetail = {
     stock: number;
     price: number;
     error_message: string | null;
+    last_sync_at?: string | null;
+    marketplace_name?: string | null;
+    external_url?: string | null;
+    marketplace_account_id?: string | null;
   }>;
 };
 
@@ -59,6 +63,8 @@ type IntegrationRow = {
   status: string;
   sentAt: string;
   canRemove: boolean;
+  url: string;
+  accountId: string;
 };
 
 export default async function ProductDetailPage({
@@ -187,7 +193,7 @@ export default async function ProductDetailPage({
                   integrations.map((integration) => (
                     <tr key={integration.key}>
                       <td>{integration.name}</td>
-                      <td>{integration.code}</td>
+                      <td><a href={integration.url} target="_blank" rel="noopener noreferrer" className="external-product-link">{integration.code}</a></td>
                       <td>{integration.sku}</td>
                       <td>{formatProductStatus(integration.status)}</td>
                       <td>{integration.sentAt}</td>
@@ -198,7 +204,7 @@ export default async function ProductDetailPage({
                             <button className="secondary compact" type="submit">Reenviar/Atualizar</button>
                           </form>
                           {integration.canRemove ? (
-                            <IntegrationDeleteButton productId={typed.id} integration={integration.integration} />
+                            <IntegrationDeleteButton productId={typed.id} integration={integration.integration} externalId={integration.code} accountId={integration.accountId} />
                           ) : (
                             <span className="muted">Exclusao externa pendente</span>
                           )}
@@ -244,7 +250,7 @@ async function getProduct(id: string) {
     .single();
 
   if (!withLocalImages.error) {
-    return withLocalImages.data;
+    return attachMarketplaceLinks(withLocalImages.data, id);
   }
 
   const fallback = await supabase
@@ -271,7 +277,35 @@ async function getProduct(id: string) {
     .eq("id", id)
     .single();
 
-  return fallback.data;
+  return attachMarketplaceLinks(fallback.data, id);
+}
+
+async function attachMarketplaceLinks(product: Record<string, unknown> | null, productId: string) {
+  if (!product) return product;
+  const { data } = await supabase
+    .from("product_marketplaces")
+    .select("id,marketplace,marketplace_product_id,marketplace_account_id,sku,status_anuncio,valor_marketplace,estoque_marketplace,updated_at,raw_data,config_marketplace_accounts(name)")
+    .eq("product_id", productId)
+    .eq("existe_no_marketplace", true);
+  const current = (product.listings || []) as ProductDetail["listings"];
+  for (const link of data || []) {
+    if (current.some((item) => item.marketplace === link.marketplace && item.external_listing_id === link.marketplace_product_id)) continue;
+    current.push({
+      id: String(link.id),
+      marketplace: String(link.marketplace),
+      external_listing_id: String(link.marketplace_product_id),
+      external_sku: String(link.sku || ""),
+      status: String(link.status_anuncio || ""),
+      stock: Number(link.estoque_marketplace || 0),
+      price: Number(link.valor_marketplace || 0),
+      error_message: null,
+      last_sync_at: link.updated_at ? String(link.updated_at) : null
+      ,marketplace_name: String((link.config_marketplace_accounts as { name?: string } | null)?.name || "")
+      ,external_url: String((link.raw_data as { permalink?: string } | null)?.permalink || mercadoLivreUrl(String(link.marketplace_product_id)))
+      ,marketplace_account_id: String(link.marketplace_account_id || "")
+    });
+  }
+  return { ...product, listings: current };
 }
 
 function buildIntegrationRows(product: ProductDetail): IntegrationRow[] {
@@ -287,6 +321,8 @@ function buildIntegrationRows(product: ProductDetail): IntegrationRow[] {
       status: product.status,
       sentAt: formatDate(product.sent_at),
       canRemove: true
+      ,url: tinyProductUrl(product.tiny_product_id || "")
+      ,accountId: ""
     });
   }
 
@@ -299,16 +335,31 @@ function buildIntegrationRows(product: ProductDetail): IntegrationRow[] {
     rows.push({
       key: listing.id,
       integration: isShopee ? "SHOPEE" : "MERCADO_LIVRE",
-      name: isShopee ? "Shopee" : "Mercado Livre",
+      name: listing.marketplace_name || (isShopee ? "Shopee" : "Mercado Livre"),
       code: listing.external_listing_id,
       sku: listing.external_sku || "-",
       status: listing.status,
-      sentAt: "-",
-      canRemove: false
+      sentAt: formatDate(listing.last_sync_at),
+      canRemove: !isShopee
+      ,url: listing.external_url || (isShopee ? shopeeProductUrl(listing.external_listing_id) : mercadoLivreUrl(listing.external_listing_id))
+      ,accountId: listing.marketplace_account_id || ""
     });
   }
 
   return rows;
+}
+
+function mercadoLivreUrl(itemId: string) {
+  const digits = itemId.replace(/^MLB/i, "");
+  return `https://produto.mercadolivre.com.br/MLB-${digits}-_JM`;
+}
+
+function tinyProductUrl(productId: string) {
+  return `https://erp.tiny.com.br/produtos#edit/${encodeURIComponent(productId)}`;
+}
+
+function shopeeProductUrl(itemId: string) {
+  return `https://shopee.com.br/product/0/${encodeURIComponent(itemId)}`;
 }
 
 function Info({ label, value }: { label: string; value: string }) {

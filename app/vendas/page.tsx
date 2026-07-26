@@ -38,7 +38,7 @@ export default async function SalesPage() {
       nickname: String(raw.marketplace_nickname || account?.nickname || account?.name || "Loja não identificada"),
       totalItems: saleItems.reduce((total, item) => total + Number(item.quantidade || 0), 0),
       value: money(sale.valor_produtos),
-      status: statusLabel(sale.status_venda?.internal_status || sale.status_original),
+      status: sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original),
       flex: isFlexShipping(shipping),
       canPrintLabel: canPrintMarketplaceLabel(sale.marketplace, shipping),
       details: [

@@ -58,19 +58,26 @@ export default async function SaleStatusMappingsPage({ searchParams }: Props) {
         <tbody>
           {(data || []).map((row) => {
             const [externalStatus, externalSubstatus = "—"] = String(row.external_status).split("::");
+            const formId = `status-mapping-${row.id}`;
             return <tr key={row.id}>
               <td>{row.marketplace === "mercado_livre" ? "Mercado Livre" : row.marketplace === "shopee" ? "Shopee" : row.marketplace}</td>
               <td><code>{externalStatus}</code></td>
               <td><code>{externalSubstatus}</code></td>
-              <td colSpan={4}>
-                <form action={saveSaleStatusMapping} className="inline-edit-form">
+              <td>
+                <select form={formId} name="internal_status" defaultValue={canonicalStatus(row.internal_status)}>
+                  {INTERNAL_STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </td>
+              <td>
+                <input form={formId} name="description" defaultValue={row.description || ""} aria-label="Descrição exibida" required />
+              </td>
+              <td>
+                <label><input form={formId} type="checkbox" name="reserves_stock" defaultChecked={row.reserves_stock} /> Reserva estoque</label>
+                <label><input form={formId} type="checkbox" name="final_status" defaultChecked={row.final_status} /> Status final</label>
+              </td>
+              <td>
+                <form id={formId} action={saveSaleStatusMapping}>
                   <input type="hidden" name="id" value={row.id} />
-                  <select name="internal_status" defaultValue={canonicalStatus(row.internal_status)}>
-                    {INTERNAL_STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <input name="description" defaultValue={row.description || ""} aria-label="Descrição exibida" required />
-                  <label><input type="checkbox" name="reserves_stock" defaultChecked={row.reserves_stock} /> Reserva estoque</label>
-                  <label><input type="checkbox" name="final_status" defaultChecked={row.final_status} /> Status final</label>
                   <button className="primary compact" type="submit">Salvar</button>
                 </form>
               </td>

@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/mercado-livre/orders/recover?limit=25",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }

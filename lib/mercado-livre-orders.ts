@@ -32,9 +32,7 @@ export async function processMercadoLivreOrder(
     String(shipment.status || ""),
     String(shipment.substatus || "")
   ].join(":");
-  const currentShippingStatus = shipment.substatus === "out_for_delivery"
-    ? "out_for_delivery"
-    : String(shipment.status || "");
+  const currentShippingStatus = normalizeMercadoLivreShippingStatus(shipment);
   const fees = (order.order_items || []).reduce((total: number, item: Record<string, any>) => total + Number(item.sale_fee || 0), 0);
   const shippingCost = (order.payments || []).reduce((total: number, payment: Record<string, any>) => total + Number(payment.shipping_cost || 0), 0);
   return registerMarketplaceSale({
@@ -71,9 +69,7 @@ export async function processMercadoLivreShipment(
   const shipmentHistory = await getMercadoLivreShipmentHistory(shipmentId, account);
   const orderId = String(shipment.order_id || shipment.order?.id || shipment.orders?.[0]?.id || "");
   if (!orderId) throw new Error(`Pedido da entrega ${shipmentId} nao identificado.`);
-  const shipmentStatus = shipment.substatus === "out_for_delivery"
-    ? "out_for_delivery"
-    : String(shipment.status || shipment.substatus || "unknown");
+  const shipmentStatus = normalizeMercadoLivreShippingStatus(shipment);
   return processMercadoLivreOrder(
     orderId,
     account,
@@ -81,4 +77,15 @@ export async function processMercadoLivreShipment(
     shipmentStatus,
     { shipment, shipmentHistory }
   );
+}
+
+export function normalizeMercadoLivreShippingStatus(shipment: Record<string, any>) {
+  const status = String(shipment.status || "").toLowerCase();
+  const substatus = String(shipment.substatus || "").toLowerCase();
+
+  if (["out_for_delivery", "first_visit"].includes(substatus)) return "out_for_delivery";
+  if (["dropped_off", "picked_up", "in_hub", "in_packing_list"].includes(substatus)) return "shipped";
+  if (status === "shipped") return "shipped";
+  if (status === "delivered") return "delivered";
+  return status || substatus || "unknown";
 }

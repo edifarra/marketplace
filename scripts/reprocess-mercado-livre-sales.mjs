@@ -13,6 +13,7 @@ const { data: sales, error: salesError } = await supabase
   .from("venda")
   .select("order_id")
   .eq("marketplace", "mercado_livre")
+  .gte("data_venda", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
   .order("created_at");
 if (salesError) throw salesError;
 
@@ -38,9 +39,7 @@ for (const sale of sales) {
     const fees = (order.order_items || []).reduce((total, item) => total + number(item.sale_fee), 0);
     const freight = (order.payments || []).reduce((total, payment) => total + number(payment.shipping_cost), 0);
     const value = number(order.total_amount);
-    const status = shipment.substatus === "out_for_delivery"
-      ? "out_for_delivery"
-      : String(shipment.status || order.status || "unknown");
+    const status = normalizeShippingStatus(shipment, order.status);
 
     const { data: savedSale, error: saveError } = await supabase.from("venda").upsert({
       marketplace: "mercado_livre",
@@ -86,6 +85,14 @@ for (const sale of sales) {
 }
 
 console.log(JSON.stringify(summary, null, 2));
+
+function normalizeShippingStatus(shipment, orderStatus) {
+  const status = String(shipment.status || "").toLowerCase();
+  const substatus = String(shipment.substatus || "").toLowerCase();
+  if (["out_for_delivery", "first_visit"].includes(substatus)) return "out_for_delivery";
+  if (["dropped_off", "picked_up", "in_hub", "in_packing_list"].includes(substatus)) return "shipped";
+  return status || String(orderStatus || "unknown");
+}
 
 async function getOrder(orderId, accountRows) {
   let lastError = new Error(`Pedido ${orderId} não encontrado.`);

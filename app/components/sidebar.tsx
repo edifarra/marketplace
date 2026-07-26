@@ -9,6 +9,7 @@ const configLinks = [
   ["Sku", "/configuracoes/sku"],
   ["MarketPlace", "/configuracoes/marketplace"],
   ["Categorias Marketplace", "/configuracoes/categorias-marketplace"],
+  ["Status de Vendas", "/configuracoes/status-vendas"],
   ["Tiny", "/configuracoes/tiny"],
   ["GoogleDrive", "/configuracoes/google-drive"],
   ["Cloudinary", "/configuracoes/cloudinary"],

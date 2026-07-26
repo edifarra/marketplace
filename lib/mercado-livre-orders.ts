@@ -42,6 +42,8 @@ export async function processMercadoLivreOrder(
     externalOrderId: String(order.id || orderId),
     externalListingId: order.order_items?.[0]?.item?.id,
     status: String(statusOverride || currentShippingStatus || order.status || "unknown"),
+    mappingStatus: String(shipment.status || order.status || "unknown"),
+    mappingSubstatus: String(shipment.substatus || ""),
     items: (order.order_items || []).map((item: Record<string, any>) => ({
       sku: String(item.item?.seller_sku || item.item?.seller_custom_field || item.seller_sku || ""),
       title: String(item.item?.title || ""),

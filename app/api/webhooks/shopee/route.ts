@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
       externalOrderId: String(order.ordersn || order.order_sn || ""),
       externalListingId: order.item_id || order.items?.[0]?.item_id,
       status: String(order.order_status || order.status || "unknown"),
+      mappingStatus: String(order.order_status || order.status || "unknown"),
+      mappingSubstatus: String(order.order_substatus || order.substatus || ""),
       items: (order.items || order.item_list || []).map((item: Record<string, any>) => ({
         sku: String(item.model_sku || item.item_sku || item.sku || ""), quantity: Number(item.model_quantity_purchased || item.quantity_purchased || 1),
         unitPrice: Number(item.model_discounted_price || item.discounted_price || 0)

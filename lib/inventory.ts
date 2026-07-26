@@ -10,6 +10,8 @@ export type MarketplaceSaleInput = {
   externalOrderId?: string;
   externalListingId?: string;
   status?: string;
+  mappingStatus?: string;
+  mappingSubstatus?: string;
   items?: Array<{ sku: string; title?: string; quantity: number; unitPrice?: number; totalPrice?: number }>;
   sku?: string;
   quantity?: number;
@@ -60,9 +62,11 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     if (items.length === 0) throw new Error("Nenhum item com SKU encontrado no evento.");
 
     const status = String(input.status || "unknown");
-    const statusResult = await supabase.from("status_venda")
-      .select("id,reserves_stock,final_status")
-      .eq("marketplace", input.marketplace).eq("external_status", status).maybeSingle();
+    const statusResult = await resolveSaleStatus(
+      input.marketplace,
+      String(input.mappingStatus || status),
+      String(input.mappingSubstatus || "")
+    );
 
     const previousSale = await supabase.from("venda")
       .select("id,status_venda(reserves_stock)")
@@ -111,6 +115,55 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     await history(activityId, "processing", "error", { error: message });
     throw error;
   }
+}
+
+const STATUS_SEPARATOR = "::";
+
+async function resolveSaleStatus(marketplace: Marketplace, externalStatus: string, externalSubstatus: string) {
+  const supabase = supabaseAdmin();
+  const status = externalStatus.trim() || "unknown";
+  const substatus = externalSubstatus.trim();
+  const compoundStatus = substatus ? `${status}${STATUS_SEPARATOR}${substatus}` : status;
+
+  const exact = await supabase.from("status_venda")
+    .select("id,reserves_stock,final_status")
+    .eq("marketplace", marketplace).eq("external_status", compoundStatus).maybeSingle().throwOnError();
+  if (exact.data || !substatus) return exact;
+
+  const fallback = await supabase.from("status_venda")
+    .select("internal_status,description,reserves_stock,final_status")
+    .eq("marketplace", marketplace).eq("external_status", status).maybeSingle().throwOnError();
+  const inferred = inferDefaultStatusMapping(status, substatus);
+  const inserted = await supabase.from("status_venda").insert({
+    marketplace,
+    external_status: compoundStatus,
+    internal_status: inferred.internalStatus || fallback.data?.internal_status || status.toLowerCase(),
+    description: inferred.description || fallback.data?.description || `${status} / ${substatus}`,
+    reserves_stock: inferred.reservesStock ?? fallback.data?.reserves_stock ?? false,
+    final_status: inferred.finalStatus ?? fallback.data?.final_status ?? false
+  }).select("id,reserves_stock,final_status").single();
+  if (inserted.error && /duplicate|unique/i.test(inserted.error.message)) {
+    return supabase.from("status_venda")
+      .select("id,reserves_stock,final_status")
+      .eq("marketplace", marketplace).eq("external_status", compoundStatus).single().throwOnError();
+  }
+  if (inserted.error) throw inserted.error;
+  return inserted;
+}
+
+function inferDefaultStatusMapping(status: string, substatus: string) {
+  const normalizedStatus = status.toLowerCase();
+  const normalizedSubstatus = substatus.toLowerCase();
+  if (["out_for_delivery", "first_visit"].includes(normalizedSubstatus)) {
+    return { internalStatus: "saiu_para_entrega", description: "Saiu para entrega", reservesStock: false, finalStatus: false };
+  }
+  if (["dropped_off", "picked_up", "in_hub", "in_packing_list"].includes(normalizedSubstatus) || normalizedStatus === "shipped") {
+    return { internalStatus: "a_caminho", description: "A caminho", reservesStock: false, finalStatus: false };
+  }
+  if (normalizedStatus === "ready_to_ship" || normalizedStatus === "handling") {
+    return { internalStatus: "pronta_para_envio", description: "Pronta para envio", reservesStock: false, finalStatus: false };
+  }
+  return { internalStatus: "", description: "", reservesStock: undefined, finalStatus: undefined };
 }
 
 async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: string, price = 0, title = "") {

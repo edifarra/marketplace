@@ -74,6 +74,9 @@ export default async function SaleStatusMappingsPage({ searchParams }: Props) {
               <td>
                 <label><input form={formId} type="checkbox" name="reserves_stock" defaultChecked={row.reserves_stock} /> Reserva estoque</label>
                 <label><input form={formId} type="checkbox" name="final_status" defaultChecked={row.final_status} /> Status final</label>
+                {externalSubstatus === "—" && <label title="Replica esta configuração para todas as combinações deste status">
+                  <input form={formId} type="checkbox" name="apply_to_substatuses" defaultChecked /> Aplicar aos substatus
+                </label>}
               </td>
               <td>
                 <form id={formId} action={saveSaleStatusMapping}>

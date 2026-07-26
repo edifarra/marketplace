@@ -6,6 +6,8 @@ import {
   getValidMercadoLivreAccessToken
 } from "@/lib/mercado-livre";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getActiveShopeeAccounts, getValidShopeeAccessToken } from "@/lib/shopee";
+import { createShopeeClient, getShopeeOAuthConfig } from "@/lib/shopee-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       .single()
       .throwOnError();
 
+    if (sale.marketplace === "shopee") {
+      return shopeeLabel(sale);
+    }
     if (sale.marketplace !== "mercado_livre") {
       return NextResponse.json({ error: "Etiqueta ainda não disponível para este marketplace." }, { status: 400 });
     }
@@ -66,6 +71,73 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       error: error instanceof Error ? error.message : "Não foi possível obter a etiqueta."
     }, { status: 500 });
   }
+}
+
+async function shopeeLabel(sale: Record<string, any>) {
+  if (String(sale.status_original || "").toUpperCase() !== "READY_TO_SHIP") {
+    return NextResponse.json({ error: "A Shopee ainda não liberou este pedido para envio." }, { status: 409 });
+  }
+  if (!sale.shipment_id) {
+    return NextResponse.json({ error: "Pedido Shopee sem número de pacote." }, { status: 400 });
+  }
+
+  const raw = (sale.raw_data || {}) as Record<string, any>;
+  const accountId = String(raw.marketplace_account_id || "");
+  const accounts = await getActiveShopeeAccounts();
+  const account = accounts.find((item) => item.id === accountId)
+    || (accounts.length === 1 ? accounts[0] : null);
+  if (!account) throw new Error("Conta Shopee da venda não encontrada.");
+  const shopId = account.shop_id || account.account_id;
+  if (!shopId) throw new Error("Shop ID da Shopee não configurado.");
+
+  const accessToken = await getValidShopeeAccessToken(account);
+  const client = createShopeeClient(await getShopeeOAuthConfig(account.id));
+  try {
+    await client.createShippingDocument(accessToken, shopId, String(sale.order_id), String(sale.shipment_id));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isShopeeLabelPendingError(message)) return labelPendingPage(String(sale.order_id), "aguardando liberação pela Shopee");
+    if (!/already|exist|created|process/i.test(message)) throw error;
+  }
+  let result: Record<string, unknown>;
+  try {
+    result = await client.getShippingDocumentResult(
+      accessToken, shopId, String(sale.order_id), String(sale.shipment_id)
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isShopeeLabelPendingError(message)) return labelPendingPage(String(sale.order_id), "em processamento pela Shopee");
+    throw error;
+  }
+  const response = (result.response || {}) as Record<string, any>;
+  const documentResult = Array.isArray(response.result_list) ? response.result_list[0] || {} : response;
+  const status = String(documentResult.status || documentResult.shipping_document_status || "");
+  if (status && !/ready|success/i.test(status)) {
+    return labelPendingPage(String(sale.order_id), status);
+  }
+  const document = await client.downloadShippingDocument(
+    accessToken, shopId, String(sale.order_id), String(sale.shipment_id)
+  );
+  return new NextResponse(document.body, {
+    status: 200,
+    headers: {
+      "content-type": document.contentType,
+      "content-disposition": `inline; filename="etiqueta-shopee-${sale.order_id}.pdf"`,
+      "cache-control": "private, no-store"
+    }
+  });
+}
+
+function isShopeeLabelPendingError(message: string) {
+  return /can_not_print|not yet ready|should_print|should print first|processing/i.test(message);
+}
+
+function labelPendingPage(orderId: string, status: string) {
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Etiqueta Shopee em processamento</title></head>
+  <body style="font-family:Arial,sans-serif;padding:40px"><h1>Etiqueta em processamento</h1>
+  <p>Pedido ${orderId}</p><p>A Shopee informou o estado ${status}. Aguarde alguns instantes e clique novamente em Imprimir etiqueta.</p>
+  <a href="/vendas">Voltar para Vendas</a></body></html>`;
+  return new NextResponse(html, { status: 409, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" } });
 }
 
 function labelUnavailablePage(orderId: string, status: string, substatus: string) {

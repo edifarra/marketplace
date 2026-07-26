@@ -177,6 +177,48 @@ export class ShopeeClient {
     });
   }
 
+  async createShippingDocument(accessToken: string, shopId: string | number, orderSn: string, packageNumber: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/create_shipping_document", {
+      accessToken,
+      shopId,
+      method: "POST",
+      body: {
+        order_list: [{
+          order_sn: orderSn,
+          package_number: packageNumber,
+          shipping_document_type: "NORMAL_AIR_WAYBILL"
+        }]
+      }
+    });
+  }
+
+  async getShippingDocumentResult(accessToken: string, shopId: string | number, orderSn: string, packageNumber: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/get_shipping_document_result", {
+      accessToken,
+      shopId,
+      method: "POST",
+      body: {
+        order_list: [{
+          order_sn: orderSn,
+          package_number: packageNumber,
+          shipping_document_type: "NORMAL_AIR_WAYBILL"
+        }]
+      }
+    });
+  }
+
+  async downloadShippingDocument(accessToken: string, shopId: string | number, orderSn: string, packageNumber: string) {
+    return this.signedBinaryRequest("/api/v2/logistics/download_shipping_document", {
+      accessToken,
+      shopId,
+      method: "POST",
+      body: {
+        order_list: [{ order_sn: orderSn, package_number: packageNumber }],
+        shipping_document_type: "NORMAL_AIR_WAYBILL"
+      }
+    });
+  }
+
   private async signedRequest<T>(path: string, options: ShopeeRequestOptions = {}): Promise<T> {
     const timestamp = currentTimestamp();
     const params = new URLSearchParams({
@@ -208,6 +250,30 @@ export class ShopeeClient {
     }
 
     return json as T;
+  }
+
+  private async signedBinaryRequest(path: string, options: ShopeeRequestOptions = {}) {
+    const timestamp = currentTimestamp();
+    const params = new URLSearchParams({
+      partner_id: this.partnerId,
+      timestamp: String(timestamp),
+      sign: this.sign(path, timestamp, options.accessToken, options.shopId)
+    });
+    if (options.accessToken) params.set("access_token", options.accessToken);
+    if (options.shopId) params.set("shop_id", String(options.shopId));
+    const response = await fetch(`${this.baseUrl}${path}?${params.toString()}`, {
+      method: options.method || "GET",
+      headers: { "content-type": "application/json" },
+      body: options.method === "POST" ? JSON.stringify(options.body || {}) : undefined,
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      throw new Error(`Falha Shopee ${path}: ${await response.text()}`);
+    }
+    return {
+      body: await response.arrayBuffer(),
+      contentType: response.headers.get("content-type") || "application/pdf"
+    };
   }
 
   private sign(path: string, timestamp: number, accessToken?: string | null, shopId?: string | number | null) {

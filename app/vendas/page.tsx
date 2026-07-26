@@ -23,7 +23,12 @@ export default async function SalesPage() {
   const productTitles = new Map((products || []).map((product) => [normalizeSku(product.sku), String(product.title || "")]));
   const itemMap = new Map<string, Array<Record<string, unknown>>>();
   for (const item of items || []) itemMap.set(String(item.venda_id), [...(itemMap.get(String(item.venda_id)) || []), item]);
-  const rows = ((sales || []) as unknown as Sale[]).map((sale): SaleGridRow => {
+  const sortedSales = ((sales || []) as unknown as Sale[]).sort((left, right) => {
+    const priority = Number(isReadyToShip(right)) - Number(isReadyToShip(left));
+    if (priority !== 0) return priority;
+    return saleTimestamp(right) - saleTimestamp(left);
+  });
+  const rows = sortedSales.map((sale): SaleGridRow => {
     const raw = sale.raw_data || {};
     const account = resolveAccount(sale, raw, accounts || []);
     const saleItems = itemMap.get(sale.id) || [];
@@ -40,7 +45,7 @@ export default async function SalesPage() {
       value: money(sale.valor_produtos),
       status: sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original),
       flex: isFlexShipping(shipping),
-      canPrintLabel: canPrintMarketplaceLabel(sale.marketplace, shipping),
+      canPrintLabel: canPrintMarketplaceLabel(sale, shipping),
       details: [
         { label: "Pedido", value: sale.order_id },
         { label: "Status recebido", value: sale.status_original || "Não informado" },
@@ -104,9 +109,19 @@ function isFlexShipping(shipping: Record<string, any>) {
     || shipping.shipping_mode === "flex"
     || shipping.tags?.includes?.("flex");
 }
-function canPrintMarketplaceLabel(marketplace: string, shipping: Record<string, any>) {
-  return marketplace === "mercado_livre"
-    && shipping.status === "ready_to_ship";
+function canPrintMarketplaceLabel(sale: Sale, shipping: Record<string, any>) {
+  if (sale.marketplace === "mercado_livre") return shipping.status === "ready_to_ship";
+  return sale.marketplace === "shopee" && isReadyToShip(sale) && Boolean(sale.shipment_id);
+}
+function isReadyToShip(sale: Sale) {
+  if (sale.status_venda?.description) {
+    return sale.status_venda.description.trim().toLocaleLowerCase("pt-BR") === "pronta para envio";
+  }
+  return /^(ready_to_ship|confirmed|handling)$/i.test(String(sale.status_original || ""));
+}
+function saleTimestamp(sale: Sale) {
+  const value = new Date(sale.data_venda || sale.created_at).getTime();
+  return Number.isFinite(value) ? value : 0;
 }
 function extractShippingHistory(raw: Record<string, unknown>) {
   const payload = (raw.payload || raw) as Record<string, any>;

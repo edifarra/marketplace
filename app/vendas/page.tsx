@@ -158,7 +158,7 @@ function statusLabel(value: string | null | undefined) {
     payment_in_process: "Pagamento em processamento", unpaid: "Aguardando pagamento",
     cancelled: "Cancelada", refunded: "Reembolsada", to_return: "Devolução solicitada",
     criada: "Criada", nao_paga: "Aguardando pagamento", pagamento_em_processamento: "Pagamento em processamento",
-    paga: "Paga", enviada: "Enviada", concluida: "Concluída", cancelada: "Cancelada",
+    paga: "Paga", pronta_para_envio: "Pronta para envio", enviada: "Enviada", concluida: "Concluída", cancelada: "Cancelada",
     devolucao_solicitada: "Devolução solicitada", cancelamento_solicitado: "Cancelamento solicitado"
   };
   return labels[normalized] || String(value || "Não informado").replaceAll("_", " ");

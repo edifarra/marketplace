@@ -16,7 +16,22 @@ export async function processMercadoLivreOrder(
         getMercadoLivreShipmentHistory(shipmentId, account)
       ])
     : [{}, []];
-  const updated = String(order.date_last_updated || order.date_created || notification.sent || "");
+  // Mudancas de transporte nem sempre alteram date_last_updated do pedido.
+  // A identidade da reconciliacao precisa acompanhar tambem a entrega para
+  // que um novo status nao seja descartado como evento duplicado.
+  const updated = String(
+    shipment.last_updated
+    || shipment.status_history?.date_shipped
+    || order.date_last_updated
+    || notification.sent
+    || order.date_created
+    || ""
+  );
+  const eventVersion = [
+    updated,
+    String(shipment.status || ""),
+    String(shipment.substatus || "")
+  ].join(":");
   const currentShippingStatus = shipment.substatus === "out_for_delivery"
     ? "out_for_delivery"
     : String(shipment.status || "");
@@ -24,7 +39,7 @@ export async function processMercadoLivreOrder(
   const shippingCost = (order.payments || []).reduce((total: number, payment: Record<string, any>) => total + Number(payment.shipping_cost || 0), 0);
   return registerMarketplaceSale({
     marketplace: "mercado_livre",
-    externalEventId: String(notification._id || `orders_v2:${order.id || orderId}:${updated}`),
+    externalEventId: String(notification._id || `orders_v2:${order.id || orderId}:${eventVersion}`),
     eventType: String(notification.topic || "orders_v2"),
     externalOrderId: String(order.id || orderId),
     externalListingId: order.order_items?.[0]?.item?.id,

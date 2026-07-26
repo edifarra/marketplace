@@ -152,7 +152,7 @@ function dateTime(value: string) { return new Date(value).toLocaleString("pt-BR"
 function statusLabel(value: string | null | undefined) {
   const normalized = String(value || "unknown").toLowerCase();
   const labels: Record<string, string> = {
-    confirmed: "A enviar", ready_to_ship: "A enviar", handling: "A enviar", shipped: "Enviado",
+    confirmed: "A enviar", ready_to_ship: "A enviar", handling: "A enviar", shipped: "A caminho",
     shipped_to_return: "Enviado", in_transit: "A caminho", out_for_delivery: "Saiu para entrega",
     delivered: "Entregue", completed: "Concluída", paid: "Pago", payment_required: "Aguardando pagamento",
     payment_in_process: "Pagamento em processamento", unpaid: "Aguardando pagamento",

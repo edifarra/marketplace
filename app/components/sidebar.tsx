@@ -1,4 +1,5 @@
 import { logoutAction } from "../login/actions";
+import { getCurrentUser } from "@/lib/auth";
 
 const configLinks = [
   ["Tipo", "/configuracoes/tipo"],
@@ -14,12 +15,14 @@ const configLinks = [
   ["ConfigGeral", "/configuracoes/config-geral"]
 ];
 
-export function Sidebar() {
+export async function Sidebar() {
+  const user = await getCurrentUser();
   return (
     <aside className="sidebar">
       <div className="brand">Estoque ML/Shopee</div>
       <nav className="nav">
         <a href="/">Painel</a>
+        <a href="/vendas">Vendas</a>
         <a href="/produtos">Produtos e anuncios</a>
         <a href="/estoque">Migracao e Estoque</a>
         <a href="/fotos">Fotos</a>
@@ -33,9 +36,11 @@ export function Sidebar() {
                 {label}
               </a>
             ))}
+            {user?.isMaster && <a href="/configuracoes/usuarios">Usuarios</a>}
           </div>
         </details>
         <a href="/integracoes">Integracoes</a>
+        {user && <div className="nav-user">Usuario: {user.name}</div>}
         <form action={logoutAction}>
           <button className="nav-logout" type="submit">Sair</button>
         </form>

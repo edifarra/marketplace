@@ -194,7 +194,7 @@ function ConfigurationTable({
           <thead>
             <tr>
               {definition.listFields.map((field) => (
-                <th key={field}>{labelize(field)}</th>
+                <th key={field}>{definition.fields.find((item) => item.name === field)?.label || labelize(field)}</th>
               ))}
               <th>Acoes</th>
             </tr>

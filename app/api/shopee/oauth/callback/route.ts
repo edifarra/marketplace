@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
     const targetAccountId = existingAccountId || accountId || await createAccountFromCallback(shopId);
     const expiresIn = Number(token.expire_in || 0);
     const shopProfile = extractShopProfile(shopInfo);
+    const savedProfile = await getSavedAccountProfile(targetAccountId);
 
     await supabase
       .from("config_marketplace_accounts")
@@ -65,9 +66,9 @@ export async function GET(request: NextRequest) {
         refresh_token: token.refresh_token || null,
         token_expires_at: expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
         token_type: "Bearer",
-        name: shopProfile.name || `Shopee ${shopId}`,
+        name: savedProfile.name || shopProfile.name || `Shopee ${shopId}`,
         nickname: shopProfile.name,
-        email: shopProfile.email,
+        email: shopProfile.email || savedProfile.email || null,
         raw_data: { token, shopInfo },
         status: "active",
         api_base_url: config.baseUrl,
@@ -131,6 +132,20 @@ async function createAccountFromCallback(shopId: string) {
     .throwOnError();
 
   return String(data.id);
+}
+
+async function getSavedAccountProfile(accountId: string) {
+  const { data } = await supabaseAdmin()
+    .from("config_marketplace_accounts")
+    .select("name,email")
+    .eq("id", accountId)
+    .maybeSingle()
+    .throwOnError();
+
+  return {
+    name: String(data?.name || "").trim(),
+    email: String(data?.email || "").trim()
+  };
 }
 
 function extractShopProfile(shopInfo: Record<string, unknown>) {

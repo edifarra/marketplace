@@ -1,15 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import { Sidebar } from "@/app/components/sidebar";
 import { sendProductDetailAction } from "../actions";
 import { IntegrationDeleteButton } from "./integration-delete-button";
+import { buildProductDescription } from "@/lib/dynamic-product-description";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = supabaseAdmin();
 
 type ProductDetail = {
   id: string;
@@ -22,7 +20,6 @@ type ProductDetail = {
   version: string | null;
   board_code: string | null;
   title: string;
-  description: string;
   price: number;
   stock: number;
   status: string;
@@ -97,6 +94,10 @@ export default async function ProductDetailPage({
       ? supabase.from("config_specials").select("*").eq("code", typed.special_code).maybeSingle()
       : Promise.resolve({ data: null })
   ]);
+  const description = removeSpecialFragments(
+    buildProductDescription(typed, type, brand, special),
+    String(special?.remove_description || "")
+  );
 
   return (
     <main className="shell">
@@ -149,7 +150,7 @@ export default async function ProductDetailPage({
 
         <section className="section card">
           <h2>Descricao</h2>
-          <div className="product-description">{typed.description}</div>
+          <div className="product-description">{description}</div>
         </section>
 
         <section className="section card">
@@ -243,7 +244,10 @@ async function getProduct(id: string) {
         status,
         stock,
         price,
-        error_message
+        error_message,
+        last_sync_at,
+        marketplace_name,
+        marketplace_account_id
       )
     `)
     .eq("id", id)
@@ -271,7 +275,10 @@ async function getProduct(id: string) {
         status,
         stock,
         price,
-        error_message
+        error_message,
+        last_sync_at,
+        marketplace_name,
+        marketplace_account_id
       )
     `)
     .eq("id", id)
@@ -287,9 +294,28 @@ async function attachMarketplaceLinks(product: Record<string, unknown> | null, p
     .select("id,marketplace,marketplace_product_id,marketplace_account_id,sku,status_anuncio,valor_marketplace,estoque_marketplace,updated_at,raw_data,config_marketplace_accounts(name)")
     .eq("product_id", productId)
     .eq("existe_no_marketplace", true);
-  const current = (product.listings || []) as ProductDetail["listings"];
+  const original = (product.listings || []) as ProductDetail["listings"];
+  const byExternalId = new Map<string, ProductDetail["listings"][number]>();
+  for (const listing of original) {
+    const key = `${listing.marketplace}:${listing.external_listing_id || listing.id}`;
+    const saved = byExternalId.get(key);
+    if (!saved || (!saved.marketplace_account_id && listing.marketplace_account_id)) {
+      byExternalId.set(key, listing);
+    }
+  }
+  const current = [...byExternalId.values()];
   for (const link of data || []) {
-    if (current.some((item) => item.marketplace === link.marketplace && item.external_listing_id === link.marketplace_product_id)) continue;
+    const existing = current.find((item) => item.marketplace === link.marketplace && item.external_listing_id === link.marketplace_product_id);
+    if (existing) {
+      existing.status = String(link.status_anuncio || existing.status || "");
+      existing.stock = Number(link.estoque_marketplace || 0);
+      existing.price = Number(link.valor_marketplace || existing.price || 0);
+      existing.last_sync_at = link.updated_at ? String(link.updated_at) : existing.last_sync_at;
+      existing.marketplace_name = String((link.config_marketplace_accounts as { name?: string } | null)?.name || existing.marketplace_name || "");
+      existing.marketplace_account_id = String(link.marketplace_account_id || existing.marketplace_account_id || "");
+      existing.external_url = String((link.raw_data as { permalink?: string } | null)?.permalink || mercadoLivreUrl(String(link.marketplace_product_id)));
+      continue;
+    }
     current.push({
       id: String(link.id),
       marketplace: String(link.marketplace),
@@ -415,3 +441,18 @@ function formatProductStatus(status: string) {
 
   return labels[status] || status;
 }
+
+function removeSpecialFragments(description: string, configuredRemovals: string) {
+  const result = configuredRemovals
+    .split(";")
+    .map((text) => text.replace(/^\s*(?:<br\s*\/?>\s*)+/i, "").replace(/(?:\s*<br\s*\/?>)+\s*$/i, ""))
+    .map((text) => text.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .reduce((current, text) => {
+      const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return current.replace(new RegExp(escaped, "gi"), "");
+    }, description);
+
+  return result.replace(/(?:<br\s*\/?>\s*){2,}/gi, "<br>").trim();
+}
+

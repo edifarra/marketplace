@@ -114,21 +114,6 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
     sku: skuInfo.sku
   });
 
-  let description = applyTemplate(typeConfig.descriptionTemplate, {
-    nome_produto_completo: title,
-    tipo: typeConfig.description,
-    marca: brandConfig.name,
-    modelo: input.model,
-    versao: input.version,
-    codigo: input.boardCode,
-    especial: specialConfig?.includeDescription || "",
-    sku: skuInfo.sku
-  });
-
-  if (specialConfig?.removeDescription) {
-    description = description.replace(specialConfig.removeDescription, "").trim();
-  }
-
   const sourceKey = buildManualSourceKey(input, skuInfo.sku);
 
   const productResult = await supabase
@@ -143,7 +128,6 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
       version: input.version || null,
       board_code: input.boardCode || null,
       title,
-      description,
       price: input.price,
       stock: input.stock,
       status: "draft"

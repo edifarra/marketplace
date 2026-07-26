@@ -9,16 +9,18 @@ import {
   getActiveShopeeAccounts,
   listShopeeInventory
 } from "./shopee";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "./supabase-admin";
+import { findTinyProductBySku } from "./tiny";
 
 export type MigrationStockView = "marketplace-only" | "system-only" | "missing-marketplace" | "stock-divergent";
 export type MigrationStockStatus = "all" | "active" | "paused";
+export type MigrationStockFilter = "all" | "without-stock" | "with-stock";
 
 type SystemProduct = {
   id: string;
   sku: string;
   title: string;
-  description: string;
   price: number;
   stock: number;
   status: string;
@@ -46,6 +48,7 @@ export type MarketplaceLink = {
   estoque_marketplace: number;
   status_anuncio: string;
   existe_no_marketplace: boolean;
+  marketplace_account_name?: string;
 };
 
 export type MigrationStockRow = {
@@ -73,7 +76,8 @@ export type MigrationStockData = {
 
 export async function getMigrationStockData(
   view: MigrationStockView = "marketplace-only",
-  status: MigrationStockStatus = "all"
+  status: MigrationStockStatus = "all",
+  stock: MigrationStockFilter = "all"
 ): Promise<MigrationStockData> {
   const errors: string[] = [];
   const [productsResult, accountsResult] = await Promise.all([
@@ -87,7 +91,7 @@ export async function getMigrationStockData(
     : { data: [] as MarketplaceLink[], errors: [] as string[] };
   const links = linksResult.data;
   const context = buildContext(products, links, accounts);
-  const filteredContext = filterContextByStatus(context, status);
+  const filteredContext = filterContextByStock(filterContextByStatus(context, status), stock);
 
   return {
     accounts,
@@ -109,7 +113,7 @@ export async function linkMarketplaceSkuToProduct(sourceSku: string, targetSku: 
 
   const supabase = supabaseAdmin();
   const [product, links] = await Promise.all([
-    supabase.from("products").select("id,sku,title").eq("sku", normalizedTarget).maybeSingle().throwOnError(),
+    supabase.from("products").select("id,sku,title").ilike("sku", normalizedTarget).maybeSingle().throwOnError(),
     getMarketplaceLinksBySku(normalizedSource)
   ]);
   if (!product.data?.id) throw new Error(`Produto com SKU ${normalizedTarget} nao encontrado no sistema.`);
@@ -117,7 +121,7 @@ export async function linkMarketplaceSkuToProduct(sourceSku: string, targetSku: 
 
   await supabase.from("product_marketplaces")
     .update({ product_id: product.data.id, updated_at: new Date().toISOString() })
-    .eq("sku", normalizedSource)
+    .ilike("sku", normalizedSource)
     .eq("existe_no_marketplace", true)
     .throwOnError();
   await syncListingsFromMarketplaceRows(normalizedSource, product.data.id);
@@ -136,7 +140,7 @@ export async function importMarketplaceSku(sku: string) {
     throw new Error("SKU nao encontrado nas integracoes.");
   }
 
-  const existing = await supabase.from("products").select("id").eq("sku", normalizedSku).maybeSingle().throwOnError();
+  const existing = await supabase.from("products").select("id").ilike("sku", normalizedSku).maybeSingle().throwOnError();
   if (existing.data?.id) {
     await linkMarketplaceRowsToProduct(normalizedSku, existing.data.id);
     await syncListingsFromMarketplaceRows(normalizedSku, existing.data.id);
@@ -146,18 +150,46 @@ export async function importMarketplaceSku(sku: string) {
   const typeCode = await inferTypeCode(normalizedSku);
   const brandCode = await getFirstBrandCode();
   const first = links[0];
+  const tinyProduct = await findTinyProductBySku(normalizedSku);
+  if (tinyProduct) {
+    const existingTiny = await supabase
+      .from("products")
+      .select("id,sku")
+      .or(`tiny_product_id.eq.${tinyProduct.id},source_key.eq.TINY_${tinyProduct.id}`)
+      .maybeSingle()
+      .throwOnError();
+
+    if (existingTiny.data?.id) {
+      await supabase.from("products").update({
+        tiny_product_id: tinyProduct.id,
+        sent_target: "TINY",
+        status: "sent",
+        updated_at: new Date().toISOString()
+      }).eq("id", existingTiny.data.id).throwOnError();
+      await linkMarketplaceRowsToProduct(normalizedSku, existingTiny.data.id);
+      await syncListingsFromMarketplaceRows(normalizedSku, existingTiny.data.id);
+      await logMigration(normalizedSku, "reconciliar_tiny", "sucesso", `Produto do Tiny vinculado aos anuncios do marketplace.`, {
+        productId: existingTiny.data.id,
+        tinyProductId: tinyProduct.id,
+        existingSku: existingTiny.data.sku
+      });
+      return;
+    }
+  }
   const product = await supabase
     .from("products")
     .insert({
-      sku: normalizedSku,
-      source_key: `marketplace_${normalizedSku}`,
+      sku: tinyProduct?.sku || normalizedSku,
+      source_key: tinyProduct ? `TINY_${tinyProduct.id}` : `marketplace_${normalizedSku}`,
       type_code: typeCode,
       brand_code: brandCode,
-      title: first.titulo_marketplace || normalizedSku,
-      description: first.titulo_marketplace || normalizedSku,
-      price: first.valor_marketplace || 0,
+      title: tinyProduct?.title || first.titulo_marketplace || normalizedSku,
+      price: tinyProduct?.price || first.valor_marketplace || 0,
       stock: maxStock(links),
-      status: "active"
+      status: tinyProduct ? "sent" : "active",
+      tiny_product_id: tinyProduct?.id || null,
+      sent_target: tinyProduct ? "TINY" : null,
+      sent_at: tinyProduct ? new Date().toISOString() : null
     })
     .select("id")
     .single()
@@ -174,7 +206,7 @@ export async function sendSystemProductToMissingMarketplaces(sku: string) {
 
 export async function deleteSystemProductOnly(sku: string) {
   const supabase = supabaseAdmin();
-  const product = await supabase.from("products").select("id").eq("sku", normalizeSku(sku)).single().throwOnError();
+  const product = await supabase.from("products").select("id").ilike("sku", normalizeSku(sku)).single().throwOnError();
   await supabase.from("products").delete().eq("id", product.data.id).throwOnError();
   await logMigration(sku, "excluir_produto_sistema", "sucesso", "Produto excluido do sistema.", {});
 }
@@ -198,9 +230,11 @@ export async function removeMarketplaceListingsForSku(sku: string) {
 export async function updateDivergentStockByLowest(sku: string) {
   const normalizedSku = normalizeSku(sku);
   const supabase = supabaseAdmin();
-  const product = await supabase.from("products").select("id,stock").eq("sku", normalizedSku).single().throwOnError();
+  const product = await supabase.from("products").select("id,stock").ilike("sku", normalizedSku).single().throwOnError();
+  const inventory = await supabase.from("estoque").select("estoque_fisico,estoque_disponivel").eq("product_id", product.data.id).maybeSingle().throwOnError();
   const links = await getMarketplaceLinksBySku(normalizedSku);
-  const stocks = [Number(product.data.stock || 0), ...links.map((link) => effectiveMarketplaceStock(link))];
+  const systemStock = Number(inventory.data?.estoque_disponivel ?? inventory.data?.estoque_fisico ?? product.data.stock ?? 0);
+  const stocks = [systemStock, ...links.map((link) => effectiveMarketplaceStock(link))];
   const lowest = Math.min(...stocks);
 
   await supabase
@@ -208,6 +242,13 @@ export async function updateDivergentStockByLowest(sku: string) {
     .update({ stock: lowest, status: lowest <= 0 ? "paused" : "active", updated_at: new Date().toISOString() })
     .eq("id", product.data.id)
     .throwOnError();
+  await supabase.from("estoque").upsert({
+    product_id: product.data.id,
+    sku: normalizedSku,
+    estoque_fisico: lowest,
+    estoque_disponivel: lowest,
+    updated_at: new Date().toISOString()
+  }, { onConflict: "product_id" }).throwOnError();
 
   for (const link of links) {
     try {
@@ -343,10 +384,14 @@ export async function upsertMarketplaceItem(item: {
   stock: number;
   status: string;
   rawData: Record<string, unknown>;
+  syncRunId?: string;
 }) {
   const supabase = supabaseAdmin();
   const sku = normalizeSku(item.sku);
-  const product = await supabase.from("products").select("id").eq("sku", sku).maybeSingle().throwOnError();
+  const [product, account] = await Promise.all([
+    supabase.from("products").select("id").ilike("sku", sku).maybeSingle().throwOnError(),
+    supabase.from("config_marketplace_accounts").select("name").eq("id", item.accountId).maybeSingle().throwOnError()
+  ]);
 
   await supabase.from("product_marketplaces").upsert({
     product_id: product.data?.id || null,
@@ -360,8 +405,26 @@ export async function upsertMarketplaceItem(item: {
     status_anuncio: item.status,
     existe_no_marketplace: true,
     raw_data: item.rawData,
+    last_seen_run_id: item.syncRunId || null,
     updated_at: new Date().toISOString()
   }, { onConflict: "marketplace_account_id,marketplace_product_id" }).throwOnError();
+
+  if (product.data?.id) {
+    const listing = {
+      product_id: product.data.id,
+      marketplace: item.marketplace,
+      marketplace_account_id: item.accountId,
+      marketplace_name: String(account.data?.name || item.accountId),
+      external_listing_id: item.listingId,
+      external_sku: sku,
+      status: item.status === "active" ? "active" : "paused",
+      stock: item.stock,
+      price: item.price,
+      last_sync_at: new Date().toISOString(),
+      error_message: null
+    };
+    await upsertListingRow(listing);
+  }
 }
 
 async function relinkMarketplaceProducts() {
@@ -379,8 +442,14 @@ async function relinkMarketplaceProducts() {
 
 function buildContext(products: SystemProduct[], links: MarketplaceLink[], accounts: MarketplaceAccount[]) {
   const productBySku = new Map(products.map((product) => [normalizeSku(product.sku), product]));
+  const productById = new Map(products.map((product) => [product.id, product]));
   const linksBySku = groupLinksBySku(links);
+  const linksByProductId = groupLinksByProductId(links);
   const allAccountIds = accounts.map((account) => account.id);
+  const accountNames = new Map(accounts.map((account) => [account.id, account.name]));
+  for (const link of links) {
+    link.marketplace_account_name = accountNames.get(link.marketplace_account_id) || "";
+  }
 
   const marketplaceOnly: MigrationStockRow[] = [];
   const systemOnly: MigrationStockRow[] = [];
@@ -388,15 +457,16 @@ function buildContext(products: SystemProduct[], links: MarketplaceLink[], accou
   const stockDivergent: MigrationStockRow[] = [];
 
   for (const [sku, skuLinks] of linksBySku.entries()) {
-    const product = productBySku.get(sku);
-    if (!product) {
+    const product = productBySku.get(sku)
+      || skuLinks.map((link) => link.product_id ? productById.get(link.product_id) : undefined).find(Boolean);
+    if (!product && !skuLinks.some((link) => Boolean(link.product_id))) {
       marketplaceOnly.push(toRow(sku, undefined, skuLinks));
     }
   }
 
   for (const product of products) {
     const sku = normalizeSku(product.sku);
-    const skuLinks = linksBySku.get(sku) || [];
+    const skuLinks = mergeMarketplaceLinks(linksBySku.get(sku) || [], linksByProductId.get(product.id) || []);
     const linkedAccountIds = new Set(skuLinks.map((link) => link.marketplace_account_id));
 
     if (skuLinks.length === 0) {
@@ -432,6 +502,20 @@ function filterContextByStatus(context: ReturnType<typeof buildContext>, status:
   };
 }
 
+function filterContextByStock(context: ReturnType<typeof buildContext>, stock: MigrationStockFilter) {
+  if (stock === "all") return context;
+  const matches = (row: MigrationStockRow) => {
+    const quantity = row.systemStock ?? Math.max(0, ...row.marketplaces.map(effectiveMarketplaceStock));
+    return stock === "without-stock" ? quantity === 0 : quantity > 0;
+  };
+  return {
+    marketplaceOnly: context.marketplaceOnly.filter(matches),
+    systemOnly: context.systemOnly.filter(matches),
+    missingMarketplace: context.missingMarketplace.filter(matches),
+    stockDivergent: context.stockDivergent.filter(matches)
+  };
+}
+
 function normalizeListingStatus(status: string): Exclude<MigrationStockStatus, "all"> {
   return String(status || "").toLowerCase() === "active" ? "active" : "paused";
 }
@@ -448,13 +532,29 @@ function toRow(sku: string, product: SystemProduct | undefined, links: Marketpla
 }
 
 async function getSystemProducts() {
-  const { data } = await supabaseAdmin()
-    .from("products")
-    .select("id,sku,title,description,price,stock,status")
-    .order("sku")
-    .throwOnError();
+  const supabase = supabaseAdmin();
+  const [products, inventory] = await Promise.all([
+    readAllRows((from, to) => supabase
+      .from("products")
+      .select("id,sku,title,price,stock,status")
+      .order("sku")
+      .range(from, to)
+      .throwOnError()),
+    readAllRows((from, to) => supabase
+      .from("estoque")
+      .select("product_id,estoque_fisico,estoque_disponivel")
+      .range(from, to)
+      .throwOnError())
+  ]);
+  const inventoryByProduct = new Map(inventory.map(row => [String(row.product_id), row]));
 
-  return (data ?? []) as SystemProduct[];
+  return products.map(product => {
+    const row = inventoryByProduct.get(String(product.id));
+    return {
+      ...product,
+      stock: Number(row?.estoque_disponivel ?? row?.estoque_fisico ?? product.stock ?? 0)
+    };
+  }) as SystemProduct[];
 }
 
 async function getActiveMarketplaceAccounts() {
@@ -462,24 +562,98 @@ async function getActiveMarketplaceAccounts() {
     "id,name,marketplace,active,access_token,refresh_token,status"
   );
 
-  return ((data ?? []) as unknown as MarketplaceAccount[]).filter(isConnectedAccount);
+  return ((data ?? []) as unknown as MarketplaceAccount[])
+    .filter(isConnectedAccount)
+    .filter((account) => account.marketplace === "mercado_livre" || account.marketplace === "shopee");
 }
 
 async function getMarketplaceLinks() {
-  const { data } = await supabaseAdmin()
-    .from("product_marketplaces")
-    .select("*")
-    .eq("existe_no_marketplace", true)
-    .throwOnError();
+  const supabase = marketplaceReadClient();
+  const [marketplaceRows, listingRows] = await Promise.all([
+    readAllRows((from, to) => supabase
+      .from("product_marketplaces")
+      .select("*")
+      .eq("existe_no_marketplace", true)
+      .range(from, to)
+      .throwOnError()),
+    readAllRows((from, to) => supabase
+      .from("listings")
+      .select("id,product_id,marketplace,marketplace_account_id,external_listing_id,external_sku,status,stock,price,products!inner(sku,title)")
+      .not("external_listing_id", "is", null)
+      .not("marketplace_account_id", "is", null)
+      .range(from, to)
+      .throwOnError())
+  ]);
 
-  return (data ?? []) as MarketplaceLink[];
+  const links = marketplaceRows as MarketplaceLink[];
+  const knownListings = new Set(links.map((link) => `${link.marketplace_account_id}:${link.marketplace_product_id}`));
+
+  for (const row of listingRows) {
+    const typed = row as unknown as {
+      id: string;
+      product_id: string;
+      marketplace: string;
+      marketplace_account_id: string;
+      external_listing_id: string;
+      external_sku?: string | null;
+      status?: string | null;
+      stock?: number | null;
+      price?: number | null;
+      products?: { sku?: string | null; title?: string | null } | Array<{ sku?: string | null; title?: string | null }>;
+    };
+    const key = `${typed.marketplace_account_id}:${typed.external_listing_id}`;
+    if (knownListings.has(key)) continue;
+
+    const product = Array.isArray(typed.products) ? typed.products[0] : typed.products;
+    links.push({
+      id: `listing:${typed.id}`,
+      product_id: typed.product_id,
+      sku: normalizeSku(typed.external_sku || product?.sku || ""),
+      marketplace_account_id: typed.marketplace_account_id,
+      marketplace: typed.marketplace,
+      marketplace_product_id: typed.external_listing_id,
+      titulo_marketplace: product?.title || "",
+      valor_marketplace: Number(typed.price || 0),
+      estoque_marketplace: Number(typed.stock || 0),
+      status_anuncio: typed.status || "active",
+      existe_no_marketplace: true
+    });
+    knownListings.add(key);
+  }
+
+  return links;
+}
+
+async function readAllRows<T>(loader: (from: number, to: number) => PromiseLike<{ data: T[] | null }>) {
+  const pageSize = 1000;
+  const rows: T[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const result = await loader(from, from + pageSize - 1);
+    const page = result.data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  return rows;
+}
+
+function marketplaceReadClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) throw new Error("Supabase nao configurado.");
+
+  return createClient(url, key, {
+    auth: { persistSession: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) }
+  });
 }
 
 async function getMarketplaceLinksBySku(sku: string) {
   const { data } = await supabaseAdmin()
     .from("product_marketplaces")
     .select("*")
-    .eq("sku", normalizeSku(sku))
+    .ilike("sku", normalizeSku(sku))
     .eq("existe_no_marketplace", true)
     .throwOnError();
 
@@ -490,7 +664,7 @@ async function linkMarketplaceRowsToProduct(sku: string, productId: string) {
   await supabaseAdmin()
     .from("product_marketplaces")
     .update({ product_id: productId, updated_at: new Date().toISOString() })
-    .eq("sku", normalizeSku(sku))
+    .ilike("sku", normalizeSku(sku))
     .throwOnError();
 }
 
@@ -513,13 +687,56 @@ async function syncListingsFromMarketplaceRows(sku: string, productId: string) {
       error_message: null
     };
 
-    const result = await supabase
-      .from("listings")
-      .upsert(payload, { onConflict: "product_id,marketplace_account_id" });
+    await upsertListingRow(payload);
+  }
+}
 
-    if (result.error) {
-      await supabase.from("listings").insert(payload);
-    }
+async function upsertListingRow(payload: {
+  product_id: string;
+  marketplace: string;
+  marketplace_account_id: string;
+  marketplace_name: string;
+  external_listing_id: string;
+  external_sku: string;
+  status: string;
+  stock: number;
+  price: number;
+  last_sync_at: string;
+  error_message: null;
+}) {
+  const db = supabaseAdmin();
+  const [byExternal, byProduct, legacyByExternal] = await Promise.all([
+    db.from("listings").select("id")
+      .eq("marketplace_account_id", payload.marketplace_account_id)
+      .eq("external_listing_id", payload.external_listing_id)
+      .limit(1).maybeSingle().throwOnError(),
+    db.from("listings").select("id")
+      .eq("marketplace_account_id", payload.marketplace_account_id)
+      .eq("product_id", payload.product_id)
+      .limit(1).maybeSingle().throwOnError(),
+    db.from("listings").select("id")
+      .is("marketplace_account_id", null)
+      .eq("marketplace", payload.marketplace)
+      .eq("external_listing_id", payload.external_listing_id)
+      .limit(1).maybeSingle().throwOnError()
+  ]);
+
+  const externalId = byExternal.data?.id ? String(byExternal.data.id) : "";
+  const productId = byProduct.data?.id ? String(byProduct.data.id) : "";
+  if (externalId && productId && externalId !== productId) {
+    await db.from("listings").delete().eq("id", productId).throwOnError();
+  }
+
+  const legacyId = legacyByExternal.data?.id ? String(legacyByExternal.data.id) : "";
+  if (legacyId && (externalId || productId)) {
+    await db.from("listings").delete().eq("id", legacyId).throwOnError();
+  }
+
+  const existingId = externalId || productId || legacyId;
+  if (existingId) {
+    await db.from("listings").update(payload).eq("id", existingId).throwOnError();
+  } else {
+    await db.from("listings").insert(payload).throwOnError();
   }
 }
 
@@ -575,6 +792,21 @@ function groupLinksBySku(links: MarketplaceLink[]) {
     map.set(sku, current);
   }
   return map;
+}
+
+function groupLinksByProductId(links: MarketplaceLink[]) {
+  const map = new Map<string, MarketplaceLink[]>();
+  for (const link of links) {
+    if (!link.product_id) continue;
+    const current = map.get(link.product_id) || [];
+    current.push(link);
+    map.set(link.product_id, current);
+  }
+  return map;
+}
+
+function mergeMarketplaceLinks(...groups: MarketplaceLink[][]) {
+  return [...new Map(groups.flat().map((link) => [link.id, link])).values()];
 }
 
 function hasDivergentStock(product: SystemProduct, links: MarketplaceLink[]) {

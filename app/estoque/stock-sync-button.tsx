@@ -9,6 +9,10 @@ type StockSyncProgress = {
   syncedProducts: number;
   percent: number;
   message: string;
+  phase?: "prepare" | "listing" | "existing" | "migration" | "deletion" | "done";
+  migratedProducts?: number;
+  deletedProducts?: number;
+  failedProducts?: number;
 };
 
 type StockSyncButtonProps = {
@@ -29,6 +33,9 @@ export function StockSyncButton({ accountId, accountName }: StockSyncButtonProps
 
     let next = start;
     while (next?.status === "running") {
+      if (accountId === "tiny") {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      }
       next = await postProgress("step");
       if (next) {
         setProgress(next);
@@ -81,5 +88,5 @@ function formatMessage(progress: StockSyncProgress | null) {
     return progress.message || "Falha na sincronizacao.";
   }
 
-  return `${progress.processedFiles || 0} de ${progress.totalFiles || 0}.`;
+  return progress.message || `${progress.processedFiles || 0} processados.`;
 }

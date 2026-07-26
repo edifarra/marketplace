@@ -82,7 +82,7 @@ export type ProductLoadResult = {
   createdProducts: Array<{ sku: string; title: string; sourceKey: string }>;
   duplicateProducts: string[];
   discardedItems: Array<{ name: string; reason: string }>;
-  errorItems: Array<{ sourceKey: string; message: string }>;
+  errorItems: Array<{ sourceKey: string; sku?: string; message: string }>;
   itemLogs: ProductLoadLog[];
 };
 
@@ -177,6 +177,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
 
   for (const group of groups) {
     let failureContext: FailureContext | undefined;
+    let attemptedSku: string | undefined;
     try {
       const main = parsePhotoName(group.photos[0]);
       result.itemLogs.push({
@@ -210,7 +211,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         processedFiles += duplicateFiles.length;
         await reportProgress(onProgress, files.length, processedFiles);
         result.duplicates++;
-        result.duplicateProducts.push(group.sourceKey);
+        result.duplicateProducts.push(String(existing.data.sku || group.sourceKey));
         pushPhotoLogs(result, group.photos, group.sourceKey, "duplicidade", "duplicado", "source_key ja cadastrado", {
           existingProductId: existing.data.id,
           existingSku: existing.data.sku,
@@ -264,6 +265,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
       }
 
       const skuInfo = await reserveNextSku(type, main.specialCode);
+      attemptedSku = skuInfo.sku;
       const title = applyTemplate(type.titleTemplate, {
         tipo: type.description,
         marca: brand.includeInTitle ? brand.name : "",
@@ -273,21 +275,6 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         especial: special?.includeDescription || "",
         sku: skuInfo.sku
       });
-      let description = applyTemplate(type.descriptionTemplate, {
-        nome_produto_completo: title,
-        tipo: type.description,
-        marca: brand.name,
-        modelo: main.model,
-        versao: main.version,
-        codigo: main.boardCode,
-        especial: special?.includeDescription || "",
-        sku: skuInfo.sku
-      });
-
-      if (special?.removeDescription) {
-        description = description.replace(special.removeDescription, "").trim();
-      }
-      
       const imageUploads = [];
       for (const [index, photoName] of group.photos.slice(0, 6).entries()) {
         const driveFile = filesByName.get(photoName);
@@ -401,7 +388,6 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           version: main.version || null,
           board_code: main.boardCode || null,
           title,
-          description,
           price: defaultPrice,
           stock: initialStock,
           status: "draft"
@@ -464,6 +450,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
       const message = error instanceof Error ? error.message : String(error);
       result.errorItems.push({
         sourceKey: group.sourceKey,
+        sku: attemptedSku,
         message
       });
       result.itemLogs.push({

@@ -14,6 +14,7 @@ import {
   effectiveMarketplaceStock,
   getMigrationStockData,
   type MarketplaceLink,
+  type MigrationStockFilter,
   type MigrationStockStatus,
   type MigrationStockView
 } from "@/lib/migration-stock";
@@ -26,6 +27,7 @@ type PageProps = {
     erro?: string;
     sucesso?: string;
     status?: string;
+    stock?: string;
   };
 };
 
@@ -55,7 +57,8 @@ const views: Array<{ key: MigrationStockView; title: string; description: string
 export default async function StockPage({ searchParams }: PageProps) {
   const selectedView = parseView(searchParams?.view);
   const selectedStatus = parseStatus(searchParams?.status);
-  const data = await getMigrationStockData(selectedView, selectedStatus);
+  const selectedStock = parseStock(searchParams?.stock);
+  const data = await getMigrationStockData(selectedView, selectedStatus, selectedStock);
 
   return (
     <main className="shell">
@@ -86,6 +89,7 @@ export default async function StockPage({ searchParams }: PageProps) {
               <div className="muted">Atualize manualmente o estoque das contas conectadas antes de comparar os produtos.</div>
             </div>
             <div className="row-actions">
+              <StockSyncButton accountId="tiny" accountName="Tiny" />
               {data.accounts.length === 0 ? (
                 <span className="muted">Nenhuma conta ativa conectada.</span>
               ) : (
@@ -107,6 +111,12 @@ export default async function StockPage({ searchParams }: PageProps) {
                 <option value="all">Todos</option>
                 <option value="active">Ativo</option>
                 <option value="paused">Pausado / inativo</option>
+              </select>
+              <label htmlFor="stock">Estoque</label>
+              <select id="stock" name="stock" defaultValue={selectedStock}>
+                <option value="all">Todos</option>
+                <option value="without-stock">Sem estoque</option>
+                <option value="with-stock">Com estoque</option>
               </select>
               <button className="secondary compact" type="submit">Filtrar</button>
             </form>
@@ -131,7 +141,7 @@ export default async function StockPage({ searchParams }: PageProps) {
                     <td>{summaryValue(data.summary, view.key)}</td>
                     <td>{view.key === selectedView ? "Exibindo abaixo" : "-"}</td>
                     <td>
-                      <a className="secondary compact" href={`/estoque?view=${view.key}&status=${selectedStatus}`}>Ver Produtos</a>
+                      <a className="secondary compact" href={`/estoque?view=${view.key}&status=${selectedStatus}&stock=${selectedStock}`}>Ver Produtos</a>
                     </td>
                   </tr>
                 ))}
@@ -153,7 +163,7 @@ export default async function StockPage({ searchParams }: PageProps) {
           ) : selectedView === "system-only" ? (
             <SystemOnlyTable rows={data.rows} />
           ) : (
-            <MarketplacePresenceTable rows={data.rows} view={selectedView} status={selectedStatus} />
+            <MarketplacePresenceTable rows={data.rows} view={selectedView} status={selectedStatus} stock={selectedStock} />
           )}
         </section>
       </section>
@@ -161,7 +171,7 @@ export default async function StockPage({ searchParams }: PageProps) {
   );
 }
 
-function MarketplacePresenceTable({ rows, view, status }: { rows: Awaited<ReturnType<typeof getMigrationStockData>>["rows"]; view: MigrationStockView; status: MigrationStockStatus }) {
+function MarketplacePresenceTable({ rows, view, status, stock }: { rows: Awaited<ReturnType<typeof getMigrationStockData>>["rows"]; view: MigrationStockView; status: MigrationStockStatus; stock: MigrationStockFilter }) {
   const isMarketplaceOnly = view === "marketplace-only";
   const isMissingMarketplace = view === "missing-marketplace";
 
@@ -196,7 +206,7 @@ function MarketplacePresenceTable({ rows, view, status }: { rows: Awaited<Return
                 <td>
                   <div className="row-actions">
                     {isMarketplaceOnly && <ActionForm sku={row.sku} action={importMarketplaceSkuAction} label="Cadastrar" />}
-                    {isMarketplaceOnly && <LinkMarketplaceButton sku={row.sku} status={status} />}
+                    {isMarketplaceOnly && <LinkMarketplaceButton sku={row.sku} status={status} stock={stock} />}
                     {isMarketplaceOnly && (
                       <ActionForm
                         sku={row.sku}
@@ -363,7 +373,7 @@ function MarketplaceBadges({ links }: { links: MarketplaceLink[] }) {
           key={link.id}
           title={`${link.marketplace_account_id} | ${link.marketplace_product_id}`}
         >
-          {link.marketplace === "shopee" ? "SH" : "ML"}
+          {link.marketplace_account_name || (link.marketplace === "shopee" ? "Shopee" : "Conta nao identificada")}
         </span>
       ))}
     </div>
@@ -406,4 +416,8 @@ function parseView(value: string | undefined): MigrationStockView {
 
 function parseStatus(value: string | undefined): MigrationStockStatus {
   return value === "active" || value === "paused" ? value : "all";
+}
+
+function parseStock(value: string | undefined): MigrationStockFilter {
+  return value === "without-stock" || value === "with-stock" ? value : "all";
 }

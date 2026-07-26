@@ -4,6 +4,7 @@ import {
   startMarketplaceStockSync,
   stepMarketplaceStockSync
 } from "@/lib/marketplace-stock-sync";
+import { getTinyStockSyncProgress, startTinyStockSync, stepTinyStockSync } from "@/lib/tiny-stock-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Conta nao informada." }, { status: 400 });
   }
 
-  return NextResponse.json({ progress: await getMarketplaceStockSyncProgress(accountId) });
+  return NextResponse.json({ progress: accountId === "tiny" ? await getTinyStockSyncProgress() : await getMarketplaceStockSyncProgress(accountId) });
 }
 
 export async function POST(request: NextRequest) {
@@ -24,9 +25,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Conta nao informada." }, { status: 400 });
   }
 
-  const progress = action === "start"
-    ? await startMarketplaceStockSync(accountId)
-    : await stepMarketplaceStockSync(accountId);
+  const progress = accountId === "tiny"
+    ? (action === "start" ? await startTinyStockSync() : await stepTinyStockSync())
+    : (action === "start" ? await startMarketplaceStockSync(accountId) : await stepMarketplaceStockSync(accountId));
 
   return NextResponse.json({ progress });
 }

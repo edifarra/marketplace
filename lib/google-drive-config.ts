@@ -168,7 +168,7 @@ async function getGoogleDriveFoldersSafe(query: string) {
 
 export async function saveGoogleDriveSettings(formData: FormData) {
   const imagesFolderId = requiredString(formData.get("imagesFolderId"), "Pasta Imagens");
-  const intervalMinutes = positiveInteger(formData.get("intervalMinutes"), "Executar busca a cada");
+  const intervalMinutes = googleDriveInterval(formData.get("intervalMinutes"));
 
   const supabase = supabaseAdmin();
   const result = await supabase.from("settings").upsert([
@@ -286,10 +286,11 @@ function optionalString(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function positiveInteger(value: FormDataEntryValue | null, field: string) {
+function googleDriveInterval(value: FormDataEntryValue | null) {
   const number = Number(optionalString(value));
-  if (!Number.isInteger(number) || number <= 0) {
-    throw new Error(`${field} precisa ser um numero inteiro positivo em minutos.`);
+  const allowedIntervals = [60, 120, 180, 240, 360, 480, 720, 1440];
+  if (!allowedIntervals.includes(number)) {
+    throw new Error("Selecione uma frequência válida para a busca no Google Drive.");
   }
 
   return number;

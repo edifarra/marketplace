@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { linkMarketplaceSkuAction } from "./actions";
 
-export function LinkMarketplaceButton({ sku, status }: { sku: string; status: string }) {
+export function LinkMarketplaceButton({ sku, status, stock }: { sku: string; status: string; stock: string }) {
   const [open, setOpen] = useState(false);
   return <>
     <button className="secondary compact" type="button" onClick={() => setOpen(true)}>Vincular</button>
@@ -14,6 +14,7 @@ export function LinkMarketplaceButton({ sku, status }: { sku: string; status: st
         <form action={linkMarketplaceSkuAction}>
           <input type="hidden" name="sku" value={sku} />
           <input type="hidden" name="status" value={status} />
+          <input type="hidden" name="stock" value={stock} />
           <label>SKU do produto</label>
           <input name="targetSku" required autoFocus placeholder="Ex.: VD24" />
           <div className="form-actions">

@@ -84,13 +84,13 @@ export class ShopeeClient {
     });
   }
 
-  async getProducts(accessToken: string, shopId: string | number) {
+  async getProducts(accessToken: string, shopId: string | number, offset = 0, pageSize = 100) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/product/get_item_list", {
       accessToken,
       shopId,
       query: {
-        offset: 0,
-        page_size: 100,
+        offset,
+        page_size: pageSize,
         item_status: "NORMAL"
       }
     });
@@ -105,11 +105,15 @@ export class ShopeeClient {
   }
 
   async getProductById(accessToken: string, shopId: string | number, itemId: string | number) {
+    return this.getProductsByIds(accessToken, shopId, [itemId]);
+  }
+
+  async getProductsByIds(accessToken: string, shopId: string | number, itemIds: Array<string | number>) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/product/get_item_base_info", {
       accessToken,
       shopId,
       query: {
-        item_id_list: String(itemId)
+        item_id_list: itemIds.map(String).join(",")
       }
     });
   }

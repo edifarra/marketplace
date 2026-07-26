@@ -39,17 +39,18 @@ export async function linkMarketplaceSkuAction(formData: FormData) {
   const sourceSku = String(formData.get("sku") || "").trim();
   const targetSku = String(formData.get("targetSku") || "").trim();
   const status = String(formData.get("status") || "all");
+  const stock = String(formData.get("stock") || "all");
   if (!sourceSku || !targetSku) {
-    redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&erro=${encodeURIComponent("Informe o SKU do produto para vincular.")}`);
+    redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&stock=${encodeURIComponent(stock)}&erro=${encodeURIComponent("Informe o SKU do produto para vincular.")}`);
   }
   try {
     await linkMarketplaceSkuToProduct(sourceSku, targetSku);
   } catch (error) {
-    redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&erro=${encodeURIComponent(error instanceof Error ? error.message : String(error))}`);
+    redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&stock=${encodeURIComponent(stock)}&erro=${encodeURIComponent(error instanceof Error ? error.message : String(error))}`);
   }
   revalidatePath("/estoque");
   revalidatePath("/produtos");
-  redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&sucesso=${encodeURIComponent(`Anuncio ${sourceSku} vinculado ao produto ${targetSku}.`)}`);
+  redirect(`/estoque?view=marketplace-only&status=${encodeURIComponent(status)}&stock=${encodeURIComponent(stock)}&sucesso=${encodeURIComponent(`Anuncio ${sourceSku} vinculado ao produto ${targetSku}.`)}`);
 }
 
 async function runStockAction(

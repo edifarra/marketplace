@@ -269,6 +269,10 @@ function configurationSuccessMessage(section: ConfigSection, updated: boolean) {
     return `Marca ${updated ? "atualizada" : "criada"} com sucesso.`;
   }
 
+  if (section === "especial") {
+    return `Configuração ${updated ? "editada" : "salva"} com sucesso!`;
+  }
+
   return "";
 }
 

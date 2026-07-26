@@ -4,33 +4,17 @@ import { Sidebar } from "./components/sidebar";
 import { hasGoogleDriveConfig } from "@/lib/google-drive";
 import { getGoogleDriveSettings } from "@/lib/google-drive-config";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export default async function HomePage() {
+  const currentUser = await getCurrentUser();
   const supabase = supabaseAdmin();
-
-  const { count: activeProducts } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "active");
-
-  const { count: zeroStock } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("stock", 0);
-
-  const { count: waitingProducts } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .in("status", ["draft", "ready", "publishing"]);
-
-  const { count: errorProducts } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "error");
+  const dashboardCounts = await getDashboardProductCounts(supabase);
+  const salesMetrics = await getDashboardSalesMetrics(supabase);
 
   const { data: lastDriveRun } = await supabase
     .from("pipeline_runs")
@@ -62,6 +46,7 @@ export default async function HomePage() {
   const driveConfigured = await hasGoogleDriveConfig();
   const driveSettings = await getGoogleDriveSettings();
   const driveRunStatus = buildDriveRunStatus(lastDriveRun, driveLastRunSettings ?? []);
+  const driveNeedsAttention = !driveConfigured || driveRunStatus.status !== "done";
 
   return (
     <main className="shell">
@@ -75,13 +60,23 @@ export default async function HomePage() {
               Do Google Drive ao Mercado Livre e Shopee, com estoque centralizado no Supabase.
             </div>
           </div>
+          {currentUser && <div className="current-user">Usuario: <strong>{currentUser.name}</strong></div>}
         </div>
 
         <section className="grid metrics">
-          <Metric label="Produtos ativos" value={String(activeProducts ?? 0)} />
-          <Metric label="Estoque zerado" value={String(zeroStock ?? 0)} />
-          <Metric label="Aguardando envio" value={String(waitingProducts ?? 0)} />
-          <Metric label="Erros para revisar" value={String(errorProducts ?? 0)} />
+          <Metric label="Produtos ativos" value={String(dashboardCounts.active)} />
+          <Metric label="Estoque zerado" value={String(dashboardCounts.zeroStock)} />
+          <Metric label="Aguardando envio" value={String(dashboardCounts.waiting)} />
+          <Metric label="Erros para revisar" value={String(dashboardCounts.errors)} />
+        </section>
+
+        <section className="grid metrics sales-metrics" aria-label="Resumo de vendas">
+          <Metric label="Vendas para enviar hoje" value={String(salesMetrics.toShipToday)} />
+          <Metric label="Vendas desta semana" value={String(salesMetrics.currentWeek)} />
+          <MetricWithTrend label="Vendas do mês" value={String(salesMetrics.currentMonthCount)} trend={salesMetrics.monthCountTrend} />
+          <MetricWithTrend label="Valor total das vendas do mês" value={formatCurrency(salesMetrics.currentMonthValue)} trend={salesMetrics.monthValueTrend} />
+          <MetricWithTrend label="Valor líquido a receber" value={formatCurrency(salesMetrics.currentMonthNetValue)} trend={salesMetrics.monthNetTrend} />
+          <MetricWithTrend label="Valor a pagar de frete do mês" value={formatCurrency(salesMetrics.currentMonthFreight)} trend={salesMetrics.monthFreightTrend} />
         </section>
 
         <section className="section card" id="pipeline">
@@ -97,7 +92,21 @@ export default async function HomePage() {
             </thead>
             <tbody>
               <tr>
-                <td>Google Drive</td>
+                <td>
+                  <div className="pipeline-step-name">
+                    {driveNeedsAttention && (
+                      <span className="pipeline-attention" role="img" aria-label="Atenção" title="A conexão ou a última execução do Google Drive precisa ser verificada">
+                        !
+                      </span>
+                    )}
+                    <span>Google Drive</span>
+                    {driveNeedsAttention && (
+                      <a className="secondary compact link-button pipeline-verify" href="/configuracoes/google-drive">
+                        Verificar
+                      </a>
+                    )}
+                  </div>
+                </td>
                 <td>Busca imagens validas e ignora duplicadas</td>
                 <td>
                   <span className="status">{driveStatusLabel(driveRunStatus.status, driveRunStatus.errorMessage, driveConfigured)}</span>
@@ -185,6 +194,106 @@ export default async function HomePage() {
   );
 }
 
+async function getDashboardProductCounts(supabase: ReturnType<typeof supabaseAdmin>) {
+  const [
+    activeResult,
+    zeroStockResult,
+    productsResult,
+    listingLinksResult,
+    marketplaceLinksResult,
+    productErrorsResult,
+    listingErrorsResult
+  ] = await Promise.all([
+    supabase.from("products").select("*", { count: "exact", head: true }).gt("stock", 0),
+    supabase.from("products").select("*", { count: "exact", head: true }).eq("stock", 0),
+    supabase.from("products").select("id,tiny_product_id,sent_target"),
+    supabase.from("listings").select("product_id").not("external_listing_id", "is", null),
+    supabase.from("product_marketplaces").select("product_id").eq("existe_no_marketplace", true).not("product_id", "is", null),
+    supabase.from("products").select("id").eq("status", "error"),
+    supabase.from("listings").select("product_id").or("status.eq.error,error_message.not.is.null")
+  ]);
+
+  const linkedProductIds = new Set<string>([
+    ...(listingLinksResult.data || []).map((row) => String(row.product_id)),
+    ...(marketplaceLinksResult.data || []).map((row) => String(row.product_id))
+  ]);
+  const waiting = (productsResult.data || []).filter((product) => {
+    const linkedToTiny = Boolean(product.tiny_product_id || product.sent_target === "TINY");
+    return !linkedToTiny && !linkedProductIds.has(String(product.id));
+  }).length;
+
+  const errorProductIds = new Set<string>([
+    ...(productErrorsResult.data || []).map((row) => String(row.id)),
+    ...(listingErrorsResult.data || []).map((row) => String(row.product_id))
+  ]);
+
+  return {
+    active: activeResult.count ?? 0,
+    zeroStock: zeroStockResult.count ?? 0,
+    waiting,
+    errors: errorProductIds.size
+  };
+}
+
+type DashboardSale = {
+  status_original: string | null;
+  valor_produtos: number | string | null;
+  valor_frete: number | string | null;
+  valor_liquido: number | string | null;
+  data_venda: string | null;
+  created_at: string;
+  updated_at: string;
+  raw_data: Record<string, unknown> | null;
+};
+
+async function getDashboardSalesMetrics(supabase: ReturnType<typeof supabaseAdmin>) {
+  const { data } = await supabase
+    .from("venda")
+    .select("status_original,valor_produtos,valor_frete,valor_liquido,data_venda,created_at,updated_at,raw_data")
+    .throwOnError();
+  const sales = ((data || []) as DashboardSale[]).filter(isEffectiveSale);
+  const now = new Date();
+  const today = localDayRange(now);
+  const currentWeek = localWeekRange(now);
+  const currentMonth = localMonthRange(now, 0);
+  const previousMonth = localMonthRange(now, -1);
+
+  const toShipToday = sales.filter((sale) => {
+    if (isPostedSale(sale.status_original)) return false;
+    const comparisonDate = extractShippingDeadline(sale.raw_data) || saleDate(sale);
+    return isWithin(comparisonDate, today.start, today.end);
+  }).length;
+
+  const currentWeekCount = sales.filter((sale) => {
+    const comparisonDate = isPostedSale(sale.status_original)
+      ? extractPostedAt(sale.raw_data) || new Date(sale.updated_at)
+      : saleDate(sale);
+    return isWithin(comparisonDate, currentWeek.start, currentWeek.end);
+  }).length;
+
+  const monthSales = sales.filter((sale) => isWithin(saleDate(sale), currentMonth.start, currentMonth.end));
+  const previousMonthSales = sales.filter((sale) => isWithin(saleDate(sale), previousMonth.start, previousMonth.end));
+  const currentMonthValue = sumSales(monthSales);
+  const previousMonthValue = sumSales(previousMonthSales);
+  const currentMonthNetValue = sumSaleField(monthSales, "valor_liquido");
+  const previousMonthNetValue = sumSaleField(previousMonthSales, "valor_liquido");
+  const currentMonthFreight = sumSaleField(monthSales, "valor_frete");
+  const previousMonthFreight = sumSaleField(previousMonthSales, "valor_frete");
+
+  return {
+    toShipToday,
+    currentWeek: currentWeekCount,
+    currentMonthCount: monthSales.length,
+    currentMonthValue,
+    currentMonthNetValue,
+    currentMonthFreight,
+    monthCountTrend: percentageChange(monthSales.length, previousMonthSales.length),
+    monthValueTrend: percentageChange(currentMonthValue, previousMonthValue),
+    monthNetTrend: percentageChange(currentMonthNetValue, previousMonthNetValue),
+    monthFreightTrend: percentageChange(currentMonthFreight, previousMonthFreight)
+  };
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="card">
@@ -192,6 +301,134 @@ function Metric({ label, value }: { label: string; value: string }) {
       <div className="metric-value">{value}</div>
     </div>
   );
+}
+
+function MetricWithTrend({ label, value, trend }: { label: string; value: string; trend: number }) {
+  const direction = trend > 0 ? "up" : trend < 0 ? "down" : "neutral";
+  return (
+    <div className="card">
+      <div className="metric-label">{label}</div>
+      <div className="metric-value metric-value-with-trend">
+        <span>{value}</span>
+        <span className={`metric-trend ${direction}`} title="Comparação com o mês anterior">
+          <span aria-hidden="true">{trend > 0 ? "↑" : trend < 0 ? "↓" : "→"}</span>
+          {Math.abs(trend)}%
+        </span>
+      </div>
+      <div className="metric-comparison">comparado ao mês anterior</div>
+    </div>
+  );
+}
+
+function isEffectiveSale(sale: DashboardSale) {
+  return !/(cancel|refund|reembols|not_delivered)/i.test(String(sale.status_original || ""));
+}
+
+function isPostedSale(status: string | null) {
+  return /^(shipped|in_transit|out_for_delivery|delivered|completed|sent|enviado|enviada|a_caminho)$/i.test(String(status || ""));
+}
+
+function saleDate(sale: DashboardSale) {
+  return new Date(sale.data_venda || sale.created_at);
+}
+
+function extractPostedAt(raw: Record<string, unknown> | null) {
+  const payload = unwrapSalePayload(raw);
+  const shipment = payload?.shipment || payload?.order?.shipping || payload?.data?.shipment || {};
+  return firstValidDate([
+    shipment?.status_history?.date_shipped,
+    shipment?.date_shipped,
+    shipment?.shipped_at,
+    shipment?.update_time
+  ]);
+}
+
+function extractShippingDeadline(raw: Record<string, unknown> | null) {
+  const payload = unwrapSalePayload(raw);
+  const order = payload?.order || payload?.data || payload || {};
+  return firstValidDate([
+    order?.ship_by_date,
+    order?.shipping_deadline,
+    order?.shipping?.shipping_option?.estimated_delivery_time?.shipping?.limit?.date,
+    order?.shipping?.estimated_handling_limit
+  ]);
+}
+
+function unwrapSalePayload(raw: Record<string, unknown> | null): any {
+  if (!raw) return {};
+  return (raw.payload || raw) as Record<string, unknown>;
+}
+
+function firstValidDate(values: unknown[]) {
+  for (const value of values) {
+    if (!value) continue;
+    const numeric = Number(value);
+    const parsed = Number.isFinite(numeric) && numeric > 0
+      ? new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric)
+      : new Date(String(value));
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function localDayRange(date: Date) {
+  const parts = saoPauloParts(date);
+  return rangeFromParts(parts.year, parts.month, parts.day, 1);
+}
+
+function localWeekRange(date: Date) {
+  const parts = saoPauloParts(date);
+  const local = saoPauloDate(parts.year, parts.month - 1, parts.day);
+  const dayOfWeek = local.getUTCDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const start = new Date(local.getTime() + mondayOffset * 86_400_000);
+  return { start, end: new Date(start.getTime() + 7 * 86_400_000) };
+}
+
+function localMonthRange(date: Date, monthOffset: number) {
+  const parts = saoPauloParts(date);
+  const start = saoPauloDate(parts.year, parts.month - 1 + monthOffset, 1);
+  const end = saoPauloDate(parts.year, parts.month + monthOffset, 1);
+  return { start, end };
+}
+
+function rangeFromParts(year: number, month: number, day: number, days: number) {
+  const start = saoPauloDate(year, month - 1, day);
+  return { start, end: new Date(start.getTime() + days * 86_400_000) };
+}
+
+function saoPauloDate(year: number, zeroBasedMonth: number, day: number) {
+  return new Date(Date.UTC(year, zeroBasedMonth, day, 3));
+}
+
+function saoPauloParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "numeric", day: "numeric"
+  }).formatToParts(date);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return { year: value("year"), month: value("month"), day: value("day") };
+}
+
+function isWithin(value: Date, start: Date, end: Date) {
+  const time = value.getTime();
+  return Number.isFinite(time) && time >= start.getTime() && time < end.getTime();
+}
+
+function sumSales(sales: DashboardSale[]) {
+  return sales.reduce((total, sale) => total + Number(sale.valor_produtos || 0), 0);
+}
+
+function sumSaleField(sales: DashboardSale[], field: "valor_frete" | "valor_liquido") {
+  return sales.reduce((total, sale) => total + Number(sale[field] || 0), 0);
+}
+
+function percentageChange(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 type DriveRunView = {

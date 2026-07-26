@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabase-admin";
+import { buildProductDescription } from "./dynamic-product-description";
 
 type TinySettings = {
   token: string;
@@ -43,9 +44,10 @@ export async function createTinyProduct(productId: string, makeNameUnique = fals
     .throwOnError();
 
   const productRecord = product as Record<string, unknown>;
-  const [typeConfig, brandConfig, images, inventory] = await Promise.all([
+  const [typeConfig, brandConfig, specialConfig, images, inventory] = await Promise.all([
     getTinyTypeConfig(String(productRecord.type_code || "")),
     getTinyBrandConfig(String(productRecord.brand_code || "")),
+    getTinySpecialConfig(String(productRecord.special_code || "")),
     getTinyProductImages(productId),
     getTinyInventory(productId)
   ]);
@@ -56,6 +58,7 @@ export async function createTinyProduct(productId: string, makeNameUnique = fals
       title: makeNameUnique ? `${String(productRecord.title || "")} [${String(productRecord.sku || "")}]` : productRecord.title,
       config_types: typeConfig,
       config_brands: brandConfig,
+      config_specials: specialConfig,
       product_images: images,
       inventory
     },
@@ -115,6 +118,11 @@ export async function createTinyProduct(productId: string, makeNameUnique = fals
 }
 
 export async function findTinyProductId(sku: string) {
+  const product = await findTinyProductBySku(sku);
+  return product?.id || "";
+}
+
+export async function findTinyProductBySku(sku: string) {
   const settings = await getTinySettings();
   const search = async (term: string) => {
     const body = new URLSearchParams({ token: settings.token, formato: settings.formato, pesquisa: term });
@@ -136,9 +144,74 @@ export async function findTinyProductId(sku: string) {
 
   const bySku = await search(sku);
   const exactSku = bySku.find((item) => String(item.codigo || "").trim().toLowerCase() === sku.trim().toLowerCase());
-  if (exactSku) return String(exactSku.id);
+  if (exactSku) {
+    return {
+      id: String(exactSku.id),
+      sku: String(exactSku.codigo || sku).trim(),
+      title: String(exactSku.nome || "").trim(),
+      price: Number(exactSku.preco || exactSku.preco_promocional || 0),
+      status: String(exactSku.situacao || "")
+    };
+  }
 
-  return "";
+  return null;
+}
+
+export async function listTinyProductsPage(page = 1) {
+  const settings = await getTinySettings();
+  const body = new URLSearchParams({ token: settings.token, formato: settings.formato, pagina: String(page) });
+  const response = await fetch("https://api.tiny.com.br/api2/produtos.pesquisa.php", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+    cache: "no-store"
+  });
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Erro HTTP Tiny ao listar produtos: ${response.status}`);
+  const json = JSON.parse(raw) as Record<string, unknown>;
+  const retorno = (json.retorno || {}) as Record<string, unknown>;
+  if (String(retorno.status || "") === "Erro") throw new Error(`Erro Tiny: ${extractTinyErrors(json) || raw}`);
+  return {
+    pages: Math.max(1, Number(retorno.numero_paginas || 1)),
+    products: ((retorno.produtos || []) as Array<{ produto?: Record<string, unknown> }>).map(item => item.produto || {})
+  };
+}
+
+export async function getTinyProductSnapshot(id: string) {
+  const settings = await getTinySettings();
+  const request = async (endpoint: string) => {
+    const body = new URLSearchParams({ token: settings.token, formato: settings.formato, id });
+    const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, cache: "no-store" });
+    const raw = await response.text();
+    if (!response.ok) throw new Error(`Erro HTTP Tiny ao obter produto ${id}: ${response.status}`);
+    const json = JSON.parse(raw) as Record<string, unknown>;
+    const retorno = (json.retorno || {}) as Record<string, unknown>;
+    if (String(retorno.status || "") === "Erro") throw new Error(`Erro Tiny: ${extractTinyErrors(json) || raw}`);
+    return (retorno.produto || {}) as Record<string, unknown>;
+  };
+
+  const [product, inventory] = await Promise.all([
+    request("https://api.tiny.com.br/api2/produto.obter.php"),
+    request("https://api.tiny.com.br/api2/produto.obter.estoque.php")
+  ]);
+  return { ...product, saldo: Number(inventory.saldo || 0), depositos: inventory.depositos || [] };
+}
+
+export async function getTinyProductInventory(id: string) {
+  const settings = await getTinySettings();
+  const body = new URLSearchParams({ token: settings.token, formato: settings.formato, id });
+  const response = await fetch("https://api.tiny.com.br/api2/produto.obter.estoque.php", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+    cache: "no-store"
+  });
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Erro HTTP Tiny ao obter estoque ${id}: ${response.status}`);
+  const json = JSON.parse(raw) as Record<string, unknown>;
+  const retorno = (json.retorno || {}) as Record<string, unknown>;
+  if (String(retorno.status || "") === "Erro") throw new Error(`Erro Tiny: ${extractTinyErrors(json) || raw}`);
+  return (retorno.produto || {}) as Record<string, unknown>;
 }
 
 export async function updateTinyProduct(productId: string, tinyProductId: string): Promise<TinyCreateResult> {
@@ -152,9 +225,10 @@ export async function updateTinyProduct(productId: string, tinyProductId: string
     .throwOnError();
 
   const productRecord = product as Record<string, unknown>;
-  const [typeConfig, brandConfig, images, inventory] = await Promise.all([
+  const [typeConfig, brandConfig, specialConfig, images, inventory] = await Promise.all([
     getTinyTypeConfig(String(productRecord.type_code || "")),
     getTinyBrandConfig(String(productRecord.brand_code || "")),
+    getTinySpecialConfig(String(productRecord.special_code || "")),
     getTinyProductImages(productId),
     getTinyInventory(productId)
   ]);
@@ -165,6 +239,7 @@ export async function updateTinyProduct(productId: string, tinyProductId: string
       tiny_product_id: tinyProductId,
       config_types: typeConfig,
       config_brands: brandConfig,
+      config_specials: specialConfig,
       product_images: images,
       inventory
     },
@@ -334,7 +409,7 @@ async function getTinyTypeConfig(typeCode: string) {
   const supabase = supabaseAdmin();
   const { data } = await supabase
     .from("config_types")
-    .select("description,marketplace_category,weight_net,weight_gross,width,height,length,warranty_months")
+    .select("description,description_template,marketplace_category,weight_net,weight_gross,width,height,length,warranty_months")
     .eq("code", typeCode)
     .maybeSingle();
 
@@ -367,6 +442,16 @@ async function getTinyBrandConfig(brandCode: string) {
   return data || {};
 }
 
+async function getTinySpecialConfig(specialCode: string) {
+  if (!specialCode) return {};
+  const { data } = await supabaseAdmin()
+    .from("config_specials")
+    .select("include_description,remove_description")
+    .eq("code", specialCode)
+    .maybeSingle();
+  return data || {};
+}
+
 async function getTinyProductImages(productId: string) {
   const supabase = supabaseAdmin();
   const withLocal = await supabase
@@ -391,6 +476,7 @@ async function getTinyProductImages(productId: string) {
 function buildTinyProductPayload(product: Record<string, unknown>, settings: TinySettings) {
   const type = (product.config_types || {}) as Record<string, unknown>;
   const brand = (product.config_brands || {}) as Record<string, unknown>;
+  const special = (product.config_specials || {}) as Record<string, unknown>;
   const inventory = (product.inventory || {}) as Record<string, unknown>;
   const images = ([...((product.product_images || []) as Array<Record<string, unknown>>)])
     .sort((a, b) => Number(a.position || 0) - Number(b.position || 0))
@@ -416,7 +502,7 @@ function buildTinyProductPayload(product: Record<string, unknown>, settings: Tin
           marca: String(brand.name || ""),
           garantia: type.warranty_months ? `${type.warranty_months} meses` : "",
           categoria: String(type.tiny_category || type.marketplace_category || "").trim().replace(/\s*>+\s*/g, " >> "),
-          descricao_complementar: String(product.description || ""),
+          descricao_complementar: buildProductDescription(product, type, brand, special),
           peso_liquido: formatTinyDecimal(type.weight_net),
           peso_bruto: formatTinyDecimal(type.weight_gross),
           tipo_embalagem: 2,
@@ -526,3 +612,4 @@ function settingToString(value: unknown) {
 
   return typeof value === "string" ? value : String(value);
 }
+

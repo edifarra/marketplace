@@ -1,5 +1,6 @@
 import { Sidebar } from "../components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { LogGrid, type LogGridRow } from "./log-grid";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,26 +17,26 @@ type PipelineRun = {
   created_at: string;
 };
 
-type ProductLogItem = {
-  fileName?: string;
-  sourceKey?: string;
-  stage?: string;
-  status?: string;
-  reason?: string;
-  variables?: Record<string, unknown>;
+type PipelineLog = {
+  id: string;
+  message: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
 };
 
 export default async function LogsPage() {
-  const supabase = supabaseAdmin();
-  const { data: runs } = await supabase
-    .from("pipeline_runs")
-    .select("id,status,stage,metrics,error_message,started_at,finished_at,created_at")
-    .in("stage", ["product_load", "drive_collect"])
-    .order("created_at", { ascending: false })
-    .limit(12)
-    .throwOnError();
+  const [runs, logs] = await Promise.all([
+    getAllPipelineRuns(),
+    getAllPipelineLogs()
+  ]);
 
-  const typedRuns = (runs ?? []) as PipelineRun[];
+  const pipelineRows = runs.map(runToGridRow);
+  const synchronizationRows = logs
+    .filter((log) => log.payload?.stage === "stock_sync")
+    .map(syncLogToGridRow);
+  const rows = [...synchronizationRows, ...pipelineRows]
+    .sort((a, b) => b.sortDate.localeCompare(a.sortDate))
+    .map(({ sortDate: _sortDate, ...row }) => row);
 
   return (
     <main className="shell">
@@ -44,183 +45,180 @@ export default async function LogsPage() {
         <div className="topbar">
           <div>
             <h1>Logs</h1>
-            <div className="subtitle">Detalhes das ultimas execucoes do Google Drive e do carregamento de produtos.</div>
+            <div className="subtitle">Histórico das sincronizações e dos processos do sistema.</div>
           </div>
         </div>
 
         <section className="section card">
-          <h2>Execucoes recentes</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Processo</th>
-                  <th>Status</th>
-                  <th>Resumo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {typedRuns.map((run) => (
-                  <tr key={run.id}>
-                    <td>{formatDate(run.finished_at || run.started_at || run.created_at)}</td>
-                    <td>{stageLabel(run.stage)}</td>
-                    <td><span className="status">{statusLabel(run.status)}</span></td>
-                    <td>{summaryForRun(run)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="table-toolbar">
+            <div>
+              <h2>Execuções recentes</h2>
+              <div className="muted">Clique em uma linha para visualizar o resumo.</div>
+            </div>
           </div>
+          <LogGrid rows={rows} />
         </section>
-
-        {typedRuns.filter((run) => run.stage === "product_load").map((run) => (
-          <section className="section card" key={`details-${run.id}`}>
-            <h2>Carregamento de produtos - {formatDate(run.finished_at || run.started_at || run.created_at)}</h2>
-            {run.error_message ? <div className="form-error">{run.error_message}</div> : null}
-            <ProductRunDetails run={run} />
-          </section>
-        ))}
       </section>
     </main>
   );
 }
 
-function ProductRunDetails({ run }: { run: PipelineRun }) {
-  const products = getProductsMetrics(run.metrics);
-  const logs = products.itemLogs;
-  const importantLogs = logs.filter((item) => item.status && item.status !== "avaliado");
-
-  if (importantLogs.length === 0) {
-    return <div className="muted">Nenhum descarte, duplicidade ou falha registrada nesta execucao.</div>;
+async function getAllPipelineRuns() {
+  const rows: PipelineRun[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data } = await supabaseAdmin()
+      .from("pipeline_runs")
+      .select("id,status,stage,metrics,error_message,started_at,finished_at,created_at")
+      .in("stage", ["product_load", "drive_collect"])
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1)
+      .throwOnError();
+    const page = (data || []) as PipelineRun[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
   }
-
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Resultado</th>
-            <th>Etapa</th>
-            <th>Motivo</th>
-            <th>Detalhes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {importantLogs.map((item, index) => (
-            <tr key={`${run.id}-${index}`}>
-              <td>
-                <strong>{item.sourceKey || item.fileName || "-"}</strong>
-                {item.fileName && item.sourceKey ? <div className="muted">{item.fileName}</div> : null}
-              </td>
-              <td>{item.status || "-"}</td>
-              <td>{item.stage || "-"}</td>
-              <td>{item.reason || reasonFromVariables(item.variables) || "-"}</td>
-              <td><code className="log-code">{shortDetails(item.variables)}</code></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  return rows;
 }
 
-function getProductsMetrics(metrics: unknown) {
-  const products = metrics && typeof metrics === "object" && "products" in metrics
-    ? (metrics as { products?: Record<string, unknown> }).products
-    : undefined;
+async function getAllPipelineLogs() {
+  const rows: PipelineLog[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data } = await supabaseAdmin()
+      .from("pipeline_logs")
+      .select("id,message,payload,created_at")
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1)
+      .throwOnError();
+    const page = (data || []) as PipelineLog[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
 
+function runToGridRow(run: PipelineRun): LogGridRow & { sortDate: string } {
+  const date = run.finished_at || run.started_at || run.created_at;
   return {
-    created: Number(products?.created || 0),
-    duplicates: Number(products?.duplicates || 0),
-    discarded: Number(products?.discarded || 0),
-    failed: Number(products?.failed || 0),
-    itemLogs: Array.isArray(products?.itemLogs) ? products.itemLogs as ProductLogItem[] : []
+    id: `run-${run.id}`,
+    date: formatDate(date),
+    sortDate: date,
+    process: run.stage === "product_load" ? "Carregamento de Produtos" : "Google Drive",
+    status: statusLabel(run.status),
+    summary: summaryForRun(run)
+  };
+}
+
+function syncLogToGridRow(log: PipelineLog): LogGridRow & { sortDate: string } {
+  return {
+    id: `sync-${log.id}`,
+    date: formatDate(log.created_at),
+    sortDate: log.created_at,
+    process: String(log.payload?.process || log.message || "Sincronismo"),
+    status: statusLabel(String(log.payload?.status || "")),
+    summary: String(log.payload?.summary || "Sem resumo.")
   };
 }
 
 function summaryForRun(run: PipelineRun) {
   if (run.stage === "product_load") {
-    const products = getProductsMetrics(run.metrics);
-    return `Criados: ${products.created}; duplicados: ${products.duplicates}; descartados: ${products.discarded}; falhas: ${products.failed}.`;
+    const products = run.metrics && typeof run.metrics === "object" && "products" in run.metrics
+      ? (run.metrics as { products?: Record<string, unknown> }).products
+      : undefined;
+    const createdProducts = arrayOfRecords(products?.createdProducts);
+    const duplicateProducts = arrayOfStrings(products?.duplicateProducts);
+    const discardedItems = arrayOfRecords(products?.discardedItems);
+    const errorItems = arrayOfRecords(products?.errorItems);
+    return [
+      `Produtos avaliados: ${Number(products?.totalGroups || 0)}.`,
+      countWithItems(
+        "Produtos incluídos",
+        Number(products?.created || 0),
+        createdProducts.map((item) => labeledSku(item.sku, item.sourceKey))
+      ),
+      Number(products?.duplicates || 0) > 0
+        ? countWithItems("Produtos duplicados", Number(products?.duplicates || 0), duplicateProducts.map((sku) => `SKU ${sku}`))
+        : "",
+      Number(products?.discarded || 0) > 0
+        ? countWithItems(
+            "Itens descartados",
+            Number(products?.discarded || 0),
+            discardedItems.map((item) => `${stringValue(item.name) || "Item não identificado"} - ${stringValue(item.reason) || "Motivo não informado"}`)
+          )
+        : "",
+      run.error_message ? `Erro: ${run.error_message}` : "",
+      ...errorItems.map((item) => {
+        const identifier = labeledSku(item.sku, item.sourceKey).replace(/^SKU /, "Produto ");
+        return `${identifier} - Falha por ${stringValue(item.message) || "motivo não informado"}.`;
+      })
+    ].filter(Boolean).join("\n");
   }
 
   const drive = run.metrics && typeof run.metrics === "object" && "drive" in run.metrics
     ? (run.metrics as { drive?: Record<string, unknown> }).drive
     : undefined;
-
-  return String(drive?.message || run.error_message || "Sem resumo.");
+  const invocation = run.metrics && typeof run.metrics === "object" && "invocation" in run.metrics
+    ? (run.metrics as { invocation?: Record<string, unknown> }).invocation
+    : undefined;
+  return [
+    String(drive?.message || run.error_message || "Sem resumo."),
+    invocation ? "Origem da solicitação:" : "",
+    invocation ? `Recebida em: ${formatDate(stringValue(invocation.receivedAt))}` : "",
+    invocation ? `Autenticação: ${stringValue(invocation.authenticationType) || "-"}` : "",
+    invocation ? `Método e rota: ${stringValue(invocation.method) || "-"} ${stringValue(invocation.path) || "-"}${stringValue(invocation.query) || ""}` : "",
+    invocation ? `Host: ${stringValue(invocation.host) || "-"}` : "",
+    invocation ? `Origem HTTP: ${stringValue(invocation.origin) || "-"}` : "",
+    invocation ? `Página de referência: ${stringValue(invocation.referer) || "-"}` : "",
+    invocation ? `Cliente/User-Agent: ${stringValue(invocation.userAgent) || "-"}` : "",
+    invocation ? `IP identificado: ${stringValue(invocation.ip) || "-"}` : "",
+    invocation ? `Cadeia de IPs encaminhados: ${stringValue(invocation.forwardedFor) || "-"}` : "",
+    invocation ? `Protocolo/host encaminhado: ${stringValue(invocation.forwardedProto) || "-"} / ${stringValue(invocation.forwardedHost) || "-"}` : "",
+    invocation ? `Localização informada: ${[invocation.vercelCity, invocation.vercelRegionCode, invocation.vercelCountry].map(stringValue).filter(Boolean).join(" / ") || "-"}` : "",
+    invocation ? `Fuso informado: ${stringValue(invocation.vercelTimezone) || "-"}` : "",
+    invocation ? `Região de execução Vercel: ${stringValue(invocation.vercelRegion) || "-"}` : "",
+    invocation ? `ID da requisição Vercel: ${stringValue(invocation.vercelRequestId) || "-"}` : "",
+    invocation ? `Rastreamento: ${stringValue(invocation.traceParent) || "-"}` : "",
+    invocation ? `Execução forçada: ${invocation.forced === true ? "Sim" : "Não"}` : ""
+  ].filter(Boolean).join("\n");
 }
 
-function stageLabel(stage: string) {
-  return stage === "product_load" ? "Carregamento de Produtos" : "Google Drive";
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function arrayOfRecords(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : [];
+}
+
+function arrayOfStrings(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(stringValue).filter(Boolean)
+    : [];
+}
+
+function labeledSku(sku: unknown, fallback: unknown) {
+  return `SKU ${stringValue(sku) || stringValue(fallback) || "não identificado"}`;
+}
+
+function countWithItems(label: string, count: number, items: string[]) {
+  const details = items.filter(Boolean);
+  return `${label}: ${count}.${details.length > 0 ? ` (${details.join(", ")})` : ""}`;
 }
 
 function statusLabel(status: string) {
-  if (status === "done") {
-    return "Executado";
-  }
-
-  if (status === "running") {
-    return "Executando";
-  }
-
+  if (status === "done") return "Executado";
+  if (status === "running" || status === "queued") return "Executando";
   return "Erro";
 }
 
-function reasonFromVariables(value?: Record<string, unknown>) {
-  if (!value) {
-    return "";
-  }
-
-  if (typeof value.existingSku === "string") {
-    return `Produto ja cadastrado no SKU ${value.existingSku}`;
-  }
-
-  if (value.typeFound === false) {
-    return `Tipo ${String(value.typeCode || "")} nao cadastrado`;
-  }
-
-  if (value.brandFound === false) {
-    return `Marca ${String(value.brandCode || "")} nao cadastrada`;
-  }
-
-  return "";
-}
-
-function shortDetails(value?: Record<string, unknown>) {
-  if (!value) {
-    return "-";
-  }
-
-  const entries = Object.entries(value)
-    .filter(([key]) => !["knownTypeCodes", "knownBrandCodes", "photos"].includes(key))
-    .slice(0, 6);
-
-  return entries.map(([key, item]) => `${key}: ${formatValue(item)}`).join("; ") || "-";
-}
-
-function formatValue(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.join(", ");
-  }
-
-  if (value && typeof value === "object") {
-    return JSON.stringify(value);
-  }
-
-  return String(value ?? "");
-}
-
 function formatDate(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
+  if (!value) return "-";
   return new Date(value).toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     dateStyle: "short",
-    timeStyle: "short"
+    timeStyle: "medium"
   });
 }

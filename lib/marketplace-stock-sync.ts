@@ -5,10 +5,12 @@ import {
   isMercadoLivreInactive,
   mlGet
 } from "./mercado-livre";
-import { listShopeeInventory } from "./shopee";
+import { getShopeeInventoryDetails, listShopeeInventoryIdsPage } from "./shopee";
 import { upsertMarketplaceItem } from "./migration-stock";
 import { listMarketplaceAccountRows, updateMarketplaceAccountColumns } from "./marketplace-accounts-view";
 import { supabaseAdmin } from "./supabase-admin";
+import { randomUUID } from "crypto";
+import { logSynchronizationResult } from "./synchronization-logs";
 
 type StockSyncProgress = {
   status: "idle" | "running" | "done" | "failed";
@@ -24,6 +26,11 @@ type StockSyncProgress = {
   scrollId: string;
   message: string;
   error?: string;
+  runId: string;
+  updatedListings: number;
+  includedListings: number;
+  deletedListings: number;
+  linkedListings: number;
 };
 
 const DETAILS_BATCH_SIZE = 20;
@@ -42,7 +49,12 @@ export async function startMarketplaceStockSync(accountId: string) {
     percent: 0,
     itemIds: [],
     scrollId: "",
-    message: "Sincronizacao iniciada."
+    message: "Sincronizacao iniciada.",
+    runId: randomUUID(),
+    updatedListings: 0,
+    includedListings: 0,
+    deletedListings: 0,
+    linkedListings: 0
   };
 
   await saveProgress(progress);
@@ -91,7 +103,12 @@ export async function getMarketplaceStockSyncProgress(accountId: string): Promis
     percent: 0,
     itemIds: [],
     scrollId: "",
-    message: "Aguardando sincronizacao."
+    message: "Aguardando sincronizacao.",
+    runId: "",
+    updatedListings: 0,
+    includedListings: 0,
+    deletedListings: 0,
+    linkedListings: 0
   };
 }
 
@@ -123,9 +140,9 @@ async function stepMercadoLivreSync(accountId: string, progress: StockSyncProgre
       scrollId: nextScrollId,
       totalFiles: itemIds.length,
       percent: nextScrollId ? 10 : itemIds.length > 0 ? 20 : 100,
-      phase: nextScrollId ? "listing" : itemIds.length > 0 ? "details" : "done",
-      status: nextScrollId || itemIds.length > 0 ? "running" : "done",
-      message: nextScrollId ? "Listando anuncios." : itemIds.length > 0 ? "Anuncios listados." : "0 produtos sincronizados."
+      phase: nextScrollId ? "listing" : "details",
+      status: "running",
+      message: nextScrollId ? "Listando anuncios." : itemIds.length > 0 ? "Anuncios listados." : "Nenhum anuncio encontrado; conferindo exclusoes."
     };
 
     await saveProgress(nextProgress);
@@ -143,33 +160,56 @@ async function stepMercadoLivreSync(accountId: string, progress: StockSyncProgre
   });
   const details = await mlGet(`/items?${params.toString()}`, accessToken) as Array<{ code?: number; body?: Record<string, unknown> }>;
   let syncedProducts = progress.syncedProducts;
+  let updatedListings = progress.updatedListings;
+  let includedListings = progress.includedListings;
+  let linkedListings = progress.linkedListings;
 
   for (const entry of details) {
     if (entry.code && entry.code >= 400) {
-      continue;
+      throw new Error(`Mercado Livre recusou a consulta de um lote de anuncios (HTTP ${entry.code}).`);
     }
 
     const item = entry.body;
     if (!item) {
-      continue;
+      throw new Error("Mercado Livre retornou um anuncio sem detalhes.");
     }
 
     const sku = extractSku(item);
     if (!sku) {
+      const listingId = String(item.id || "");
+      if (listingId) {
+        const seen = await supabaseAdmin().from("product_marketplaces")
+          .update({ last_seen_run_id: progress.runId, updated_at: new Date().toISOString() })
+          .eq("marketplace_account_id", accountId)
+          .eq("marketplace_product_id", listingId)
+          .select("id");
+        if (seen.error) throw new Error(seen.error.message);
+        if ((seen.data || []).length) updatedListings += 1;
+      }
       continue;
     }
 
+    const normalizedSku = normalizeSku(sku);
+    const db = supabaseAdmin();
+    const [existingLink, systemProduct] = await Promise.all([
+      db.from("product_marketplaces").select("id").eq("marketplace_account_id", accountId).eq("marketplace_product_id", String(item.id || "")).maybeSingle().throwOnError(),
+      db.from("products").select("id").ilike("sku", normalizedSku).maybeSingle().throwOnError()
+    ]);
     await upsertMarketplaceItem({
       accountId,
       marketplace: "mercado_livre",
       listingId: String(item.id || ""),
-      sku,
+      sku: normalizedSku,
       title: String(item.title || ""),
       price: Number(item.price || 0),
       stock: isMercadoLivreInactive(String(item.status || "")) ? 0 : Number(item.available_quantity || 0),
       status: String(item.status || ""),
-      rawData: item
+      rawData: item,
+      syncRunId: progress.runId
     });
+    if (existingLink.data?.id) updatedListings += 1;
+    else includedListings += 1;
+    if (systemProduct.data?.id) linkedListings += 1;
     syncedProducts += 1;
   }
 
@@ -180,7 +220,10 @@ async function stepMercadoLivreSync(accountId: string, progress: StockSyncProgre
     processedFiles,
     syncedProducts,
     percent: progress.totalFiles > 0 ? Math.round(20 + (processedFiles / progress.totalFiles) * 80) : 100,
-    message: "Sincronizando anuncios."
+    message: "Sincronizando anuncios.",
+    updatedListings,
+    includedListings,
+    linkedListings
   };
 
   if (processedFiles >= progress.totalFiles) {
@@ -193,7 +236,7 @@ async function stepMercadoLivreSync(accountId: string, progress: StockSyncProgre
 
 async function syncShopeeAccount(accountId: string, progress: StockSyncProgress) {
   const account = await getMarketplaceAccount(accountId);
-  const items = await listShopeeInventory({
+  const shopeeAccount = {
     id: String(account.id),
     name: String(account.name),
     marketplace: String(account.marketplace),
@@ -203,30 +246,80 @@ async function syncShopeeAccount(accountId: string, progress: StockSyncProgress)
     access_token: account.access_token ? String(account.access_token) : null,
     refresh_token: account.refresh_token ? String(account.refresh_token) : null,
     token_expires_at: account.token_expires_at ? String(account.token_expires_at) : null
-  });
+  };
 
-  let syncedProducts = 0;
+  if (progress.phase === "listing") {
+    const offset = Number(progress.scrollId || 0);
+    const page = await listShopeeInventoryIdsPage(shopeeAccount, offset);
+    const itemIds = [...new Set([...progress.itemIds, ...page.itemIds])];
+    const nextProgress: StockSyncProgress = {
+      ...progress,
+      itemIds,
+      scrollId: page.hasNextPage ? String(page.nextOffset) : "",
+      totalFiles: itemIds.length,
+      phase: page.hasNextPage ? "listing" : "details",
+      percent: page.hasNextPage ? Math.min(19, Math.max(1, Math.round(itemIds.length / 100))) : itemIds.length ? 20 : 100,
+      message: page.hasNextPage
+        ? `${itemIds.length} anuncios Shopee listados.`
+        : itemIds.length
+          ? `${itemIds.length} anuncios Shopee encontrados.`
+          : "Nenhum anuncio Shopee encontrado."
+    };
+    if (!page.hasNextPage && itemIds.length === 0) return finishProgress(nextProgress);
+    await saveProgress(nextProgress);
+    return nextProgress;
+  }
+
+  const batch = progress.itemIds.slice(progress.processedFiles, progress.processedFiles + DETAILS_BATCH_SIZE);
+  if (batch.length === 0) return finishProgress(progress);
+  const items = await getShopeeInventoryDetails(shopeeAccount, batch);
+
+  let syncedProducts = progress.syncedProducts;
+  let updatedListings = progress.updatedListings;
+  let includedListings = progress.includedListings;
+  let linkedListings = progress.linkedListings;
   for (const item of items) {
-    await upsertMarketplaceItem(item);
+    const db = supabaseAdmin();
+    const [existing, systemProduct] = await Promise.all([
+      db.from("product_marketplaces").select("id").eq("marketplace_account_id", accountId).eq("marketplace_product_id", item.listingId).maybeSingle().throwOnError(),
+      db.from("products").select("id").ilike("sku", normalizeSku(item.sku)).maybeSingle().throwOnError()
+    ]);
+    await upsertMarketplaceItem({ ...item, sku: normalizeSku(item.sku), syncRunId: progress.runId });
+    if (existing.data?.id) updatedListings += 1;
+    else includedListings += 1;
+    if (systemProduct.data?.id) linkedListings += 1;
     syncedProducts += 1;
   }
 
-  return finishProgress({
+  const processedFiles = Math.min(progress.totalFiles, progress.processedFiles + batch.length);
+  const nextProgress: StockSyncProgress = {
     ...progress,
-    totalFiles: items.length,
-    processedFiles: items.length,
+    phase: "details",
+    processedFiles,
     syncedProducts,
-    percent: 100
-  });
+    updatedListings,
+    includedListings,
+    linkedListings,
+    percent: progress.totalFiles ? Math.round(20 + (processedFiles / progress.totalFiles) * 80) : 100,
+    message: `${processedFiles} de ${progress.totalFiles} anuncios Shopee processados.`
+  };
+  if (processedFiles >= progress.totalFiles) return finishProgress(nextProgress);
+  await saveProgress(nextProgress);
+  return nextProgress;
 }
 
 async function finishProgress(progress: StockSyncProgress) {
+  let deletedListings = progress.deletedListings;
+  if (progress.marketplace === "mercado_livre" && progress.runId) {
+    deletedListings += await deleteListingsNotSeenInRun(progress.accountId, progress.runId);
+  }
   const finished: StockSyncProgress = {
     ...progress,
     status: "done",
     phase: "done",
     percent: 100,
-    message: `${progress.syncedProducts} produtos sincronizados.`
+    deletedListings,
+    message: `${progress.updatedListings} atualizados, ${progress.includedListings} incluidos, ${deletedListings} excluidos e ${progress.linkedListings} vinculados por SKU.`
   };
   await updateMarketplaceAccountColumns(progress.accountId, {
     last_inventory_sync_at: new Date().toISOString(),
@@ -235,6 +328,16 @@ async function finishProgress(progress: StockSyncProgress) {
     last_error: null
   });
   await saveProgress(finished);
+  await logSynchronizationResult({
+    process: `Sincronismo ${progress.accountName || marketplaceLabel(progress.marketplace)}`,
+    status: "done",
+    totals: {
+      evaluated: progress.totalFiles,
+      updated: progress.updatedListings,
+      removed: deletedListings,
+      included: progress.includedListings
+    }
+  });
   return finished;
 }
 
@@ -247,7 +350,22 @@ async function failProgress(progress: StockSyncProgress, error: string) {
   };
   await updateMarketplaceAccountColumns(progress.accountId, { last_error: error });
   await saveProgress(failed);
+  await logSynchronizationResult({
+    process: `Sincronismo ${progress.accountName || marketplaceLabel(progress.marketplace)}`,
+    status: "failed",
+    totals: {
+      evaluated: progress.processedFiles,
+      updated: progress.updatedListings,
+      removed: progress.deletedListings,
+      included: progress.includedListings
+    },
+    error
+  });
   return failed;
+}
+
+function marketplaceLabel(marketplace: string) {
+  return marketplace === "shopee" ? "Shopee" : marketplace === "mercado_livre" ? "Mercado Livre" : marketplace;
 }
 
 async function getMarketplaceAccount(accountId: string) {
@@ -273,4 +391,27 @@ async function saveProgress(progress: StockSyncProgress) {
 
 function progressKey(accountId: string) {
   return `MARKETPLACE_STOCK_SYNC_${accountId}`;
+}
+
+async function deleteListingsNotSeenInRun(accountId: string, runId: string) {
+  const db = supabaseAdmin();
+  const { data } = await db.from("product_marketplaces")
+    .select("id,marketplace_product_id")
+    .eq("marketplace_account_id", accountId)
+    .or(`last_seen_run_id.is.null,last_seen_run_id.neq.${runId}`)
+    .throwOnError();
+  const stale = data || [];
+  for (let index = 0; index < stale.length; index += 200) {
+    const batch = stale.slice(index, index + 200);
+    const externalIds = batch.map(row => row.marketplace_product_id).filter(Boolean);
+    if (externalIds.length) {
+      await db.from("listings").delete().eq("marketplace_account_id", accountId).in("external_listing_id", externalIds).throwOnError();
+    }
+    await db.from("product_marketplaces").delete().in("id", batch.map(row => row.id)).throwOnError();
+  }
+  return stale.length;
+}
+
+function normalizeSku(value: unknown) {
+  return String(value || "").trim().toUpperCase();
 }

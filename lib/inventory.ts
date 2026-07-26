@@ -10,7 +10,7 @@ export type MarketplaceSaleInput = {
   externalOrderId?: string;
   externalListingId?: string;
   status?: string;
-  items?: Array<{ sku: string; quantity: number; unitPrice?: number; totalPrice?: number }>;
+  items?: Array<{ sku: string; title?: string; quantity: number; unitPrice?: number; totalPrice?: number }>;
   sku?: string;
   quantity?: number;
   value?: number;
@@ -18,6 +18,9 @@ export type MarketplaceSaleInput = {
   fees?: number;
   discounts?: number;
   shipmentId?: string;
+  marketplaceAccountId?: string;
+  marketplaceNickname?: string;
+  soldAt?: string;
   rawPayload: unknown;
 };
 
@@ -40,6 +43,12 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
   }).select("id").single();
 
   if (activityResult.error && /duplicate|unique/i.test(activityResult.error.message)) {
+    const existing = await supabase.from("marketplace_activities").select("id,status")
+      .eq("marketplace", input.marketplace).eq("external_event_id", eventId).maybeSingle().throwOnError();
+    if (existing.data?.status === "error") {
+      await supabase.from("marketplace_activities").delete().eq("id", existing.data.id).throwOnError();
+      return registerMarketplaceSale(input);
+    }
     return { duplicated: true, eventId };
   }
   if (activityResult.error) throw activityResult.error;
@@ -55,6 +64,12 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       .select("id,reserves_stock,final_status")
       .eq("marketplace", input.marketplace).eq("external_status", status).maybeSingle();
 
+    const previousSale = await supabase.from("venda")
+      .select("id,status_venda(reserves_stock)")
+      .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
+    const previousStatus = previousSale.data?.status_venda as unknown as { reserves_stock?: boolean } | null;
+    const shouldReserveStock = Boolean(statusResult.data?.reserves_stock) && !previousStatus?.reserves_stock;
+
     const vendaResult = await supabase.from("venda").upsert({
       marketplace: input.marketplace,
       order_id: orderId,
@@ -65,19 +80,24 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       valor_taxas: number(input.fees),
       valor_descontos: number(input.discounts),
       valor_liquido: number(input.value) + number(input.shipping) - number(input.fees) - number(input.discounts),
+      data_venda: input.soldAt || undefined,
       shipment_id: input.shipmentId || null,
-      raw_data: input.rawPayload,
+      raw_data: {
+        payload: input.rawPayload,
+        marketplace_account_id: input.marketplaceAccountId || null,
+        marketplace_nickname: input.marketplaceNickname || null
+      },
       updated_at: new Date().toISOString()
     }, { onConflict: "marketplace,order_id" }).select("id").single().throwOnError();
     const vendaId = String(vendaResult.data.id);
 
     for (const item of items) {
-      const productId = await ensureProduct(input.marketplace, item.sku, input.externalListingId, item.unitPrice);
+      const productId = await ensureProduct(input.marketplace, item.sku, input.externalListingId, item.unitPrice, item.title);
       await supabase.from("venda_item").upsert({
         venda_id: vendaId, order_id: orderId, sku: item.sku, quantidade: item.quantity,
         valor_unitario: item.unitPrice, valor_total: item.totalPrice, raw_data: input.rawPayload
       }, { onConflict: "venda_id,sku" }).throwOnError();
-      if (statusResult.data?.reserves_stock) await reserveStock(productId, item.quantity);
+      if (shouldReserveStock) await reserveStock(productId, item.quantity);
     }
 
     await supabase.from("marketplace_activities").update({
@@ -93,22 +113,29 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
   }
 }
 
-async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: string, price = 0) {
+async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: string, price = 0, title = "") {
   const supabase = supabaseAdmin();
   let result = await supabase.from("products").select("id").eq("sku", sku).maybeSingle().throwOnError();
   if (!result.data) {
     result = await supabase.from("products").insert({
       sku, source_key: `marketplace_${marketplace}_${sku}`, model: sku,
-      title: `Produto ${sku}`, price, status: "active"
+      title: title.trim() || `Produto ${sku}`, price, status: "active"
     }).select("id").single().throwOnError();
   }
   if (!result.data) throw new Error(`Nao foi possivel criar o produto ${sku}.`);
   const productId = String(result.data.id);
   await supabase.from("estoque").upsert({ product_id: productId, sku, estoque_fisico: 0, estoque_disponivel: 0 }, { onConflict: "product_id" }).throwOnError();
-  await supabase.from("listings").upsert({
+  const existingListing = await supabase.from("listings").select("id")
+    .eq("product_id", productId).eq("marketplace", marketplace).limit(1).maybeSingle().throwOnError();
+  const listingData = {
     product_id: productId, marketplace, external_listing_id: listingId || null,
-    external_sku: sku, status: "active", stock: 0, price
-  }, { onConflict: "product_id,marketplace" }).throwOnError();
+    external_sku: sku, status: "active" as const, stock: 0, price
+  };
+  if (existingListing.data?.id) {
+    await supabase.from("listings").update(listingData).eq("id", existingListing.data.id).throwOnError();
+  } else {
+    await supabase.from("listings").insert(listingData).throwOnError();
+  }
   return productId;
 }
 
@@ -138,7 +165,7 @@ async function history(activityId: string, stage: string, status: string, detail
 
 function normalizeItems(input: MarketplaceSaleInput) {
   const source = input.items?.length ? input.items : input.sku ? [{ sku: input.sku, quantity: input.quantity || 1 }] : [];
-  return source.map(item => ({ sku: String(item.sku || "").trim(), quantity: Math.max(1, number(item.quantity)), unitPrice: number(item.unitPrice), totalPrice: number(item.totalPrice) || number(item.unitPrice) * Math.max(1, number(item.quantity)) })).filter(item => item.sku);
+  return source.map(item => ({ sku: String(item.sku || "").trim(), title: String((item as { title?: string }).title || "").trim(), quantity: Math.max(1, number(item.quantity)), unitPrice: number(item.unitPrice), totalPrice: number(item.totalPrice) || number(item.unitPrice) * Math.max(1, number(item.quantity)) })).filter(item => item.sku);
 }
 function number(value: unknown) { const parsed = Number(value || 0); return Number.isFinite(parsed) ? parsed : 0; }
 function payloadHash(payload: unknown) { return createHash("sha256").update(JSON.stringify(payload) + randomUUID().slice(0, 0)).digest("hex"); }

@@ -89,20 +89,20 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
               </label>
               <label>
                 Executar busca a cada:
-                <span className="inline-field">
-                  <input
-                    name="intervalMinutes"
-                    required
-                    inputMode="numeric"
-                    pattern="[0-9]+"
-                    defaultValue={settings.intervalMinutes}
-                  />
-                  <span>Minutos</span>
-                </span>
+                <select name="intervalMinutes" required defaultValue={settings.intervalMinutes}>
+                  <option value={60}>1 hora</option>
+                  <option value={120}>2 horas</option>
+                  <option value={180}>3 horas</option>
+                  <option value={240}>4 horas</option>
+                  <option value={360}>6 horas</option>
+                  <option value={480}>8 horas</option>
+                  <option value={720}>12 horas</option>
+                  <option value={1440}>24 horas</option>
+                </select>
               </label>
             </div>
             <div className="form-actions">
-              <button className="primary" type="submit">Salvar GoogleDrive</button>
+              <button className="primary" type="submit">Salvar Configuração</button>
             </div>
           </form>
           <div className="test-row">

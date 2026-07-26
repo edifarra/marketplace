@@ -129,19 +129,22 @@ export async function removeProductIntegration(productId: string, integration: s
   };
 }
 
-export async function sendPendingProductsToConfiguredTarget(): Promise<BatchSendResult> {
+export async function sendPendingProductsToConfiguredTarget(limit?: number): Promise<BatchSendResult> {
   const supabase = supabaseAdmin();
-  const { data, error } = await supabase
+  let query = supabase
     .from("products")
     .select("id")
     .in("status", PENDING_STATUSES)
     .order("created_at", { ascending: true });
+  if (limit && limit > 0) query = query.limit(limit);
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(error.message);
   }
 
   const products = data ?? [];
+  const target = await getProductSendTarget();
   const results: SendResult[] = [];
   await saveBatchSendProgress({
     status: "running",
@@ -153,7 +156,7 @@ export async function sendPendingProductsToConfiguredTarget(): Promise<BatchSend
     message: "Iniciando envio de produtos."
   });
 
-  for (const product of products) {
+  for (const [index, product] of products.entries()) {
     try {
       results.push(await sendProductToConfiguredTarget(product.id));
     } catch (errorResult) {
@@ -173,6 +176,10 @@ export async function sendPendingProductsToConfiguredTarget(): Promise<BatchSend
       failed: results.filter((result) => !result.ok).length,
       message: `Produtos processados ${results.length} de ${products.length}.`
     });
+
+    if (target === "TINY" && index < products.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 7000));
+    }
   }
 
   const result = {

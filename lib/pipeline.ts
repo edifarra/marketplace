@@ -87,6 +87,18 @@ export function applyTemplate(template: string, data: Record<string, string | un
   return text.replace(/\s+/g, " ").replace(/\/\s*$/g, "").trim();
 }
 
+export function removeConfiguredDescriptions(description: string, configuredRemovals?: string | null) {
+  const removals = String(configuredRemovals || "")
+    .split(";")
+    .map((text) => text.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  return removals.reduce((result, text) => {
+    const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return result.replace(new RegExp(escaped, "gi"), "");
+  }, description).trim();
+}
+
 export function nextSku(type: TypeConfig, currentNumber: number, specialCode?: string) {
   const nextNumber = currentNumber + 1;
   const specialSuffix = String(specialCode || "").trim().toUpperCase();
@@ -137,9 +149,7 @@ export function buildProduct(input: {
     sku: skuInfo.sku
   });
   console.log("formou descrição", description);
-  if (input.special?.removeDescription) {
-    description = description.replace(input.special.removeDescription, "");
-  }
+  description = removeConfiguredDescriptions(description, input.special?.removeDescription);
 
   return {
     sku: skuInfo.sku,

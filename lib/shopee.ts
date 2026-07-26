@@ -39,6 +39,26 @@ export async function getActiveShopeeAccounts() {
 }
 
 export async function listShopeeInventory(account: ShopeeAccountConfig): Promise<ShopeeInventoryItem[]> {
+  const itemIds: string[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await listShopeeInventoryIdsPage(account, offset);
+    itemIds.push(...page.itemIds);
+    if (!page.hasNextPage) break;
+    offset = page.nextOffset;
+  }
+
+  const items: ShopeeInventoryItem[] = [];
+  for (const itemIdBatch of chunk(itemIds, 50)) {
+    items.push(...await getShopeeInventoryDetails(account, itemIdBatch));
+  }
+
+  await markShopeeInventoryRead(account.id);
+  return items;
+}
+
+export async function listShopeeInventoryIdsPage(account: ShopeeAccountConfig, offset = 0) {
   const shopId = account.shop_id || account.account_id;
   if (!shopId) {
     throw new Error(`Shop ID nao configurado para ${account.name}.`);
@@ -47,37 +67,63 @@ export async function listShopeeInventory(account: ShopeeAccountConfig): Promise
   const accessToken = await getValidShopeeAccessToken(account);
   const config = await getShopeeOAuthConfig(account.id);
   const client = createShopeeClient(config);
-  const list = await client.getProducts(accessToken, shopId);
+  const list = await client.getProducts(accessToken, shopId, offset, 100);
   const itemIds = extractShopeeItemIds(list);
-  const items: ShopeeInventoryItem[] = [];
-
-  for (const itemId of itemIds) {
-    const detail = await client.getProductById(accessToken, shopId, itemId);
-    const rawItem = extractFirstShopeeItem(detail);
-    const sku = extractShopeeSku(rawItem);
-    if (!sku) {
-      continue;
-    }
-    items.push({
-      accountId: account.id,
-      accountName: account.name,
-      marketplace: "shopee",
-      listingId: String(itemId),
-      sku,
-      title: String(rawItem.item_name || rawItem.name || sku),
-      price: extractShopeePrice(rawItem),
-      stock: extractShopeeStock(rawItem),
-      status: String(rawItem.item_status || rawItem.status || ""),
-      rawData: rawItem
-    });
+  const page = extractShopeePage(list);
+  const nextOffset = page.nextOffset ?? offset + itemIds.length;
+  if (page.hasNextPage && nextOffset <= offset) {
+    throw new Error(`Paginacao Shopee invalida: offset ${offset}, proximo offset ${nextOffset}.`);
   }
 
+  return {
+    itemIds,
+    hasNextPage: page.hasNextPage && itemIds.length > 0,
+    nextOffset
+  };
+}
+
+export async function getShopeeInventoryDetails(account: ShopeeAccountConfig, itemIds: string[]) {
+  const shopId = account.shop_id || account.account_id;
+  if (!shopId) {
+    throw new Error(`Shop ID nao configurado para ${account.name}.`);
+  }
+  if (itemIds.length === 0) return [];
+
+  const accessToken = await getValidShopeeAccessToken(account);
+  const config = await getShopeeOAuthConfig(account.id);
+  const client = createShopeeClient(config);
+  const items: ShopeeInventoryItem[] = [];
+  for (const itemIdBatch of chunk(itemIds, 50)) {
+    const detail = await client.getProductsByIds(accessToken, shopId, itemIdBatch);
+    for (const rawItem of extractShopeeItems(detail)) {
+      const itemId = String(rawItem.item_id || "");
+      const sku = extractShopeeSku(rawItem);
+      if (!itemId || !sku) {
+        continue;
+      }
+      items.push({
+        accountId: account.id,
+        accountName: account.name,
+        marketplace: "shopee",
+        listingId: itemId,
+        sku,
+        title: String(rawItem.item_name || rawItem.name || sku),
+        price: extractShopeePrice(rawItem),
+        stock: extractShopeeStock(rawItem),
+        status: String(rawItem.item_status || rawItem.status || ""),
+        rawData: rawItem
+      });
+    }
+  }
+
+  return items;
+}
+
+export async function markShopeeInventoryRead(accountId: string) {
   await supabaseAdmin()
     .from("config_marketplace_accounts")
     .update({ last_inventory_sync_at: new Date().toISOString(), last_sync_at: new Date().toISOString(), last_error: null })
-    .eq("id", account.id);
-
-  return items;
+    .eq("id", accountId);
 }
 
 export async function getValidShopeeAccessToken(account: ShopeeAccountConfig) {
@@ -101,10 +147,28 @@ function extractShopeeItemIds(payload: Record<string, unknown>) {
   return items.map((item) => String(item.item_id || "")).filter(Boolean);
 }
 
-function extractFirstShopeeItem(payload: Record<string, unknown>) {
+function extractShopeeItems(payload: Record<string, unknown>) {
   const response = payload.response as Record<string, unknown> | undefined;
   const items = (response?.item_list || response?.item || []) as Array<Record<string, unknown>>;
-  return items[0] || response || payload;
+  return items;
+}
+
+function extractShopeePage(payload: Record<string, unknown>) {
+  const response = payload.response as Record<string, unknown> | undefined;
+  const hasNextPage = response?.has_next_page === true || String(response?.has_next_page).toLowerCase() === "true";
+  const numericOffset = Number(response?.next_offset);
+  return {
+    hasNextPage,
+    nextOffset: Number.isFinite(numericOffset) ? numericOffset : undefined
+  };
+}
+
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function extractShopeeSku(item: Record<string, unknown>) {

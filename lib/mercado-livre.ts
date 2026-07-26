@@ -9,6 +9,7 @@ export type MarketplaceAccountConfig = {
   active: boolean;
   account_id?: string | null;
   seller_id?: string | null;
+  nickname?: string | null;
   client_id?: string | null;
   client_secret?: string | null;
   redirect_uri?: string | null;
@@ -34,12 +35,51 @@ export type MercadoLivreInventoryItem = {
 export async function getActiveMercadoLivreAccounts() {
   const supabase = supabaseAdmin();
   const data = await selectMarketplaceAccounts(
-    "id,name,marketplace,active,account_id,seller_id,client_id,client_secret,redirect_uri,access_token,refresh_token,token_expires_at,status"
+    "id,name,marketplace,active,account_id,seller_id,nickname,client_id,client_secret,redirect_uri,access_token,refresh_token,token_expires_at,status"
   );
 
   return ((data ?? []) as unknown as MarketplaceAccountConfig[])
     .filter((account) => account.marketplace === "mercado_livre")
     .filter(isConnectedAccount);
+}
+
+export async function getMercadoLivreAccountForNotification(userId?: string | number | null) {
+  const accounts = await getActiveMercadoLivreAccounts();
+  const wanted = String(userId || "").trim();
+  const account = wanted
+    ? accounts.find((candidate) => String(candidate.seller_id || candidate.account_id || "") === wanted)
+    : accounts.length === 1 ? accounts[0] : undefined;
+
+  if (!account) {
+    throw new Error(wanted
+      ? `Conta Mercado Livre do seller ${wanted} nao encontrada.`
+      : "Nao foi possivel identificar a conta Mercado Livre da notificacao.");
+  }
+  return account;
+}
+
+export async function getMercadoLivreOrder(orderId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlGet(`/orders/${encodeURIComponent(orderId)}`, accessToken) as Promise<Record<string, any>>;
+}
+
+export async function getMercadoLivreShipment(shipmentId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlGet(`/shipments/${encodeURIComponent(shipmentId)}`, accessToken, { "x-format-new": "true" }) as Promise<Record<string, any>>;
+}
+
+export async function getMercadoLivreShipmentHistory(shipmentId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlGet(`/shipments/${encodeURIComponent(shipmentId)}/history`, accessToken, { "x-format-new": "true" }) as Promise<Array<Record<string, any>>>;
+}
+
+export async function listRecentMercadoLivreOrders(account: MarketplaceAccountConfig, limit = 50) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const sellerId = account.seller_id || account.account_id;
+  if (!sellerId) throw new Error(`Seller/User ID nao configurado para ${account.name}.`);
+  const params = new URLSearchParams({ seller: sellerId, sort: "date_desc", limit: String(Math.min(Math.max(limit, 1), 50)) });
+  const response = await mlGet(`/orders/search?${params.toString()}`, accessToken) as Record<string, any>;
+  return Array.isArray(response.results) ? response.results as Array<Record<string, any>> : [];
 }
 
 export async function listMercadoLivreInventory(account: MarketplaceAccountConfig): Promise<MercadoLivreInventoryItem[]> {
@@ -243,9 +283,9 @@ async function putMercadoLivreItem(listingId: string, accessToken: string, paylo
   return json;
 }
 
-export async function mlGet(path: string, accessToken: string) {
+export async function mlGet(path: string, accessToken: string, extraHeaders: Record<string, string> = {}) {
   const response = await fetch(`${ML_API}${path}`, {
-    headers: { authorization: `Bearer ${accessToken}` },
+    headers: { authorization: `Bearer ${accessToken}`, ...extraHeaders },
     cache: "no-store"
   });
   const json = await response.json().catch(() => ({}));

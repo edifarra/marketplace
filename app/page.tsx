@@ -239,6 +239,8 @@ type DashboardSale = {
   status_original: string | null;
   valor_produtos: number | string | null;
   valor_frete: number | string | null;
+  valor_taxas: number | string | null;
+  valor_descontos: number | string | null;
   valor_liquido: number | string | null;
   data_venda: string | null;
   created_at: string;
@@ -249,34 +251,30 @@ type DashboardSale = {
 async function getDashboardSalesMetrics(supabase: ReturnType<typeof supabaseAdmin>) {
   const { data } = await supabase
     .from("venda")
-    .select("status_original,valor_produtos,valor_frete,valor_liquido,data_venda,created_at,updated_at,raw_data")
+    .select("status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,created_at,updated_at,raw_data")
     .throwOnError();
   const sales = ((data || []) as DashboardSale[]).filter(isEffectiveSale);
   const now = new Date();
-  const today = localDayRange(now);
   const currentWeek = localWeekRange(now);
   const currentMonth = localMonthRange(now, 0);
   const previousMonth = localMonthRange(now, -1);
 
-  const toShipToday = sales.filter((sale) => {
-    if (isPostedSale(sale.status_original)) return false;
-    const comparisonDate = extractShippingDeadline(sale.raw_data) || saleDate(sale);
-    return isWithin(comparisonDate, today.start, today.end);
-  }).length;
+  // A fila precisa mostrar tudo o que ainda deve ser despachado, inclusive
+  // pedidos vencidos. Restringir pela data da venda/prazo escondia a maior
+  // parte dos pedidos prontos para envio.
+  const toShipToday = sales.filter((sale) => isAwaitingShipment(sale.status_original)).length;
 
-  const currentWeekCount = sales.filter((sale) => {
-    const comparisonDate = isPostedSale(sale.status_original)
-      ? extractPostedAt(sale.raw_data) || new Date(sale.updated_at)
-      : saleDate(sale);
-    return isWithin(comparisonDate, currentWeek.start, currentWeek.end);
-  }).length;
+  // Semana e mes devem usar a mesma referencia: a data em que a venda ocorreu.
+  const currentWeekCount = sales.filter((sale) =>
+    isWithin(saleDate(sale), currentWeek.start, currentWeek.end)
+  ).length;
 
   const monthSales = sales.filter((sale) => isWithin(saleDate(sale), currentMonth.start, currentMonth.end));
   const previousMonthSales = sales.filter((sale) => isWithin(saleDate(sale), previousMonth.start, previousMonth.end));
   const currentMonthValue = sumSales(monthSales);
   const previousMonthValue = sumSales(previousMonthSales);
-  const currentMonthNetValue = sumSaleField(monthSales, "valor_liquido");
-  const previousMonthNetValue = sumSaleField(previousMonthSales, "valor_liquido");
+  const currentMonthNetValue = sumNetSales(monthSales);
+  const previousMonthNetValue = sumNetSales(previousMonthSales);
   const currentMonthFreight = sumSaleField(monthSales, "valor_frete");
   const previousMonthFreight = sumSaleField(previousMonthSales, "valor_frete");
 
@@ -321,59 +319,16 @@ function MetricWithTrend({ label, value, trend }: { label: string; value: string
 }
 
 function isEffectiveSale(sale: DashboardSale) {
-  return !/(cancel|refund|reembols|not_delivered)/i.test(String(sale.status_original || ""));
+  return !/(^pending$|payment_required|payment_in_process|unpaid|nao_paga|aguardando.*pagamento|cancel|refund|reembols|not_delivered)/i
+    .test(String(sale.status_original || ""));
 }
 
-function isPostedSale(status: string | null) {
-  return /^(shipped|in_transit|out_for_delivery|delivered|completed|sent|enviado|enviada|a_caminho)$/i.test(String(status || ""));
+function isAwaitingShipment(status: string | null) {
+  return /^(confirmed|paid|ready_to_ship|handling|processed|paga|criada)$/i.test(String(status || ""));
 }
 
 function saleDate(sale: DashboardSale) {
   return new Date(sale.data_venda || sale.created_at);
-}
-
-function extractPostedAt(raw: Record<string, unknown> | null) {
-  const payload = unwrapSalePayload(raw);
-  const shipment = payload?.shipment || payload?.order?.shipping || payload?.data?.shipment || {};
-  return firstValidDate([
-    shipment?.status_history?.date_shipped,
-    shipment?.date_shipped,
-    shipment?.shipped_at,
-    shipment?.update_time
-  ]);
-}
-
-function extractShippingDeadline(raw: Record<string, unknown> | null) {
-  const payload = unwrapSalePayload(raw);
-  const order = payload?.order || payload?.data || payload || {};
-  return firstValidDate([
-    order?.ship_by_date,
-    order?.shipping_deadline,
-    order?.shipping?.shipping_option?.estimated_delivery_time?.shipping?.limit?.date,
-    order?.shipping?.estimated_handling_limit
-  ]);
-}
-
-function unwrapSalePayload(raw: Record<string, unknown> | null): any {
-  if (!raw) return {};
-  return (raw.payload || raw) as Record<string, unknown>;
-}
-
-function firstValidDate(values: unknown[]) {
-  for (const value of values) {
-    if (!value) continue;
-    const numeric = Number(value);
-    const parsed = Number.isFinite(numeric) && numeric > 0
-      ? new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric)
-      : new Date(String(value));
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  return null;
-}
-
-function localDayRange(date: Date) {
-  const parts = saoPauloParts(date);
-  return rangeFromParts(parts.year, parts.month, parts.day, 1);
 }
 
 function localWeekRange(date: Date) {
@@ -390,11 +345,6 @@ function localMonthRange(date: Date, monthOffset: number) {
   const start = saoPauloDate(parts.year, parts.month - 1 + monthOffset, 1);
   const end = saoPauloDate(parts.year, parts.month + monthOffset, 1);
   return { start, end };
-}
-
-function rangeFromParts(year: number, month: number, day: number, days: number) {
-  const start = saoPauloDate(year, month - 1, day);
-  return { start, end: new Date(start.getTime() + days * 86_400_000) };
 }
 
 function saoPauloDate(year: number, zeroBasedMonth: number, day: number) {
@@ -420,6 +370,15 @@ function sumSales(sales: DashboardSale[]) {
 
 function sumSaleField(sales: DashboardSale[], field: "valor_frete" | "valor_liquido") {
   return sales.reduce((total, sale) => total + Number(sale[field] || 0), 0);
+}
+
+function sumNetSales(sales: DashboardSale[]) {
+  return sales.reduce((total, sale) =>
+    total
+    + Number(sale.valor_produtos || 0)
+    - Number(sale.valor_taxas || 0)
+    - Number(sale.valor_descontos || 0)
+    - Number(sale.valor_frete || 0), 0);
 }
 
 function percentageChange(current: number, previous: number) {

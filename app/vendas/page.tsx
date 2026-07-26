@@ -110,7 +110,10 @@ function isFlexShipping(shipping: Record<string, any>) {
     || shipping.tags?.includes?.("flex");
 }
 function canPrintMarketplaceLabel(sale: Sale, shipping: Record<string, any>) {
-  if (sale.marketplace === "mercado_livre") return shipping.status === "ready_to_ship";
+  if (sale.marketplace === "mercado_livre") {
+    return shipping.status === "ready_to_ship"
+      && ["ready_to_print", "printed"].includes(String(shipping.substatus || ""));
+  }
   return sale.marketplace === "shopee" && isReadyToShip(sale) && Boolean(sale.shipment_id);
 }
 function isReadyToShip(sale: Sale) {

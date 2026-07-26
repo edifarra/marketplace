@@ -36,7 +36,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!isConfigured()) return NextResponse.next();
+  if (!isConfigured()) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Autenticacao indisponivel por configuracao incompleta." },
+        { status: 503 }
+      );
+    }
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("configuracao", "incompleta");
+    return NextResponse.redirect(loginUrl);
+  }
 
   const payload = await verifySessionToken(request.cookies.get(AUTH_COOKIE_NAME)?.value);
   const user = payload ? await loadActiveUser(payload) : null;

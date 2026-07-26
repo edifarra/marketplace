@@ -27,11 +27,17 @@ export type AuthUser = {
 };
 
 export function isAuthConfigured() {
-  return Boolean(
-    process.env.AUTH_SESSION_SECRET &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-  );
+  return getMissingAuthConfiguration().length === 0;
+}
+
+export function getMissingAuthConfiguration() {
+  const missing: string[] = [];
+  if (!process.env.AUTH_SESSION_SECRET) missing.push("AUTH_SESSION_SECRET");
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+  if (!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)) {
+    missing.push("SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return missing;
 }
 
 export async function hashPassword(password: string) {

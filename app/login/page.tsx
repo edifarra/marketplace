@@ -1,5 +1,5 @@
 import { loginAction } from "./actions";
-import { isAuthConfigured } from "@/lib/auth";
+import { getMissingAuthConfiguration, isAuthConfigured } from "@/lib/auth";
 import { PasswordField } from "./password-field";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,7 @@ type LoginPageProps = {
 
 export default function LoginPage({ searchParams }: LoginPageProps) {
   const authConfigured = isAuthConfigured();
+  const missingConfiguration = getMissingAuthConfiguration();
   const message = searchParams?.sessao === "expirada"
     ? "Sua sessao expirou. Entre novamente."
     : searchParams?.erro;
@@ -22,7 +23,10 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
           <div className="subtitle">Gestao de estoque e marketplaces</div>
         </div>
         {!authConfigured && (
-          <div className="form-error">Configure a autenticacao no ambiente para liberar o acesso.</div>
+          <div className="form-error">
+            Configure a autenticacao no ambiente para liberar o acesso.
+            <div>Variaveis ausentes: {missingConfiguration.join(", ")}.</div>
+          </div>
         )}
         {message && <div className="form-error">{message}</div>}
         <form action={loginAction} className="config-form">

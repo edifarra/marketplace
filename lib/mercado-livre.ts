@@ -73,6 +73,16 @@ export async function getMercadoLivreShipmentHistory(shipmentId: string, account
   return mlGet(`/shipments/${encodeURIComponent(shipmentId)}/history`, accessToken, { "x-format-new": "true" }) as Promise<Array<Record<string, any>>>;
 }
 
+export async function emitMercadoLivreDce(orderId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlRequest(`/mlb/order/${encodeURIComponent(orderId)}/dce/emission`, accessToken, "POST");
+}
+
+export async function getMercadoLivreDceInfo(orderId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlRequest(`/mlb/order/${encodeURIComponent(orderId)}/dce/info`, accessToken, "GET");
+}
+
 export async function listRecentMercadoLivreOrders(account: MarketplaceAccountConfig, limit = 50) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
   const sellerId = account.seller_id || account.account_id;
@@ -294,6 +304,19 @@ export async function mlGet(path: string, accessToken: string, extraHeaders: Rec
   }
 
   return json;
+}
+
+async function mlRequest(path: string, accessToken: string, method: "GET" | "POST") {
+  const response = await fetch(`${ML_API}${path}`, {
+    method,
+    headers: { authorization: `Bearer ${accessToken}` },
+    cache: "no-store"
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(JSON.stringify(json));
+  }
+  return json as Record<string, unknown>;
 }
 
 export function extractSku(item: Record<string, unknown>) {

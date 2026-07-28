@@ -69,7 +69,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     );
 
     const previousSale = await supabase.from("venda")
-      .select("id,status_venda(reserves_stock)")
+      .select("id,raw_data,status_venda(reserves_stock)")
       .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
     const previousStatus = previousSale.data?.status_venda as unknown as { reserves_stock?: boolean } | null;
     const shouldReserveStock = Boolean(statusResult.data?.reserves_stock) && !previousStatus?.reserves_stock;
@@ -87,6 +87,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       data_venda: input.soldAt || undefined,
       shipment_id: input.shipmentId || null,
       raw_data: {
+        ...((previousSale.data?.raw_data as Record<string, unknown> | null) || {}),
         payload: input.rawPayload,
         marketplace_account_id: input.marketplaceAccountId || null,
         marketplace_nickname: input.marketplaceNickname || null

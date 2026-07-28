@@ -1,6 +1,7 @@
 import { Sidebar } from "../components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { SalesGrid, type SaleGridRow } from "./sales-grid";
+import { UpdateSalesButton } from "./update-sales-button";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,7 +46,7 @@ export default async function SalesPage() {
       value: money(sale.valor_produtos),
       status: sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original),
       flex: isFlexShipping(shipping),
-      canPrintLabel: canPrintMarketplaceLabel(sale, shipping),
+      shippingAction: shippingAction(sale, shipping),
       details: [
         { label: "Pedido", value: sale.order_id },
         { label: "Status recebido", value: sale.status_original || "Não informado" },
@@ -70,7 +71,7 @@ export default async function SalesPage() {
   });
 
   return <main className="shell"><Sidebar /><section className="main">
-    <div className="topbar"><div><h1>Vendas</h1><div className="subtitle">Vendas efetivas recebidas dos marketplaces e seus status mais recentes.</div></div></div>
+    <div className="topbar"><div><h1>Vendas</h1><div className="subtitle">Vendas efetivas recebidas dos marketplaces e seus status mais recentes.</div></div><UpdateSalesButton /></div>
     <section className="section card"><div className="table-toolbar"><div><h2>Vendas dos Marketplaces</h2><div className="muted">Clique em uma venda para visualizar os valores e itens.</div></div></div><SalesGrid rows={rows} /></section>
   </section></main>;
 }
@@ -109,12 +110,23 @@ function isFlexShipping(shipping: Record<string, any>) {
     || shipping.shipping_mode === "flex"
     || shipping.tags?.includes?.("flex");
 }
-function canPrintMarketplaceLabel(sale: Sale, shipping: Record<string, any>) {
+function shippingAction(sale: Sale, shipping: Record<string, any>): SaleGridRow["shippingAction"] {
   if (sale.marketplace === "mercado_livre") {
+    if (shipping.status === "ready_to_ship" && String(shipping.substatus || "") === "invoice_pending") {
+      return "emit_dce";
+    }
     return shipping.status === "ready_to_ship"
-      && ["ready_to_print", "printed"].includes(String(shipping.substatus || ""));
+      && ["ready_to_print", "printed"].includes(String(shipping.substatus || ""))
+      ? "print_label"
+      : null;
   }
-  return sale.marketplace === "shopee" && isReadyToShip(sale) && Boolean(sale.shipment_id);
+  if (sale.marketplace !== "shopee") return null;
+  const raw = (sale.raw_data || {}) as Record<string, any>;
+  const shippingArranged = Boolean(raw.shopee_shipping_arranged_at);
+  const status = String(sale.status_original || "");
+  if (/^READY_TO_SHIP$/i.test(status) && !shippingArranged) return "arrange_shipment";
+  if (shippingArranged || /^PROCESSED$/i.test(status)) return "print_label";
+  return /^(CONFIRMED|TO_SHIP)$/i.test(status) ? "arrange_shipment" : null;
 }
 function isReadyToShip(sale: Sale) {
   if (sale.status_venda?.description) {

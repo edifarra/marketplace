@@ -3,6 +3,10 @@
     {
       "path": "/api/mercado-livre/orders/recover?limit=25",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/shopee/orders/recover?hours=72",
+      "schedule": "15 5 * * *"
     }
   ]
 }

@@ -13,7 +13,7 @@ export type SaleGridRow = {
   value: string;
   status: string;
   flex: boolean;
-  canPrintLabel: boolean;
+  shippingAction: "print_label" | "emit_dce" | "arrange_shipment" | null;
   details: Array<{ label: string; value: string }>;
   items: Array<{ sku: string; description: string; quantity: number; unitValue: string; totalValue: string }>;
   shippingHistory: Array<{ date: string; status: string; description: string }>;
@@ -65,6 +65,28 @@ export function SalesGrid({ rows }: { rows: SaleGridRow[] }) {
 }
 
 function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: boolean; onToggle: () => void }) {
+  const [working, setWorking] = useState(false);
+  const [actionError, setActionError] = useState("");
+  async function prepareShipping(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    const labelWindow = window.open("", "_blank");
+    setWorking(true);
+    setActionError("");
+    try {
+      const response = await fetch(`/api/vendas/${row.id}/preparar-envio`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Não foi possível preparar o envio.");
+      if (result.labelUrl) {
+        if (labelWindow) labelWindow.location.href = result.labelUrl;
+        else window.open(result.labelUrl, "_blank", "noopener,noreferrer");
+      }
+      window.location.reload();
+    } catch (error) {
+      labelWindow?.close();
+      setActionError(error instanceof Error ? error.message : "Não foi possível preparar o envio.");
+      setWorking(false);
+    }
+  }
   return <>
     <tr className={`log-grid-row${expanded ? " expanded" : ""}`} onClick={onToggle} onKeyDown={(event) => {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onToggle(); }
@@ -72,7 +94,12 @@ function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: bo
       <td>{row.date}</td>
       <td><span className="log-process"><span className="log-chevron">›</span><Image className="marketplace-mini-logo" src={marketplaceIcon(row.marketplaceCode)} width={25} height={25} alt="" />{row.marketplace}{row.flex && <span className="flex-badge" title="Mercado Envios Flex">Flex</span>}</span></td>
       <td>{row.nickname}</td><td>{row.totalItems}</td><td>{row.value}</td><td><span className="status">{row.status}</span></td>
-      <td>{row.canPrintLabel && <a className="secondary compact link-button sale-label-button" href={`/api/vendas/${row.id}/etiqueta`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Imprimir etiqueta</a>}</td>
+      <td>
+        {row.shippingAction === "print_label" && <a className="secondary compact link-button sale-label-button" href={`/api/vendas/${row.id}/etiqueta`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Imprimir etiqueta</a>}
+        {row.shippingAction === "emit_dce" && <button className="secondary compact sale-label-button" disabled={working} onClick={prepareShipping}>{working ? "Emitindo..." : "Emitir DC-e"}</button>}
+        {row.shippingAction === "arrange_shipment" && <button className="secondary compact sale-label-button" disabled={working} onClick={prepareShipping}>{working ? "Organizando..." : "Organizar envio"}</button>}
+        {actionError && <div className="sale-action-error" title={actionError}>{actionError}</div>}
+      </td>
     </tr>
     {expanded && <tr className="log-summary-row"><td colSpan={7}>
       <div className="sale-details">

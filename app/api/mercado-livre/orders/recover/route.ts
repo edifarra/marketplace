@@ -34,12 +34,23 @@ async function recoverOrders(request: NextRequest) {
       .select("order_id")
       .eq("marketplace", "mercado_livre").in("status", ["received", "error"])
       .not("order_id", "is", null).limit(50).throwOnError();
+    const stale = await supabaseAdmin().from("venda")
+      .select("order_id,raw_data,status_venda!inner(internal_status)")
+      .eq("marketplace", "mercado_livre")
+      .eq("status_venda.internal_status", "pronta_para_envio")
+      .limit(200)
+      .throwOnError();
     const accountResults: Array<Record<string, unknown>> = [];
 
     for (const account of accounts) {
       const recent = await listRecentMercadoLivreOrders(account, limit);
       const orderIds = new Set(recent.map((order) => String(order.id)));
       for (const row of pending.data || []) orderIds.add(String(row.order_id));
+      for (const sale of stale.data || []) {
+        const raw = (sale.raw_data || {}) as Record<string, any>;
+        const accountId = String(raw.marketplace_account_id || "");
+        if (!accountId || accountId === account.id || accounts.length === 1) orderIds.add(String(sale.order_id));
+      }
       const processed: Array<Record<string, unknown>> = [];
       for (const orderId of orderIds) {
         try {
@@ -50,7 +61,7 @@ async function recoverOrders(request: NextRequest) {
       }
       accountResults.push({ account: account.name, recent: recent.length, processed });
     }
-    return NextResponse.json({ accounts: accountResults, pending: pending.data?.length || 0 });
+    return NextResponse.json({ accounts: accountResults, pending: pending.data?.length || 0, staleReadyToShip: stale.data?.length || 0 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

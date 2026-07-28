@@ -74,14 +74,14 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 async function shopeeLabel(sale: Record<string, any>) {
-  if (String(sale.status_original || "").toUpperCase() !== "READY_TO_SHIP") {
-    return NextResponse.json({ error: "A Shopee ainda não liberou este pedido para envio." }, { status: 409 });
-  }
-  if (!sale.shipment_id) {
-    return NextResponse.json({ error: "Pedido Shopee sem número de pacote." }, { status: 400 });
-  }
-
   const raw = (sale.raw_data || {}) as Record<string, any>;
+  const shippingArranged = Boolean(raw.shopee_shipping_arranged_at)
+    || String(sale.status_original || "").toUpperCase() === "PROCESSED";
+  if (!shippingArranged) {
+    return NextResponse.json({
+      error: "Primeiro clique em Organizar envio para a Shopee aceitar o despacho."
+    }, { status: 409 });
+  }
   const accountId = String(raw.marketplace_account_id || "");
   const accounts = await getActiveShopeeAccounts();
   const account = accounts.find((item) => item.id === accountId)
@@ -92,40 +92,69 @@ async function shopeeLabel(sale: Record<string, any>) {
 
   const accessToken = await getValidShopeeAccessToken(account);
   const client = createShopeeClient(await getShopeeOAuthConfig(account.id));
+  const payload = (raw.payload || raw) as Record<string, any>;
+  const orderPackages = Array.isArray(payload.order?.package_list) ? payload.order.package_list : [];
+  const storedPackageNumber = orderPackages.find(
+    (item: Record<string, any>) => item?.package_number
+  )?.package_number;
+  const packageNumber = raw.shopee_shipping_package_number
+    ? String(raw.shopee_shipping_package_number)
+    : storedPackageNumber ? String(storedPackageNumber) : null;
+  const trackingResult = await client.getTrackingNumber(
+    accessToken,
+    shopId,
+    String(sale.order_id),
+    packageNumber
+  );
+  const trackingResponse = (trackingResult.response || {}) as Record<string, any>;
+  const trackingNumber = String(trackingResponse.tracking_number || "");
+  if (!trackingNumber) {
+    return NextResponse.json({ error: "A Shopee ainda não informou o código de rastreio." }, { status: 409 });
+  }
   try {
-    await client.createShippingDocument(accessToken, shopId, String(sale.order_id), String(sale.shipment_id));
+    await client.createShippingDocument(
+      accessToken,
+      shopId,
+      String(sale.order_id),
+      packageNumber,
+      trackingNumber
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (isShopeeLabelPendingError(message)) return labelPendingPage(String(sale.order_id), "aguardando liberação pela Shopee");
     if (!/already|exist|created|process/i.test(message)) throw error;
   }
-  let result: Record<string, unknown>;
+  let result: Record<string, unknown> = {};
   try {
     result = await client.getShippingDocumentResult(
-      accessToken, shopId, String(sale.order_id), String(sale.shipment_id)
+      accessToken, shopId, String(sale.order_id), packageNumber
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (isShopeeLabelPendingError(message)) return labelPendingPage(String(sale.order_id), "em processamento pela Shopee");
-    throw error;
+    if (!isShopeeLabelPendingError(message)) throw error;
   }
   const response = (result.response || {}) as Record<string, any>;
   const documentResult = Array.isArray(response.result_list) ? response.result_list[0] || {} : response;
   const status = String(documentResult.status || documentResult.shipping_document_status || "");
-  if (status && !/ready|success/i.test(status)) {
-    return labelPendingPage(String(sale.order_id), status);
-  }
-  const document = await client.downloadShippingDocument(
-    accessToken, shopId, String(sale.order_id), String(sale.shipment_id)
-  );
-  return new NextResponse(document.body, {
-    status: 200,
-    headers: {
-      "content-type": document.contentType,
-      "content-disposition": `inline; filename="etiqueta-shopee-${sale.order_id}.pdf"`,
-      "cache-control": "private, no-store"
+  try {
+    const document = await client.downloadShippingDocument(
+      accessToken, shopId, String(sale.order_id), packageNumber
+    );
+    return new NextResponse(document.body, {
+      status: 200,
+      headers: {
+        "content-type": document.contentType,
+        "content-disposition": `inline; filename="etiqueta-shopee-${sale.order_id}.pdf"`,
+        "cache-control": "private, no-store"
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isShopeeLabelPendingError(message)) {
+      return labelPendingPage(String(sale.order_id), status || "em processamento pela Shopee");
     }
-  });
+    throw error;
+  }
 }
 
 function isShopeeLabelPendingError(message: string) {

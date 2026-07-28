@@ -84,6 +84,41 @@ export class ShopeeClient {
     });
   }
 
+  async getOrderList(
+    accessToken: string,
+    shopId: string | number,
+    timeFrom: number,
+    timeTo: number,
+    cursor = "",
+    pageSize = 50
+  ) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/order/get_order_list", {
+      accessToken,
+      shopId,
+      query: {
+        time_range_field: "update_time",
+        time_from: timeFrom,
+        time_to: timeTo,
+        page_size: Math.min(Math.max(pageSize, 1), 100),
+        ...(cursor ? { cursor } : {})
+      }
+    });
+  }
+
+  async getOrderDetails(accessToken: string, shopId: string | number, orderSns: string[]) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/order/get_order_detail", {
+      accessToken,
+      shopId,
+      query: {
+        order_sn_list: orderSns.join(","),
+        response_optional_fields: [
+          "item_list", "total_amount", "actual_shipping_fee_confirmed",
+          "package_list", "create_time", "update_time"
+        ].join(",")
+      }
+    });
+  }
+
   async getProducts(accessToken: string, shopId: string | number, offset = 0, pageSize = 100) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/product/get_item_list", {
       accessToken,
@@ -177,7 +212,13 @@ export class ShopeeClient {
     });
   }
 
-  async createShippingDocument(accessToken: string, shopId: string | number, orderSn: string, packageNumber: string) {
+  async createShippingDocument(
+    accessToken: string,
+    shopId: string | number,
+    orderSn: string,
+    packageNumber: string | null,
+    trackingNumber: string
+  ) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/create_shipping_document", {
       accessToken,
       shopId,
@@ -185,14 +226,58 @@ export class ShopeeClient {
       body: {
         order_list: [{
           order_sn: orderSn,
-          package_number: packageNumber,
+          ...(packageNumber ? { package_number: packageNumber } : {}),
+          tracking_number: trackingNumber,
           shipping_document_type: "NORMAL_AIR_WAYBILL"
         }]
       }
     });
   }
 
-  async getShippingDocumentResult(accessToken: string, shopId: string | number, orderSn: string, packageNumber: string) {
+  async getShippingParameter(accessToken: string, shopId: string | number, orderSn: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/get_shipping_parameter", {
+      accessToken,
+      shopId,
+      query: { order_sn: orderSn }
+    });
+  }
+
+  async getTrackingNumber(
+    accessToken: string,
+    shopId: string | number,
+    orderSn: string,
+    packageNumber?: string | null
+  ) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/get_tracking_number", {
+      accessToken,
+      shopId,
+      query: {
+        order_sn: orderSn,
+        ...(packageNumber ? { package_number: packageNumber } : {})
+      }
+    });
+  }
+
+  async shipOrder(
+    accessToken: string,
+    shopId: string | number,
+    orderSn: string,
+    packageNumber: string | null | undefined,
+    shippingMethod: Record<string, unknown>
+  ) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/ship_order", {
+      accessToken,
+      shopId,
+      method: "POST",
+      body: {
+        order_sn: orderSn,
+        ...(packageNumber ? { package_number: packageNumber } : {}),
+        ...shippingMethod
+      }
+    });
+  }
+
+  async getShippingDocumentResult(accessToken: string, shopId: string | number, orderSn: string, packageNumber?: string | null) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/get_shipping_document_result", {
       accessToken,
       shopId,
@@ -200,20 +285,23 @@ export class ShopeeClient {
       body: {
         order_list: [{
           order_sn: orderSn,
-          package_number: packageNumber,
+          ...(packageNumber ? { package_number: packageNumber } : {}),
           shipping_document_type: "NORMAL_AIR_WAYBILL"
         }]
       }
     });
   }
 
-  async downloadShippingDocument(accessToken: string, shopId: string | number, orderSn: string, packageNumber: string) {
+  async downloadShippingDocument(accessToken: string, shopId: string | number, orderSn: string, packageNumber?: string | null) {
     return this.signedBinaryRequest("/api/v2/logistics/download_shipping_document", {
       accessToken,
       shopId,
       method: "POST",
       body: {
-        order_list: [{ order_sn: orderSn, package_number: packageNumber }],
+        order_list: [{
+          order_sn: orderSn,
+          ...(packageNumber ? { package_number: packageNumber } : {})
+        }],
         shipping_document_type: "NORMAL_AIR_WAYBILL"
       }
     });
@@ -244,9 +332,16 @@ export class ShopeeClient {
       headers: { "content-type": "application/json" },
       body: options.method === "POST" ? JSON.stringify(options.body || {}) : undefined
     });
-    const json = await response.json().catch(() => ({}));
+    const responseText = await response.text();
+    let json: Record<string, any> = {};
+    try {
+      json = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      json = {};
+    }
     if (!response.ok || json.error) {
-      throw new Error(`Falha Shopee ${path}: ${JSON.stringify(json)}`);
+      const detail = responseText || response.statusText || "resposta vazia";
+      throw new Error(`Falha Shopee ${path} (HTTP ${response.status}): ${detail}`);
     }
 
     return json as T;
@@ -267,12 +362,25 @@ export class ShopeeClient {
       body: options.method === "POST" ? JSON.stringify(options.body || {}) : undefined,
       cache: "no-store"
     });
-    if (!response.ok) {
-      throw new Error(`Falha Shopee ${path}: ${await response.text()}`);
+    const body = await response.arrayBuffer();
+    const contentType = response.headers.get("content-type") || "application/pdf";
+    if (!response.ok || /application\/json/i.test(contentType)) {
+      const text = new TextDecoder().decode(body);
+      let detail = text;
+      try {
+        const json = JSON.parse(text);
+        detail = JSON.stringify(json);
+        if (response.ok && !json.error) {
+          return { body, contentType };
+        }
+      } catch {
+        // Mantém o corpo original na mensagem de erro.
+      }
+      throw new Error(`Falha Shopee ${path} (HTTP ${response.status}): ${detail || response.statusText}`);
     }
     return {
-      body: await response.arrayBuffer(),
-      contentType: response.headers.get("content-type") || "application/pdf"
+      body,
+      contentType
     };
   }
 

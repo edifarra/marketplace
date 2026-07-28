@@ -123,9 +123,14 @@ function shippingAction(sale: Sale, shipping: Record<string, any>): SaleGridRow[
   if (sale.marketplace !== "shopee") return null;
   const raw = (sale.raw_data || {}) as Record<string, any>;
   const shippingArranged = Boolean(raw.shopee_shipping_arranged_at);
-  const status = String(sale.status_original || "");
+  const status = String(sale.status_original || "").toUpperCase();
+  if (["SHIPPED", "TO_CONFIRM_RECEIVE", "COMPLETED", "CANCELLED", "IN_CANCEL"].includes(status)) {
+    return null;
+  }
   if (/^READY_TO_SHIP$/i.test(status) && !shippingArranged) return "arrange_shipment";
-  if (shippingArranged || /^PROCESSED$/i.test(status)) return "print_label";
+  if ((shippingArranged && ["READY_TO_SHIP", "PROCESSED", "TO_SHIP"].includes(status)) || status === "PROCESSED") {
+    return "print_label";
+  }
   return /^(CONFIRMED|TO_SHIP)$/i.test(status) ? "arrange_shipment" : null;
 }
 function isReadyToShip(sale: Sale) {

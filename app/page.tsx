@@ -5,6 +5,7 @@ import { hasGoogleDriveConfig } from "@/lib/google-drive";
 import { getGoogleDriveSettings } from "@/lib/google-drive-config";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentUser } from "@/lib/auth";
+import { deferredShipping, salePostedAt, saleShippingAction } from "@/lib/sales-fulfillment";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -236,6 +237,7 @@ async function getDashboardProductCounts(supabase: ReturnType<typeof supabaseAdm
 }
 
 type DashboardSale = {
+  marketplace: string;
   status_original: string | null;
   valor_produtos: number | string | null;
   valor_frete: number | string | null;
@@ -251,7 +253,7 @@ type DashboardSale = {
 async function getDashboardSalesMetrics(supabase: ReturnType<typeof supabaseAdmin>) {
   const { data } = await supabase
     .from("venda")
-    .select("status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,created_at,updated_at,raw_data")
+    .select("marketplace,status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,created_at,updated_at,raw_data")
     .throwOnError();
   const sales = ((data || []) as DashboardSale[]).filter(isEffectiveSale);
   const now = new Date();
@@ -259,15 +261,14 @@ async function getDashboardSalesMetrics(supabase: ReturnType<typeof supabaseAdmi
   const currentMonth = localMonthRange(now, 0);
   const previousMonth = localMonthRange(now, -1);
 
-  // A fila precisa mostrar tudo o que ainda deve ser despachado, inclusive
-  // pedidos vencidos. Restringir pela data da venda/prazo escondia a maior
-  // parte dos pedidos prontos para envio.
-  const toShipToday = sales.filter((sale) => isAwaitingShipment(sale.status_original)).length;
-
-  // Semana e mes devem usar a mesma referencia: a data em que a venda ocorreu.
-  const currentWeekCount = sales.filter((sale) =>
-    isWithin(saleDate(sale), currentWeek.start, currentWeek.end)
+  const toShipToday = sales.filter((sale) =>
+    !deferredShipping(sale) && Boolean(saleShippingAction(sale))
   ).length;
+
+  const currentWeekCount = sales.filter((sale) => {
+    const postedAt = salePostedAt(sale);
+    return postedAt ? isWithin(postedAt, currentWeek.start, currentWeek.end) : false;
+  }).length;
 
   const monthSales = sales.filter((sale) => isWithin(saleDate(sale), currentMonth.start, currentMonth.end));
   const previousMonthSales = sales.filter((sale) => isWithin(saleDate(sale), previousMonth.start, previousMonth.end));
@@ -321,10 +322,6 @@ function MetricWithTrend({ label, value, trend }: { label: string; value: string
 function isEffectiveSale(sale: DashboardSale) {
   return !/(^pending$|payment_required|payment_in_process|unpaid|nao_paga|aguardando.*pagamento|cancel|refund|reembols|not_delivered)/i
     .test(String(sale.status_original || ""));
-}
-
-function isAwaitingShipment(status: string | null) {
-  return /^(confirmed|paid|ready_to_ship|handling|processed|paga|criada)$/i.test(String(status || ""));
 }
 
 function saleDate(sale: DashboardSale) {

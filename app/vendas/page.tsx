@@ -2,6 +2,7 @@ import { Sidebar } from "../components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { SalesGrid, type SaleGridRow } from "./sales-grid";
 import { UpdateSalesButton } from "./update-sales-button";
+import { deferredShipping, extractSaleShipping, saleShippingAction } from "@/lib/sales-fulfillment";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,19 +25,15 @@ export default async function SalesPage() {
   const productTitles = new Map((products || []).map((product) => [normalizeSku(product.sku), String(product.title || "")]));
   const itemMap = new Map<string, Array<Record<string, unknown>>>();
   for (const item of items || []) itemMap.set(String(item.venda_id), [...(itemMap.get(String(item.venda_id)) || []), item]);
-  const sortedSales = ((sales || []) as unknown as Sale[]).sort((left, right) => {
-    const priority = Number(isReadyToShip(right)) - Number(isReadyToShip(left));
-    if (priority !== 0) return priority;
-    return saleTimestamp(right) - saleTimestamp(left);
-  });
+  const sortedSales = ((sales || []) as unknown as Sale[]).sort(compareSales);
   const rows = sortedSales.map((sale): SaleGridRow => {
     const raw = sale.raw_data || {};
     const account = resolveAccount(sale, raw, accounts || []);
     const saleItems = itemMap.get(sale.id) || [];
     const sourceTitles = extractSourceTitles(raw);
-    const shipping = extractShipping(raw);
+    const shipping = extractSaleShipping(raw);
     const shippingHistory = extractShippingHistory(raw);
-    const deferredShippingText = deferredShippingLabel(sale, raw, shipping);
+    const deferred = deferredShipping(sale);
     return {
       id: sale.id,
       date: dateTime(sale.data_venda || sale.created_at),
@@ -47,8 +44,8 @@ export default async function SalesPage() {
       value: money(sale.valor_produtos),
       status: sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original),
       flex: isFlexShipping(shipping),
-      shippingAction: deferredShippingText ? null : shippingAction(sale, shipping),
-      shippingActionText: deferredShippingText,
+      shippingAction: deferred ? null : saleShippingAction(sale),
+      shippingActionText: deferred?.label || null,
       details: [
         { label: "Pedido", value: sale.order_id },
         { label: "Status recebido", value: sale.status_original || "Não informado" },
@@ -102,70 +99,22 @@ function resolveAccount(sale: Sale, raw: Record<string, unknown>, accounts: Arra
   const candidates = accounts.filter((account) => account.marketplace === sale.marketplace);
   return candidates.find((account) => [account.seller_id, account.account_id, account.shop_id].some((id) => String(id || "") === externalId)) || (candidates.length === 1 ? candidates[0] : undefined);
 }
-function extractShipping(raw: Record<string, unknown>) {
-  const payload = (raw.payload || raw) as Record<string, any>;
-  return (payload.shipment || payload.order?.shipping || payload.data?.shipment || {}) as Record<string, any>;
-}
 function isFlexShipping(shipping: Record<string, any>) {
   return shipping.logistic_type === "self_service"
     || shipping.logistic?.type === "self_service"
     || shipping.shipping_mode === "flex"
     || shipping.tags?.includes?.("flex");
 }
-function shippingAction(sale: Sale, shipping: Record<string, any>): SaleGridRow["shippingAction"] {
-  if (sale.marketplace === "mercado_livre") {
-    if (shipping.status === "ready_to_ship" && String(shipping.substatus || "") === "invoice_pending") {
-      return "emit_dce";
-    }
-    return shipping.status === "ready_to_ship"
-      && ["ready_to_print", "printed"].includes(String(shipping.substatus || ""))
-      ? "print_label"
-      : null;
+function compareSales(left: Sale, right: Sale) {
+  const leftDeferred = deferredShipping(left);
+  const rightDeferred = deferredShipping(right);
+  const leftGroup = leftDeferred ? 0 : saleShippingAction(left) ? 1 : 2;
+  const rightGroup = rightDeferred ? 0 : saleShippingAction(right) ? 1 : 2;
+  if (leftGroup !== rightGroup) return leftGroup - rightGroup;
+  if (leftDeferred && rightDeferred && leftDeferred.timestamp !== rightDeferred.timestamp) {
+    return rightDeferred.timestamp - leftDeferred.timestamp;
   }
-  if (sale.marketplace !== "shopee") return null;
-  const raw = (sale.raw_data || {}) as Record<string, any>;
-  const shippingArranged = Boolean(raw.shopee_shipping_arranged_at);
-  const status = String(sale.status_original || "").toUpperCase();
-  const payload = (raw.payload || raw) as Record<string, any>;
-  const packages = Array.isArray(payload.order?.package_list) ? payload.order.package_list : [];
-  const packageStatuses = packages.map((item: Record<string, any>) => String(item.logistics_status || "").toUpperCase());
-  if (["SHIPPED", "TO_CONFIRM_RECEIVE", "COMPLETED", "CANCELLED", "IN_CANCEL"].includes(status)) {
-    return null;
-  }
-  if (packageStatuses.some((packageStatus: string) =>
-    ["LOGISTICS_PICKUP_DONE", "PICKED_UP", "SHIPPED", "DELIVERED", "TO_CONFIRM_RECEIVE"].includes(packageStatus)
-  )) {
-    return null;
-  }
-  if (/^READY_TO_SHIP$/i.test(status) && !shippingArranged) return "arrange_shipment";
-  if ((shippingArranged && ["READY_TO_SHIP", "PROCESSED", "TO_SHIP"].includes(status)) || status === "PROCESSED") {
-    return "print_label";
-  }
-  return /^(CONFIRMED|TO_SHIP)$/i.test(status) ? "arrange_shipment" : null;
-}
-function deferredShippingLabel(sale: Sale, raw: Record<string, unknown>, shipping: Record<string, any>) {
-  if (sale.marketplace !== "mercado_livre") return null;
-  const status = String(shipping.status || "").toLowerCase();
-  const substatus = String(shipping.substatus || "").toLowerCase();
-  const payload = (raw.payload || raw) as Record<string, any>;
-  const candidate = payload.shipmentSla?.expected_date
-    || shipping.lead_time?.buffering?.date;
-  if (!candidate || (status !== "pending" && substatus !== "buffered")) return null;
-
-  // Datas de buffering do ML representam um dia comercial. O trecho YYYY-MM-DD
-  // deve ser preservado, sem converter meia-noite UTC para o dia anterior no Brasil.
-  const dateKey = String(candidate).match(/^(\d{4})-(\d{2})-(\d{2})/)?.slice(1);
-  if (!dateKey) return null;
-  const [year, month, day] = dateKey;
-  const dispatchStart = new Date(`${year}-${month}-${day}T00:00:00-03:00`).getTime();
-  if (!Number.isFinite(dispatchStart) || Date.now() >= dispatchStart) return null;
-  return `Enviar em ${day}/${month}`;
-}
-function isReadyToShip(sale: Sale) {
-  if (sale.status_venda?.description) {
-    return sale.status_venda.description.trim().toLocaleLowerCase("pt-BR") === "pronta para envio";
-  }
-  return /^(ready_to_ship|confirmed|handling)$/i.test(String(sale.status_original || ""));
+  return saleTimestamp(right) - saleTimestamp(left);
 }
 function saleTimestamp(sale: Sale) {
   const value = new Date(sale.data_venda || sale.created_at).getTime();

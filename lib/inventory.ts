@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { supabaseAdmin } from "./supabase-admin";
 import { getMarketplaceClient } from "./marketplaces";
 import { Marketplace } from "./types";
+import { salePostedAt } from "./sales-fulfillment";
 
 export type MarketplaceSaleInput = {
   marketplace: Marketplace;
@@ -73,6 +74,12 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
     const previousStatus = previousSale.data?.status_venda as unknown as { reserves_stock?: boolean } | null;
     const shouldReserveStock = Boolean(statusResult.data?.reserves_stock) && !previousStatus?.reserves_stock;
+    const previousRawData = (previousSale.data?.raw_data as Record<string, unknown> | null) || {};
+    const detectedPostedAt = salePostedAt({
+      marketplace: input.marketplace,
+      status_original: status,
+      raw_data: { payload: input.rawPayload }
+    })?.toISOString();
 
     const vendaResult = await supabase.from("venda").upsert({
       marketplace: input.marketplace,
@@ -87,10 +94,11 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       data_venda: input.soldAt || undefined,
       shipment_id: input.shipmentId || null,
       raw_data: {
-        ...((previousSale.data?.raw_data as Record<string, unknown> | null) || {}),
+        ...previousRawData,
         payload: input.rawPayload,
         marketplace_account_id: input.marketplaceAccountId || null,
-        marketplace_nickname: input.marketplaceNickname || null
+        marketplace_nickname: input.marketplaceNickname || null,
+        marketplace_posted_at: previousRawData.marketplace_posted_at || detectedPostedAt || null
       },
       updated_at: new Date().toISOString()
     }, { onConflict: "marketplace,order_id" }).select("id").single().throwOnError();

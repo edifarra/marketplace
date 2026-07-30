@@ -15,7 +15,8 @@ export async function processMercadoLivreOrder(
   account: MarketplaceAccountConfig,
   notification: Record<string, any> = {},
   statusOverride?: string,
-  supplementalPayload?: Record<string, any>
+  supplementalPayload?: Record<string, any>,
+  activityId?: string
 ) {
   const order = await getMercadoLivreOrder(orderId, account);
   const shipmentId = String(order.shipping?.id || "");
@@ -46,6 +47,7 @@ export async function processMercadoLivreOrder(
   const fees = (order.order_items || []).reduce((total: number, item: Record<string, any>) => total + Number(item.sale_fee || 0), 0);
   const shippingCost = (order.payments || []).reduce((total: number, payment: Record<string, any>) => total + Number(payment.shipping_cost || 0), 0);
   return registerMarketplaceSale({
+    activityId,
     marketplace: "mercado_livre",
     externalEventId: String(notification._id || `orders_v2:${order.id || orderId}:${eventVersion}`),
     eventType: String(notification.topic || "orders_v2"),
@@ -75,7 +77,8 @@ export async function processMercadoLivreOrder(
 export async function processMercadoLivreShipment(
   shipmentId: string,
   account: MarketplaceAccountConfig,
-  notification: Record<string, any> = {}
+  notification: Record<string, any> = {},
+  activityId?: string
 ) {
   const [shipment, shipmentHistory, shipmentItems] = await Promise.all([
     getMercadoLivreShipment(shipmentId, account),
@@ -104,14 +107,17 @@ export async function processMercadoLivreShipment(
   if (!orderIds.size) throw new Error(`Pedido da entrega ${shipmentId} nao identificado.`);
   const shipmentStatus = normalizeMercadoLivreShippingStatus(shipment);
   const results = [];
+  let index = 0;
   for (const orderId of orderIds) {
     results.push(await processMercadoLivreOrder(
       orderId,
       account,
       notification,
       shipmentStatus,
-      { shipment, shipmentHistory, shipmentItems }
+      { shipment, shipmentHistory, shipmentItems },
+      index === 0 ? activityId : undefined
     ));
+    index += 1;
   }
   return results.length === 1 ? results[0] : results;
 }

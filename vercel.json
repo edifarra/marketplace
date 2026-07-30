@@ -7,6 +7,10 @@
     {
       "path": "/api/shopee/orders/recover?hours=72",
       "schedule": "15 5 * * *"
+    },
+    {
+      "path": "/api/marketplace-queue/process?limit=50",
+      "schedule": "30 5 * * *"
     }
   ]
 }

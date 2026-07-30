@@ -5,6 +5,7 @@ import { Marketplace } from "./types";
 import { salePostedAt } from "./sales-fulfillment";
 
 export type MarketplaceSaleInput = {
+  activityId?: string;
   marketplace: Marketplace;
   externalEventId?: string;
   eventType?: string;
@@ -33,30 +34,44 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
   const orderId = String(input.externalOrderId || "").trim();
   const items = normalizeItems(input);
 
-  const activityResult = await supabase.from("marketplace_activities").insert({
-    marketplace: input.marketplace,
-    event_type: input.eventType || "notification",
-    external_event_id: eventId,
-    order_id: orderId || null,
-    description: input.eventType || "Evento recebido",
-    value: number(input.value),
-    item_count: items.reduce((sum, item) => sum + item.quantity, 0),
-    status: "received",
-    raw_payload: input.rawPayload
-  }).select("id").single();
+  let activityId = String(input.activityId || "");
+  if (activityId) {
+    await supabase.from("marketplace_activities").update({
+      event_type: input.eventType || "notification",
+      order_id: orderId || null,
+      description: input.eventType || "Evento recebido",
+      value: number(input.value),
+      item_count: items.reduce((sum, item) => sum + item.quantity, 0),
+      status: "processing",
+      raw_payload: input.rawPayload
+    }).eq("id", activityId).throwOnError();
+    await history(activityId, "sale_processing", "success", { eventId, orderId });
+  } else {
+    const activityResult = await supabase.from("marketplace_activities").insert({
+      marketplace: input.marketplace,
+      event_type: input.eventType || "notification",
+      external_event_id: eventId,
+      order_id: orderId || null,
+      description: input.eventType || "Evento recebido",
+      value: number(input.value),
+      item_count: items.reduce((sum, item) => sum + item.quantity, 0),
+      status: "received",
+      raw_payload: input.rawPayload
+    }).select("id").single();
 
-  if (activityResult.error && /duplicate|unique/i.test(activityResult.error.message)) {
-    const existing = await supabase.from("marketplace_activities").select("id,status")
-      .eq("marketplace", input.marketplace).eq("external_event_id", eventId).maybeSingle().throwOnError();
-    if (existing.data?.status === "error") {
-      await supabase.from("marketplace_activities").delete().eq("id", existing.data.id).throwOnError();
-      return registerMarketplaceSale(input);
+    if (activityResult.error && /duplicate|unique/i.test(activityResult.error.message)) {
+      const existing = await supabase.from("marketplace_activities").select("id,status")
+        .eq("marketplace", input.marketplace).eq("external_event_id", eventId).maybeSingle().throwOnError();
+      if (existing.data?.status === "error") {
+        await supabase.from("marketplace_activities").delete().eq("id", existing.data.id).throwOnError();
+        return registerMarketplaceSale(input);
+      }
+      return { duplicated: true, eventId };
     }
-    return { duplicated: true, eventId };
+    if (activityResult.error) throw activityResult.error;
+    activityId = String(activityResult.data.id);
+    await history(activityId, "received", "success", { eventId, orderId });
   }
-  if (activityResult.error) throw activityResult.error;
-  const activityId = String(activityResult.data.id);
-  await history(activityId, "received", "success", { eventId, orderId });
 
   try {
     if (!orderId) throw new Error("ID da venda nao encontrado no evento.");

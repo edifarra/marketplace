@@ -13,6 +13,7 @@ const PUBLIC_PATHS = ["/login", "/acesso-negado"];
 // Integrações servidor-a-servidor mantêm sua autenticação técnica própria.
 const TECHNICAL_API_PATHS = [
   "/api/webhooks",
+  "/api/marketplace-queue/process",
   "/api/mercado-livre/oauth/callback",
   "/api/shopee/oauth/callback",
   "/api/google/oauth/callback",

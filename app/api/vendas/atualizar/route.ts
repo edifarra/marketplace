@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GET as recoverMercadoLivre } from "@/app/api/mercado-livre/orders/recover/route";
 import { GET as recoverShopee } from "@/app/api/shopee/orders/recover/route";
+import { processMarketplaceQueue } from "@/lib/marketplace-queue-worker";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -12,6 +13,12 @@ export async function POST(request: NextRequest) {
 
   const headers = new Headers({ authorization: `Bearer ${secret}` });
   const origin = request.nextUrl.origin;
+  const queue = await processMarketplaceQueue(25).catch((error) => ({
+    claimed: 0,
+    processed: 0,
+    failed: 1,
+    error: error instanceof Error ? error.message : String(error)
+  }));
   const [mercadoLivre, shopee] = await Promise.all([
     recoverMercadoLivre(new NextRequest(`${origin}/api/mercado-livre/orders/recover?limit=50`, { headers })),
     recoverShopee(new NextRequest(`${origin}/api/shopee/orders/recover?hours=72`, { headers }))
@@ -36,6 +43,7 @@ export async function POST(request: NextRequest) {
     checked: ml.checked + sp.checked,
     updated: ml.updated + sp.updated,
     failed: ml.failed + sp.failed,
+    queue,
     mercadoLivre: ml,
     shopee: sp
   });

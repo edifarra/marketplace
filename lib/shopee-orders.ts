@@ -9,13 +9,14 @@ export function processShopeeOrderSynchronized(
   orderSn: string,
   account: ShopeeAccountConfig,
   notification: Record<string, any> = {},
-  suppliedOrder?: Record<string, any>
+  suppliedOrder?: Record<string, any>,
+  activityId?: string
 ) {
   const queueKey = `${account.id}:${orderSn}`;
   const previous = orderProcessingQueues.get(queueKey) || Promise.resolve();
   const current = previous
     .catch(() => undefined)
-    .then(() => processShopeeOrder(orderSn, account, notification, suppliedOrder))
+    .then(() => processShopeeOrder(orderSn, account, notification, suppliedOrder, activityId))
     .finally(() => {
       if (orderProcessingQueues.get(queueKey) === current) orderProcessingQueues.delete(queueKey);
     });
@@ -27,7 +28,8 @@ export async function processShopeeOrder(
   orderSn: string,
   account: ShopeeAccountConfig,
   notification: Record<string, any> = {},
-  suppliedOrder?: Record<string, any>
+  suppliedOrder?: Record<string, any>,
+  activityId?: string
 ) {
   const shopId = String(account.shop_id || account.account_id || "");
   if (!shopId) throw new Error(`Shop ID nao configurado para ${account.name}.`);
@@ -54,6 +56,7 @@ export async function processShopeeOrder(
   );
 
   return registerMarketplaceSale({
+    activityId,
     marketplace: "shopee",
     externalEventId: String(
       notification.request_id ? `${notification.request_id}:${orderSn}`

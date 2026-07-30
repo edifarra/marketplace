@@ -50,10 +50,11 @@ export default async function SaleStatusMappingsPage({ searchParams }: Props) {
           <button className="secondary compact" type="submit">Filtrar</button>
         </form>
       </div>
-      <table>
+      <div className="table-wrap">
+      <table className="status-mapping-table">
         <thead><tr>
           <th>Marketplace</th><th>Status externo</th><th>Substatus externo</th>
-          <th>Status no sistema</th><th>Descrição exibida</th><th>Regras</th><th>Ação</th>
+          <th>Status no sistema e descrição</th><th>Regras</th><th>Ação</th>
         </tr></thead>
         <tbody>
           {(data || []).map((row) => {
@@ -63,21 +64,19 @@ export default async function SaleStatusMappingsPage({ searchParams }: Props) {
               <td>{row.marketplace === "mercado_livre" ? "Mercado Livre" : row.marketplace === "shopee" ? "Shopee" : row.marketplace}</td>
               <td><code>{externalStatus}</code></td>
               <td><code>{externalSubstatus}</code></td>
-              <td>
+              <td><div className="status-mapping-fields">
                 <select form={formId} name="internal_status" defaultValue={canonicalStatus(row.internal_status)}>
                   {INTERNAL_STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
-              </td>
-              <td>
-                <input form={formId} name="description" defaultValue={row.description || ""} aria-label="Descrição exibida" required />
-              </td>
-              <td>
-                <label><input form={formId} type="checkbox" name="reserves_stock" defaultChecked={row.reserves_stock} /> Reserva estoque</label>
-                <label><input form={formId} type="checkbox" name="final_status" defaultChecked={row.final_status} /> Status final</label>
+                <input form={formId} name="description" defaultValue={row.description || ""} aria-label="Descrição exibida" placeholder="Descrição exibida" required />
+              </div></td>
+              <td><div className="status-mapping-rules">
+                <label><input form={formId} type="checkbox" name="reserves_stock" defaultChecked={row.reserves_stock} /><span>Reserva de estoque</span></label>
+                <label><input form={formId} type="checkbox" name="final_status" defaultChecked={row.final_status} /><span>Status final</span></label>
                 {externalSubstatus === "—" && <label title="Replica esta configuração para todas as combinações deste status">
-                  <input form={formId} type="checkbox" name="apply_to_substatuses" defaultChecked /> Aplicar aos substatus
+                  <input form={formId} type="checkbox" name="apply_to_substatuses" defaultChecked /><span>Aplicar aos substatus</span>
                 </label>}
-              </td>
+              </div></td>
               <td>
                 <form id={formId} action={saveSaleStatusMapping}>
                   <input type="hidden" name="id" value={row.id} />
@@ -88,6 +87,7 @@ export default async function SaleStatusMappingsPage({ searchParams }: Props) {
           })}
         </tbody>
       </table>
+      </div>
     </section>
   </section></main>;
 }

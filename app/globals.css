@@ -280,6 +280,44 @@ th {
   font-weight: 600;
 }
 
+.status-mapping-table {
+  min-width: 1040px;
+  table-layout: fixed;
+}
+
+.status-mapping-table th:nth-child(1) { width: 120px; }
+.status-mapping-table th:nth-child(2) { width: 170px; }
+.status-mapping-table th:nth-child(3) { width: 180px; }
+.status-mapping-table th:nth-child(4) { width: 280px; }
+.status-mapping-table th:nth-child(5) { width: 190px; }
+.status-mapping-table th:nth-child(6) { width: 80px; }
+
+.status-mapping-fields,
+.status-mapping-rules {
+  display: grid;
+  gap: 8px;
+}
+
+.status-mapping-fields select,
+.status-mapping-fields input {
+  width: 100%;
+  min-width: 0;
+}
+
+.status-mapping-rules label {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  line-height: 18px;
+}
+
+.status-mapping-rules input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+}
+
 .status {
   display: inline-flex;
   padding: 4px 8px;

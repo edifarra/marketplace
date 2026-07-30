@@ -36,6 +36,7 @@ export default async function SalesPage() {
     const sourceTitles = extractSourceTitles(raw);
     const shipping = extractShipping(raw);
     const shippingHistory = extractShippingHistory(raw);
+    const deferredShippingText = deferredShippingLabel(sale, raw, shipping);
     return {
       id: sale.id,
       date: dateTime(sale.data_venda || sale.created_at),
@@ -46,7 +47,8 @@ export default async function SalesPage() {
       value: money(sale.valor_produtos),
       status: sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original),
       flex: isFlexShipping(shipping),
-      shippingAction: shippingAction(sale, shipping),
+      shippingAction: deferredShippingText ? null : shippingAction(sale, shipping),
+      shippingActionText: deferredShippingText,
       details: [
         { label: "Pedido", value: sale.order_id },
         { label: "Status recebido", value: sale.status_original || "Não informado" },
@@ -124,7 +126,15 @@ function shippingAction(sale: Sale, shipping: Record<string, any>): SaleGridRow[
   const raw = (sale.raw_data || {}) as Record<string, any>;
   const shippingArranged = Boolean(raw.shopee_shipping_arranged_at);
   const status = String(sale.status_original || "").toUpperCase();
+  const payload = (raw.payload || raw) as Record<string, any>;
+  const packages = Array.isArray(payload.order?.package_list) ? payload.order.package_list : [];
+  const packageStatuses = packages.map((item: Record<string, any>) => String(item.logistics_status || "").toUpperCase());
   if (["SHIPPED", "TO_CONFIRM_RECEIVE", "COMPLETED", "CANCELLED", "IN_CANCEL"].includes(status)) {
+    return null;
+  }
+  if (packageStatuses.some((packageStatus: string) =>
+    ["LOGISTICS_PICKUP_DONE", "PICKED_UP", "SHIPPED", "DELIVERED", "TO_CONFIRM_RECEIVE"].includes(packageStatus)
+  )) {
     return null;
   }
   if (/^READY_TO_SHIP$/i.test(status) && !shippingArranged) return "arrange_shipment";
@@ -132,6 +142,24 @@ function shippingAction(sale: Sale, shipping: Record<string, any>): SaleGridRow[
     return "print_label";
   }
   return /^(CONFIRMED|TO_SHIP)$/i.test(status) ? "arrange_shipment" : null;
+}
+function deferredShippingLabel(sale: Sale, raw: Record<string, unknown>, shipping: Record<string, any>) {
+  if (sale.marketplace !== "mercado_livre") return null;
+  const status = String(shipping.status || "").toLowerCase();
+  const substatus = String(shipping.substatus || "").toLowerCase();
+  const payload = (raw.payload || raw) as Record<string, any>;
+  const candidate = payload.shipmentSla?.expected_date
+    || shipping.lead_time?.buffering?.date;
+  if (!candidate || (status !== "pending" && substatus !== "buffered")) return null;
+
+  // Datas de buffering do ML representam um dia comercial. O trecho YYYY-MM-DD
+  // deve ser preservado, sem converter meia-noite UTC para o dia anterior no Brasil.
+  const dateKey = String(candidate).match(/^(\d{4})-(\d{2})-(\d{2})/)?.slice(1);
+  if (!dateKey) return null;
+  const [year, month, day] = dateKey;
+  const dispatchStart = new Date(`${year}-${month}-${day}T00:00:00-03:00`).getTime();
+  if (!Number.isFinite(dispatchStart) || Date.now() >= dispatchStart) return null;
+  return `Enviar em ${day}/${month}`;
 }
 function isReadyToShip(sale: Sale) {
   if (sale.status_venda?.description) {

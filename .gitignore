@@ -8,3 +8,5 @@ work/npm-cache
 service-account.json
 .vercel
 .env*
+*.log
+*.tsbuildinfo

@@ -1,6 +1,27 @@
 import { registerMarketplaceSale } from "./inventory";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
+import { supabaseAdmin } from "./supabase-admin";
+
+const orderProcessingQueues = new Map<string, Promise<unknown>>();
+
+export function processShopeeOrderSynchronized(
+  orderSn: string,
+  account: ShopeeAccountConfig,
+  notification: Record<string, any> = {},
+  suppliedOrder?: Record<string, any>
+) {
+  const queueKey = `${account.id}:${orderSn}`;
+  const previous = orderProcessingQueues.get(queueKey) || Promise.resolve();
+  const current = previous
+    .catch(() => undefined)
+    .then(() => processShopeeOrder(orderSn, account, notification, suppliedOrder))
+    .finally(() => {
+      if (orderProcessingQueues.get(queueKey) === current) orderProcessingQueues.delete(queueKey);
+    });
+  orderProcessingQueues.set(queueKey, current);
+  return current;
+}
 
 export async function processShopeeOrder(
   orderSn: string,
@@ -21,6 +42,9 @@ export async function processShopeeOrder(
 
   const status = String(order.order_status || order.status || "unknown");
   const updateTime = String(order.update_time || notification.update_time || notification.timestamp || "");
+  if (await isOlderThanSavedOrder(orderSn, updateTime)) {
+    return { stale: true, orderSn, status, updateTime };
+  }
   const items = order.item_list || order.items || [];
   const packageList = Array.isArray(order.package_list) ? order.package_list : [];
   const shipmentId = String(
@@ -32,9 +56,9 @@ export async function processShopeeOrder(
   return registerMarketplaceSale({
     marketplace: "shopee",
     externalEventId: String(
-      notification.request_id
-      || notification.event_id
-      || `shopee:${shopId}:${orderSn}:${status}:${updateTime}`
+      notification.request_id ? `${notification.request_id}:${orderSn}`
+      : notification.event_id ? `${notification.event_id}:${orderSn}`
+      : `shopee:${shopId}:${orderSn}:${status}:${updateTime}`
     ),
     eventType: String(notification.code || notification.event || (notification.recovery ? "order_reconciliation" : "notification")),
     externalOrderId: String(order.order_sn || order.ordersn || orderSn),
@@ -56,6 +80,29 @@ export async function processShopeeOrder(
     soldAt: shopeeDate(order.create_time || order.create_time_timestamp),
     rawPayload: { notification, order }
   });
+}
+
+async function isOlderThanSavedOrder(orderSn: string, incomingUpdateTime: string) {
+  const incoming = normalizeTimestamp(incomingUpdateTime);
+  if (!incoming) return false;
+  const { data, error } = await supabaseAdmin()
+    .from("venda")
+    .select("raw_data")
+    .eq("marketplace", "shopee")
+    .eq("order_id", orderSn)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const raw = (data?.raw_data || {}) as Record<string, any>;
+  const saved = normalizeTimestamp(raw.payload?.order?.update_time);
+  return Boolean(saved && saved > incoming);
+}
+
+function normalizeTimestamp(value: unknown) {
+  if (!value) return 0;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  const parsed = new Date(String(value)).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 export async function listRecentlyUpdatedShopeeOrders(account: ShopeeAccountConfig, hours = 72) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveShopeeAccounts } from "@/lib/shopee";
-import { listRecentlyUpdatedShopeeOrders, processShopeeOrder } from "@/lib/shopee-orders";
+import { listRecentlyUpdatedShopeeOrders, processShopeeOrderSynchronized } from "@/lib/shopee-orders";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const maxDuration = 60;
@@ -48,7 +48,7 @@ async function recoverOrders(request: NextRequest) {
           processed.push({
             orderSn,
             ok: true,
-            result: await processShopeeOrder(orderSn, account, { recovery: true })
+            result: await processShopeeOrderSynchronized(orderSn, account, { recovery: true })
           });
         } catch (error) {
           processed.push({ orderSn, ok: false, error: error instanceof Error ? error.message : String(error) });

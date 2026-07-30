@@ -14,7 +14,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, result });
     }
     if (payload.topic && payload.topic !== "orders_v2") {
-      return NextResponse.json({ ok: true, ignored: true, topic: payload.topic });
+      await logAcknowledgedNotification(payload);
+      return NextResponse.json({ ok: true, acknowledged: true, topic: payload.topic });
     }
     const orderId = extractOrderId(payload);
     if (!orderId) throw new Error("ID da venda nao encontrado na notificacao.");
@@ -27,6 +28,23 @@ export async function POST(request: NextRequest) {
     // Status 5xx informa ao Mercado Livre que o evento nao foi processado e
     // permite uma nova tentativa. Responder 202 fazia a notificacao se perder.
     return NextResponse.json({ accepted: false, processed: false, error: message }, { status: 500 });
+  }
+}
+
+async function logAcknowledgedNotification(payload: Record<string, any>) {
+  const resource = String(payload.resource || "");
+  const eventId = String(payload._id || payload.id || `webhook:${payload.topic}:${resource}:${payload.sent || Date.now()}`);
+  const result = await supabaseAdmin().from("marketplace_activities").insert({
+    marketplace: "mercado_livre",
+    event_type: String(payload.topic || payload.type || "notification"),
+    external_event_id: eventId,
+    description: `Notificacao reconhecida: ${resource || "recurso nao informado"}`,
+    status: "processed",
+    raw_payload: payload,
+    processed_at: new Date().toISOString()
+  });
+  if (result.error && !/duplicate|unique/i.test(result.error.message)) {
+    throw new Error(`Falha ao registrar notificacao reconhecida: ${result.error.message}`);
   }
 }
 

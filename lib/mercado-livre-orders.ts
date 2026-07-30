@@ -1,5 +1,14 @@
 import { registerMarketplaceSale } from "./inventory";
-import { MarketplaceAccountConfig, getMercadoLivreOrder, getMercadoLivreShipment, getMercadoLivreShipmentHistory } from "./mercado-livre";
+import {
+  MarketplaceAccountConfig,
+  getMercadoLivreOrder,
+  getMercadoLivrePack,
+  getMercadoLivreShipment,
+  getMercadoLivreShipmentHistory,
+  getMercadoLivreShipmentItems,
+  getMercadoLivreShipmentSla
+} from "./mercado-livre";
+import { supabaseAdmin } from "./supabase-admin";
 
 export async function processMercadoLivreOrder(
   orderId: string,
@@ -10,12 +19,13 @@ export async function processMercadoLivreOrder(
 ) {
   const order = await getMercadoLivreOrder(orderId, account);
   const shipmentId = String(order.shipping?.id || "");
-  const [shipment, shipmentHistory]: [Record<string, any>, Array<Record<string, any>>] = shipmentId
+  const [shipment, shipmentHistory, shipmentSla]: [Record<string, any>, Array<Record<string, any>>, Record<string, any>] = shipmentId
     ? await Promise.all([
         getMercadoLivreShipment(shipmentId, account),
-        getMercadoLivreShipmentHistory(shipmentId, account)
+        getMercadoLivreShipmentHistory(shipmentId, account),
+        getMercadoLivreShipmentSla(shipmentId, account).catch(() => ({}))
       ])
-    : [{}, []];
+    : [{}, [], {}];
   // Mudancas de transporte nem sempre alteram date_last_updated do pedido.
   // A identidade da reconciliacao precisa acompanhar tambem a entrega para
   // que um novo status nao seja descartado como evento duplicado.
@@ -58,7 +68,7 @@ export async function processMercadoLivreOrder(
     marketplaceAccountId: account.id,
     marketplaceNickname: account.nickname || account.name,
     soldAt: String(order.date_created || ""),
-    rawPayload: { notification, order, shipment, shipmentHistory, ...supplementalPayload }
+    rawPayload: { notification, order, shipment, shipmentHistory, shipmentSla, ...supplementalPayload }
   });
 }
 
@@ -67,18 +77,58 @@ export async function processMercadoLivreShipment(
   account: MarketplaceAccountConfig,
   notification: Record<string, any> = {}
 ) {
-  const shipment = await getMercadoLivreShipment(shipmentId, account);
-  const shipmentHistory = await getMercadoLivreShipmentHistory(shipmentId, account);
-  const orderId = String(shipment.order_id || shipment.order?.id || shipment.orders?.[0]?.id || "");
-  if (!orderId) throw new Error(`Pedido da entrega ${shipmentId} nao identificado.`);
+  const [shipment, shipmentHistory, shipmentItems] = await Promise.all([
+    getMercadoLivreShipment(shipmentId, account),
+    getMercadoLivreShipmentHistory(shipmentId, account),
+    // Algumas modalidades antigas ainda nao disponibilizam este recurso.
+    // Nesses casos, os campos diretos ou o vinculo ja salvo continuam validos.
+    getMercadoLivreShipmentItems(shipmentId, account).catch(() => [])
+  ]);
+  const orderIds = new Set<string>();
+  addOrderId(orderIds, shipment.order_id);
+  addOrderId(orderIds, shipment.order?.id);
+  for (const order of shipment.orders || []) addOrderId(orderIds, order?.id || order?.order_id);
+  for (const item of shipmentItems) addOrderId(orderIds, item.order_id || item.order?.id);
+
+  if (!orderIds.size) {
+    const savedOrders = await findSavedOrdersByShipment(shipmentId);
+    for (const orderId of savedOrders) addOrderId(orderIds, orderId);
+  }
+
+  const packId = String(shipment.pack_id || shipment.pack?.id || "").trim();
+  if (!orderIds.size && packId) {
+    const pack = await getMercadoLivrePack(packId, account);
+    for (const order of pack.orders || []) addOrderId(orderIds, order?.id || order?.order_id);
+  }
+
+  if (!orderIds.size) throw new Error(`Pedido da entrega ${shipmentId} nao identificado.`);
   const shipmentStatus = normalizeMercadoLivreShippingStatus(shipment);
-  return processMercadoLivreOrder(
-    orderId,
-    account,
-    notification,
-    shipmentStatus,
-    { shipment, shipmentHistory }
-  );
+  const results = [];
+  for (const orderId of orderIds) {
+    results.push(await processMercadoLivreOrder(
+      orderId,
+      account,
+      notification,
+      shipmentStatus,
+      { shipment, shipmentHistory, shipmentItems }
+    ));
+  }
+  return results.length === 1 ? results[0] : results;
+}
+
+function addOrderId(orderIds: Set<string>, value: unknown) {
+  const orderId = String(value || "").trim();
+  if (/^\d+$/.test(orderId)) orderIds.add(orderId);
+}
+
+async function findSavedOrdersByShipment(shipmentId: string) {
+  const { data, error } = await supabaseAdmin()
+    .from("venda")
+    .select("order_id")
+    .eq("marketplace", "mercado_livre")
+    .eq("shipment_id", shipmentId);
+  if (error) throw new Error(error.message);
+  return (data || []).map((row) => String(row.order_id || "")).filter(Boolean);
 }
 
 export function normalizeMercadoLivreShippingStatus(shipment: Record<string, any>) {

@@ -73,6 +73,30 @@ export async function getMercadoLivreShipmentHistory(shipmentId: string, account
   return mlGet(`/shipments/${encodeURIComponent(shipmentId)}/history`, accessToken, { "x-format-new": "true" }) as Promise<Array<Record<string, any>>>;
 }
 
+export async function getMercadoLivreShipmentSla(shipmentId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlGet(
+    `/shipments/${encodeURIComponent(shipmentId)}/sla`,
+    accessToken,
+    { "x-format-new": "true" }
+  ) as Promise<Record<string, any>>;
+}
+
+export async function getMercadoLivreShipmentItems(shipmentId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const response = await mlGet(
+    `/shipments/${encodeURIComponent(shipmentId)}/items`,
+    accessToken,
+    { "x-format-new": "true" }
+  );
+  return Array.isArray(response) ? response as Array<Record<string, any>> : [];
+}
+
+export async function getMercadoLivrePack(packId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlGet(`/packs/${encodeURIComponent(packId)}`, accessToken) as Promise<Record<string, any>>;
+}
+
 export async function emitMercadoLivreDce(orderId: string, account: MarketplaceAccountConfig) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
   return mlRequest(`/mlb/order/${encodeURIComponent(orderId)}/dce/emission`, accessToken, "POST");

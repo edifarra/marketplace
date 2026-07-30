@@ -14,6 +14,7 @@ export type SaleGridRow = {
   status: string;
   flex: boolean;
   shippingAction: "print_label" | "emit_dce" | "arrange_shipment" | null;
+  shippingActionText: string | null;
   details: Array<{ label: string; value: string }>;
   items: Array<{ sku: string; description: string; quantity: number; unitValue: string; totalValue: string }>;
   shippingHistory: Array<{ date: string; status: string; description: string }>;
@@ -98,6 +99,7 @@ function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: bo
         {row.shippingAction === "print_label" && <a className="secondary compact link-button sale-label-button" href={`/api/vendas/${row.id}/etiqueta`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Imprimir etiqueta</a>}
         {row.shippingAction === "emit_dce" && <button className="secondary compact sale-label-button" disabled={working} onClick={prepareShipping}>{working ? "Emitindo..." : "Emitir DC-e"}</button>}
         {row.shippingAction === "arrange_shipment" && <button className="secondary compact sale-label-button" disabled={working} onClick={prepareShipping}>{working ? "Organizando..." : "Organizar envio"}</button>}
+        {row.shippingActionText && <span className="muted">{row.shippingActionText}</span>}
         {actionError && <div className="sale-action-error" title={actionError}>{actionError}</div>}
       </td>
     </tr>

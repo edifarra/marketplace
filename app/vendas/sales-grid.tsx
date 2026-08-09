@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export type SaleGridRow = {
   id: string;
@@ -16,6 +16,10 @@ export type SaleGridRow = {
   flex: boolean;
   shippingAction: "print_label" | "emit_dce" | "arrange_shipment" | null;
   shippingActionText: string | null;
+  sortGroup: number;
+  shopRank: number;
+  saleTimestamp: number;
+  deferredTimestamp: number;
   details: Array<{ label: string; value: string }>;
   items: Array<{ sku: string; description: string; quantity: number; unitValue: string; totalValue: string }>;
   shippingHistory: Array<{ date: string; status: string; description: string }>;
@@ -68,7 +72,10 @@ export function SalesGrid({ rows }: { rows: SaleGridRow[] }) {
 
 function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: boolean; onToggle: () => void }) {
   const [working, setWorking] = useState(false);
+  const [processed, setProcessed] = useState(false);
   const [actionError, setActionError] = useState("");
+  useEffect(() => { setProcessed(localStorage.getItem(`sale-label-opened:${row.id}`) === "1"); }, [row.id]);
+  const markProcessed = () => { localStorage.setItem(`sale-label-opened:${row.id}`, "1"); setProcessed(true); };
   async function prepareShipping(event: React.MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
     const labelWindow = window.open("", "_blank");
@@ -78,11 +85,14 @@ function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: bo
       const response = await fetch(`/api/vendas/${row.id}/preparar-envio`, { method: "POST" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Não foi possível preparar o envio.");
+      await new Promise((resolve) => setTimeout(resolve, Number(result.waitMs || 4000)));
       if (result.labelUrl) {
-        if (labelWindow) labelWindow.location.href = result.labelUrl;
-        else window.open(result.labelUrl, "_blank", "noopener,noreferrer");
+        const labelUrl = await waitForLabel(String(result.labelUrl));
+        if (labelWindow) labelWindow.location.href = labelUrl;
+        else window.open(labelUrl, "_blank", "noopener,noreferrer");
       }
-      window.location.reload();
+      markProcessed();
+      setWorking(false);
     } catch (error) {
       labelWindow?.close();
       setActionError(error instanceof Error ? error.message : "Não foi possível preparar o envio.");
@@ -90,21 +100,21 @@ function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: bo
     }
   }
   return <>
-    <tr className={`log-grid-row${expanded ? " expanded" : ""}`} onClick={onToggle} onKeyDown={(event) => {
+    <tr className={`log-grid-row${expanded ? " expanded" : ""}${processed ? " sale-processed" : ""}`} onClick={onToggle} onKeyDown={(event) => {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onToggle(); }
     }} role="button" tabIndex={0} aria-expanded={expanded}>
       <td>{row.date}</td>
       <td><span className="log-process"><span className="log-chevron">›</span><Image className="marketplace-mini-logo" src={marketplaceIcon(row.marketplaceCode)} width={25} height={25} alt="" />{row.marketplace}{row.flex && <span className="flex-badge" title="Mercado Envios Flex">Flex</span>}</span></td>
       <td>{row.nickname}</td><td>{row.totalItems}</td><td>{row.value}</td><td><span className={`status${row.unpaid ? " unpaid" : ""}`}>{row.status}</span></td>
       <td>
-        {row.shippingAction === "print_label" && <a className="secondary compact link-button sale-label-button" href={`/api/vendas/${row.id}/etiqueta`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Imprimir etiqueta</a>}
-        {row.shippingAction === "emit_dce" && <button className="secondary compact sale-label-button" disabled={working} onClick={prepareShipping}>{working ? "Emitindo..." : "Emitir DC-e"}</button>}
-        {row.shippingAction === "arrange_shipment" && <button className="secondary compact sale-label-button" disabled={working} onClick={prepareShipping}>{working ? "Organizando..." : "Organizar envio"}</button>}
+        {(row.shippingAction === "print_label" || processed) && <a className="secondary compact link-button sale-label-button" href={`/api/vendas/${row.id}/etiqueta`} target="_blank" rel="noreferrer" onClick={(event) => { event.stopPropagation(); markProcessed(); }}>Imprimir etiqueta</a>}
+        {!processed && row.shippingAction === "emit_dce" && <button className={`secondary compact sale-label-button${working ? " processing" : ""}`} disabled={working} onClick={prepareShipping}>{working ? "Emitindo…" : "Emitir DC-e"}</button>}
+        {!processed && row.shippingAction === "arrange_shipment" && <button className={`secondary compact sale-label-button${working ? " processing" : ""}`} disabled={working} onClick={prepareShipping}>{working ? "Organizando…" : "Organizar envio"}</button>}
         {row.shippingActionText && <span className="muted">{row.shippingActionText}</span>}
         {actionError && <div className="sale-action-error" title={actionError}>{actionError}</div>}
       </td>
     </tr>
-    {expanded && <tr className="log-summary-row"><td colSpan={7}>
+    {expanded && <tr className={`log-summary-row${processed ? " sale-processed" : ""}`}><td colSpan={7}>
       <div className="sale-details">
         <strong>Detalhes da venda</strong>
         <dl>{row.details.map((detail) => <div key={detail.label}><dt>{detail.label}</dt><dd>{detail.value}</dd></div>)}</dl>
@@ -121,6 +131,22 @@ function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: bo
       </div>
     </td></tr>}
   </>;
+}
+
+async function waitForLabel(url: string) {
+  let lastMessage = "A etiqueta ainda está sendo processada pelo marketplace.";
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const response = await fetch(url, { cache: "no-store" });
+    const contentType = response.headers.get("content-type") || "";
+    if (response.ok && (contentType.includes("pdf") || contentType.includes("octet-stream"))) {
+      return URL.createObjectURL(await response.blob());
+    }
+    const body = await response.text();
+    try { lastMessage = JSON.parse(body).error || lastMessage; } catch { /* resposta HTML de processamento */ }
+    if (response.status !== 409 || attempt === 7) break;
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  throw new Error(lastMessage);
 }
 
 function marketplaceIcon(marketplace: string) {

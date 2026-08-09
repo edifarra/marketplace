@@ -755,6 +755,38 @@ th {
   white-space: nowrap;
 }
 
+.sales-grid tr.sale-processed > td {
+  background: #e7f8ea;
+}
+
+.sales-grid tr.sale-processed:hover > td {
+  background: #d9f2de;
+}
+
+.sale-label-button.processing {
+  position: relative;
+  overflow: hidden;
+  color: var(--muted);
+  cursor: wait;
+  opacity: 1;
+}
+
+.sale-label-button.processing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid transparent;
+  background: linear-gradient(90deg, transparent, #5b8cff, transparent) border-box;
+  animation: sale-action-light 1.1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes sale-action-light {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
 .search-form {
   display: flex;
   gap: 8px;

@@ -29,7 +29,8 @@ export async function POST(_request: Request, { params }: { params: { id: string
 
     return NextResponse.json({
       ok: true,
-      labelUrl: `/api/vendas/${sale.id}/etiqueta`
+      labelUrl: `/api/vendas/${sale.id}/etiqueta`,
+      waitMs: sale.marketplace === "mercado_livre" ? 6000 : 4000
     });
   } catch (error) {
     return NextResponse.json({

@@ -52,6 +52,10 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
       flex: isFlexShipping(shipping),
       shippingAction: deferred ? null : saleShippingAction(sale),
       shippingActionText: deferred?.label || null,
+      sortGroup: saleShippingAction(sale) ? 0 : deferred ? 1 : 2,
+      shopRank: saleShopRank(sale.marketplace, String(raw.marketplace_nickname || account?.nickname || account?.name || "")),
+      saleTimestamp: saleTimestamp(sale),
+      deferredTimestamp: deferred?.timestamp || 0,
       details: [
         { label: "Pedido", value: sale.order_id },
         { label: "Status recebido", value: sale.status_original || "Não informado" },
@@ -73,7 +77,7 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
       })),
       shippingHistory
     };
-  });
+  }).sort(compareSaleRows);
 
   return <main className="shell"><Sidebar /><section className="main">
     <div className="topbar"><div><h1>Vendas</h1><div className="subtitle">Vendas efetivas recebidas dos marketplaces e seus status mais recentes.</div></div><UpdateSalesButton /></div>
@@ -133,6 +137,25 @@ function compareSales(left: Sale, right: Sale) {
     return rightDeferred.timestamp - leftDeferred.timestamp;
   }
   return saleTimestamp(right) - saleTimestamp(left);
+}
+function compareSaleRows(left: SaleGridRow, right: SaleGridRow) {
+  if (left.sortGroup !== right.sortGroup) return left.sortGroup - right.sortGroup;
+  if (left.sortGroup === 0) {
+    if (left.shopRank !== right.shopRank) return left.shopRank - right.shopRank;
+    if (left.flex !== right.flex) return left.flex ? -1 : 1;
+    return left.saleTimestamp - right.saleTimestamp;
+  }
+  if (left.sortGroup === 1 && left.deferredTimestamp !== right.deferredTimestamp) {
+    return left.deferredTimestamp - right.deferredTimestamp;
+  }
+  return right.saleTimestamp - left.saleTimestamp;
+}
+function saleShopRank(marketplace: string, nickname: string) {
+  const name = nickname.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const owner = name.includes("giseli") ? 0 : name.includes("edivaldo") ? 1 : 2;
+  if (marketplace === "mercado_livre") return owner < 2 ? owner : 8;
+  if (marketplace === "shopee") return owner < 2 ? 2 + owner : 9;
+  return 9;
 }
 function saleTimestamp(sale: Sale) {
   const value = new Date(sale.data_venda || sale.created_at).getTime();

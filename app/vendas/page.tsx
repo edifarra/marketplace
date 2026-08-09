@@ -25,6 +25,10 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
     db.from("products").select("sku,title")
   ]);
   const productTitles = new Map((products || []).map((product) => [normalizeSku(product.sku), String(product.title || "")]));
+  const shippingTodayCount = ((sales || []) as unknown as Sale[])
+    .filter(isEffectiveSale)
+    .filter((sale) => !deferredShipping(sale) && Boolean(saleShippingAction(sale)))
+    .length;
   const itemMap = new Map<string, Array<Record<string, unknown>>>();
   for (const item of items || []) itemMap.set(String(item.venda_id), [...(itemMap.get(String(item.venda_id)) || []), item]);
   const sortedSales = ((sales || []) as unknown as Sale[])
@@ -81,6 +85,9 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
 
   return <main className="shell"><Sidebar /><section className="main">
     <div className="topbar"><div><h1>Vendas</h1><div className="subtitle">Vendas efetivas recebidas dos marketplaces e seus status mais recentes.</div></div><UpdateSalesButton /></div>
+    <section className="grid metrics sales-top-metric" aria-label="Quantidade de envios para hoje">
+      <div className="card"><div className="metric-label">Quantidade de Envios para Hoje</div><div className="metric-value">{shippingTodayCount}</div></div>
+    </section>
     <section className="card form-card">
       <form action="/vendas" method="get">
         <div className="table-toolbar">
@@ -260,4 +267,9 @@ function statusLabel(value: string | null | undefined) {
 function isUnpaidSale(sale: Sale) {
   const status = String(sale.status_venda?.internal_status || sale.status_original || "").toLowerCase();
   return ["aguardando_pagamento", "nao_paga", "payment_required", "payment_in_process", "unpaid"].includes(status);
+}
+
+function isEffectiveSale(sale: Sale) {
+  return !/(^pending$|payment_required|payment_in_process|unpaid|nao_paga|aguardando.*pagamento|cancel|refund|reembols|not_delivered)/i
+    .test(String(sale.status_original || ""));
 }

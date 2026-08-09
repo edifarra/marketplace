@@ -656,6 +656,11 @@ th {
   white-space: nowrap;
 }
 
+.sales-top-metric {
+  grid-template-columns: minmax(220px, 320px);
+  margin-bottom: 18px;
+}
+
 .marketplace-mini-logo {
   width: 25px;
   height: 25px;

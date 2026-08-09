@@ -152,11 +152,17 @@ function compareSaleRows(left: SaleGridRow, right: SaleGridRow) {
 }
 function saleShopRank(marketplace: string, nickname: string) {
   const name = nickname.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const giseli = name.includes("giseli") || /(^|[^a-z0-9])(?:sp[-_ ]?)?gi([^a-z0-9]|$)/.test(name);
-  const edivaldo = name.includes("edivaldo") || /(^|[^a-z0-9])(?:sp[-_ ]?)?ed([^a-z0-9]|$)/.test(name);
-  const owner = giseli ? 0 : edivaldo ? 1 : 2;
-  if (marketplace === "mercado_livre") return owner < 2 ? owner : 8;
-  if (marketplace === "shopee") return owner < 2 ? 2 + owner : 9;
+  const compact = name.replace(/[^a-z0-9]/g, "");
+  if (marketplace === "mercado_livre") {
+    if (compact.includes("desouzamedeiros")) return 0;
+    if (compact.includes("edimedeiros")) return 1;
+    return 8;
+  }
+  if (marketplace === "shopee") {
+    if (compact === "spgi" || compact.includes("giseli")) return 2;
+    if (compact === "sped" || compact.includes("edivaldo")) return 3;
+    return 9;
+  }
   return 9;
 }
 function saleTimestamp(sale: Sale) {

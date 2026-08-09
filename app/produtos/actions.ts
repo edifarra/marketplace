@@ -118,6 +118,7 @@ export async function updateProductDetailsAction(formData: FormData) {
   const text = (key: string) => String(formData.get(key) || "").trim();
   const number = (key: string) => Number(text(key).replace(",", "."));
   const sku = text("sku"); const title = text("title"); const description = text("description");
+  const redirectTo = text("redirectTo");
   const typeCode = text("typeCode"); const brandCode = text("brandCode"); const specialCode = text("specialCode") || null;
   const measures = { height: number("height"), width: number("width"), length: number("length"), weight_net: number("weightNet"), weight_gross: number("weightGross") };
   if (!productId || !sku || !title || !description || !typeCode || !brandCode || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {
@@ -165,5 +166,7 @@ export async function updateProductDetailsAction(formData: FormData) {
     redirect(`/produtos/${productId}?editar=1&erro=${encodeURIComponent(`Os dados foram processados, mas a atualização não foi concluída: ${error instanceof Error ? error.message : String(error)}`)}`);
   }
   revalidatePath("/produtos"); revalidatePath(`/produtos/${productId}`);
-  redirect(`/produtos/${productId}?sucesso=${encodeURIComponent("Produto salvo e integrações atualizadas com sucesso.")}`);
+  redirect(redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+    ? redirectTo
+    : `/produtos/${productId}?sucesso=${encodeURIComponent("Produto salvo e integrações atualizadas com sucesso.")}`);
 }

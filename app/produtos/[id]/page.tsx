@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { Sidebar } from "@/app/components/sidebar";
 import { sendProductDetailAction } from "../actions";
 import { IntegrationDeleteButton } from "./integration-delete-button";
@@ -71,7 +70,7 @@ export default async function ProductDetailPage({
   searchParams
 }: {
   params: { id: string };
-  searchParams?: { erro?: string; sucesso?: string; editar?: string };
+  searchParams?: { erro?: string; sucesso?: string };
 }) {
   const product = await getProduct(params.id);
 
@@ -88,7 +87,6 @@ export default async function ProductDetailPage({
 
   const typed = product as ProductDetail;
   const integrations = buildIntegrationRows(typed);
-  const hasIntegration = integrations.length > 0;
   const [{ data: type }, { data: brand }, { data: special }, types, brands, specials] = await Promise.all([
     supabase.from("config_types").select("*").eq("code", typed.type_code).maybeSingle(),
     supabase.from("config_brands").select("*").eq("code", typed.brand_code).maybeSingle(),
@@ -104,94 +102,23 @@ export default async function ProductDetailPage({
     String(special?.remove_description || "")
   );
 
-  if (searchParams?.editar === "1") {
-    const row = typed as unknown as Record<string, unknown>;
-    const editable = { ...typed, description,
-      width: Number(row.width ?? type?.width ?? 0), height: Number(row.height ?? type?.height ?? 0), length: Number(row.length ?? type?.length ?? 0),
-      weight_net: Number(row.weight_net ?? type?.weight_net ?? 0), weight_gross: Number(row.weight_gross ?? type?.weight_gross ?? 0) };
-    return <main className="shell"><Sidebar /><section className="main"><div className="topbar"><div><h1>Editar produto</h1><div className="subtitle">As alterações serão gravadas neste produto e enviadas às integrações.</div></div></div>
-      {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
-      <ProductEditor product={editable as unknown as Record<string, string | number | null>}
-        types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}` }))}
-        brands={(brands.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.name}` }))}
-        specials={(specials.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.notes || item.include_description || item.code}` }))}
-        images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: image.cloudinary_url || image.local_url || image.url || "", position: image.position })).filter(image => image.url)} />
-    </section></main>;
-  }
+  const row = typed as unknown as Record<string, unknown>;
+  const editable = { ...typed, description,
+    width: Number(row.width ?? type?.width ?? 0), height: Number(row.height ?? type?.height ?? 0), length: Number(row.length ?? type?.length ?? 0),
+    weight_net: Number(row.weight_net ?? type?.weight_net ?? 0), weight_gross: Number(row.weight_gross ?? type?.weight_gross ?? 0) };
 
   return (
     <main className="shell">
       <Sidebar />
       <section className="main">
-        <div className="topbar">
-          <div>
-            <h1><a className="editable-sku-link" href={`/produtos/${typed.id}?editar=1`} title="Editar produto">{typed.sku}</a></h1>
-            <div className="subtitle">{typed.title}</div>
-          </div>
-          <div className="row-actions">
-            <a className="secondary" href={`/historico-estoque?produto=${typed.id}`}>Histórico de Estoque</a>
-            <a className="secondary" href={`/produtos/${typed.id}?editar=1`}>Editar produto</a>
-            <form action={sendProductDetailAction}>
-              <input type="hidden" name="productId" value={typed.id} />
-              <button className="primary" type="submit">{hasIntegration ? "Atualizar" : "Enviar"}</button>
-            </form>
-            <a className="secondary" href="/produtos">Voltar</a>
-          </div>
-        </div>
-
         {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
         {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
 
-        <section className="grid detail-grid">
-          <div className="card">
-            <h2>Produto</h2>
-            <Info label="SKU" value={typed.sku} />
-            <Info label="Status" value={formatProductStatus(typed.status)} />
-            <Info label="Estoque" value={String(typed.stock)} />
-            <Info label="Preco" value={Number(typed.price || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
-            <Info label="Modelo" value={typed.model || "-"} />
-            <Info label="Codigo da placa" value={typed.board_code || "-"} />
-            <Info label="Versao" value={typed.version || "-"} />
-            <Info label="Origem" value={typed.source_key} />
-          </div>
-
-          <div className="card">
-            <h2>Referencias</h2>
-            <Info label="Tipo" value={`${typed.type_code} - ${formatRef(type, "description")}`} />
-            <Info label="Marca" value={`${typed.brand_code} - ${formatRef(brand, "name")}`} />
-            <Info label="Especial" value={typed.special_code ? `${typed.special_code} - ${formatRef(special, "notes")}` : "-"} />
-            <Info label="Grupo SKU" value={formatRef(type, "sku_group")} />
-            <Info label="Categoria" value={formatRef(type, "marketplace_category")} />
-            <Info label="Largura" value={formatMeasure(type, "width", "cm")} />
-            <Info label="Altura" value={formatMeasure(type, "height", "cm")} />
-            <Info label="Comprimento" value={formatMeasure(type, "length", "cm")} />
-            <Info label="Peso liquido" value={formatMeasure(type, "weight_net", "kg")} />
-            <Info label="Peso bruto" value={formatMeasure(type, "weight_gross", "kg")} />
-          </div>
-        </section>
-
-        <section className="section card">
-          <h2>Descricao</h2>
-          <div className="product-description">{description}</div>
-        </section>
-
-        <section className="section card">
-          <h2>Imagens</h2>
-          <div className="image-grid">
-            {[...(typed.product_images || [])]
-              .sort((a, b) => a.position - b.position)
-              .map((image) => (
-                <figure className="product-image" key={`${image.position}-${image.original_name}`}>
-                  {image.local_url || image.url ? (
-                    <Image src={image.local_url || image.url || ""} alt={image.original_name} width={180} height={180} unoptimized />
-                  ) : (
-                    <div className="image-placeholder">Sem imagem</div>
-                  )}
-                  <figcaption>{String(image.position).padStart(2, "0")} - {image.original_name}</figcaption>
-                </figure>
-              ))}
-          </div>
-        </section>
+        <ProductEditor product={editable as unknown as Record<string, string | number | null>}
+          types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}` }))}
+          brands={(brands.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.name}` }))}
+          specials={(specials.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.notes || item.include_description || item.code}` }))}
+          images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: image.cloudinary_url || image.local_url || image.url || "", position: image.position })).filter(image => image.url)} />
 
         <section className="section card">
           <h2>Envios realizados</h2>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type StockSyncProgress = {
   status: "idle" | "running" | "done" | "failed";
@@ -23,32 +23,66 @@ type StockSyncButtonProps = {
 export function StockSyncButton({ accountId, accountName }: StockSyncButtonProps) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<StockSyncProgress | null>(null);
+  const reloadedAfterCompletion = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    async function refresh() {
+      const current = await getProgress();
+      const next = current?.status === "running" && accountId !== "tiny"
+        ? await postProgress("step")
+        : current;
+      if (!active) return;
+      if (next) {
+        setProgress(next);
+        setRunning(next.status === "running");
+        if (next.status === "running") {
+          timer = setTimeout(refresh, 2500);
+          return;
+        }
+        if (reloadedAfterCompletion.current) {
+          reloadedAfterCompletion.current = false;
+          window.location.reload();
+        }
+      }
+      timer = setTimeout(refresh, 10000);
+    }
+
+    void refresh();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+    // As funcoes usam somente o accountId desta instancia do botao.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
 
   async function run() {
     setRunning(true);
     const start = await postProgress("start");
     if (start) {
       setProgress(start);
+      setRunning(start.status === "running");
+      reloadedAfterCompletion.current = start.status === "running";
+    } else {
+      setRunning(false);
     }
-
-    let next = start;
-    while (next?.status === "running") {
-      if (accountId === "tiny") {
-        await new Promise((resolve) => window.setTimeout(resolve, 2500));
-      }
-      next = await postProgress("step");
-      if (next) {
-        setProgress(next);
-      }
-    }
-
-    setRunning(false);
-    window.location.reload();
   }
 
   async function postProgress(action: "start" | "step") {
     return fetch(`/api/estoque/sync?accountId=${encodeURIComponent(accountId)}&action=${action}`, {
       method: "POST",
+      cache: "no-store"
+    })
+      .then((response) => response.json())
+      .then((json) => json.progress as StockSyncProgress)
+      .catch(() => null);
+  }
+
+  async function getProgress() {
+    return fetch(`/api/estoque/sync?accountId=${encodeURIComponent(accountId)}`, {
       cache: "no-store"
     })
       .then((response) => response.json())

@@ -14,6 +14,7 @@ const PUBLIC_PATHS = ["/login", "/acesso-negado"];
 const TECHNICAL_API_PATHS = [
   "/api/webhooks",
   "/api/marketplace-queue/process",
+  "/api/estoque/sync/worker",
   "/api/prices/process",
   "/api/prices/evaluate",
   "/api/mercado-livre/oauth/callback",

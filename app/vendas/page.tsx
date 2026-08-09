@@ -84,10 +84,13 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
   }).sort(compareSaleRows);
 
   return <main className="shell"><Sidebar /><section className="main">
-    <div className="topbar"><div><h1>Vendas</h1><div className="subtitle">Vendas efetivas recebidas dos marketplaces e seus status mais recentes.</div></div><UpdateSalesButton /></div>
-    <section className="grid metrics sales-top-metric" aria-label="Quantidade de envios para hoje">
-      <div className="card"><div className="metric-label">Quantidade de Envios para Hoje</div><div className="metric-value">{shippingTodayCount}</div></div>
-    </section>
+    <div className="topbar sales-topbar">
+      <div><h1>Vendas</h1><div className="subtitle">Vendas efetivas recebidas dos marketplaces e seus status mais recentes.</div></div>
+      <div className="sales-topbar-actions">
+        <div className="sales-today-count" aria-label="Quantidade de envios para hoje"><strong>{shippingTodayCount}</strong><span>Quantidade de Envios para Hoje</span></div>
+        <UpdateSalesButton />
+      </div>
+    </div>
     <section className="card form-card">
       <form action="/vendas" method="get">
         <div className="table-toolbar">

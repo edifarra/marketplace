@@ -656,10 +656,11 @@ th {
   white-space: nowrap;
 }
 
-.sales-top-metric {
-  grid-template-columns: minmax(220px, 320px);
-  margin-bottom: 18px;
-}
+.sales-topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
+.sales-today-count { display: grid; justify-items: end; text-align: right; line-height: 1.15; }
+.sales-today-count strong { color: var(--text); font-size: 30px; line-height: 1; }
+.sales-today-count span { margin-top: 5px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 760px) { .sales-topbar-actions { width: 100%; justify-content: space-between; } }
 
 .marketplace-mini-logo {
   width: 25px;

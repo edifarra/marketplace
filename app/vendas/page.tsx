@@ -152,7 +152,9 @@ function compareSaleRows(left: SaleGridRow, right: SaleGridRow) {
 }
 function saleShopRank(marketplace: string, nickname: string) {
   const name = nickname.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const owner = name.includes("giseli") ? 0 : name.includes("edivaldo") ? 1 : 2;
+  const giseli = name.includes("giseli") || /(^|[^a-z0-9])(?:sp[-_ ]?)?gi([^a-z0-9]|$)/.test(name);
+  const edivaldo = name.includes("edivaldo") || /(^|[^a-z0-9])(?:sp[-_ ]?)?ed([^a-z0-9]|$)/.test(name);
+  const owner = giseli ? 0 : edivaldo ? 1 : 2;
   if (marketplace === "mercado_livre") return owner < 2 ? owner : 8;
   if (marketplace === "shopee") return owner < 2 ? 2 + owner : 9;
   return 9;

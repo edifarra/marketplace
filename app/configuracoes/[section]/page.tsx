@@ -67,7 +67,12 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
           </section>
         )}
 
-        {marketplaceFirst ? (
+        {section === "preco" ? (
+          <>
+            {data.editRow && <ConfigurationForm section={section} data={data} newMarketplace={newMarketplace} />}
+            <PriceConfigurationGroups data={data} />
+          </>
+        ) : marketplaceFirst ? (
           <>
             <ConfigurationTable section={section} data={data} searchQuery={searchParams?.q || ""} />
             <ConfigurationForm section={section} data={data} newMarketplace={newMarketplace} />
@@ -120,9 +125,9 @@ function ConfigurationForm({
 
         <div className="form-grid">
           {fields.map((field) => (
-            <label key={field.name} className={field.type === "textarea" ? "wide-field" : undefined}>
+            <label key={field.name} className={["textarea", "json"].includes(field.type) ? "wide-field" : undefined}>
               {field.label}
-              {field.type === "textarea" ? (
+              {["textarea", "json"].includes(field.type) ? (
                 <textarea
                   name={field.name}
                   required={field.required}
@@ -141,6 +146,7 @@ function ConfigurationForm({
                 <input
                   name={field.name}
                   required={field.required}
+                  readOnly={section === "preco" && field.name === definition.keyField}
                   type={field.type === "number" ? "number" : "text"}
                   step={field.type === "number" ? "0.001" : undefined}
                   defaultValue={editRow ? editValue(editRow[field.name]) : defaultNewValue(section, newMarketplace, field.name)}
@@ -163,6 +169,58 @@ function ConfigurationForm({
       </form>
     </section>
   );
+}
+
+const priceGroups = [
+  {
+    title: "Elegibilidade",
+    description: "Define quantos anúncios serão buscados e quais palavras eliminam um anúncio da avaliação.",
+    keys: ["QUANTIDADE_ANUNCIOS_RECUPERADOS", "PALAVRAS_NEGADAS"]
+  },
+  {
+    title: "Validação de Anúncios para Cálculo",
+    description: "Seleciona quantos anúncios válidos entram no cálculo. VALORES_EM_GAP é a quantidade mínima de anúncios válidos exigida; abaixo dela o preço será marcado para Verificação Manual.",
+    keys: ["QUANTIDADE_ANUNCIOS_PARA_CALCULO", "PERCENTUAL_OUTLIER_INFERIOR", "VALORES_EM_GAP"]
+  },
+  {
+    title: "Definições de Preço",
+    description: "Define a referência do preço e as cinco faixas com arredondamento e deflator próprios.",
+    keys: ["DEFINICAO_PRECO", "TIPO_DEFLATOR", "VALOR_DEPLATOR", "FAIXA_DEFLATOR_1", "FAIXA_DEFLATOR_2", "FAIXA_DEFLATOR_3", "FAIXA_DEFLATOR_4", "FAIXA_DEFLATOR_5"]
+  }
+] as const;
+
+function PriceConfigurationGroups({ data }: { data: ConfigurationPageData }) {
+  const rowsByKey = new Map(data.rows.map((row) => [String(row.key || ""), row]));
+  return <div className="price-config-groups">
+    {priceGroups.map((group) => <section className="section card" key={group.title}>
+      <div className="price-config-heading"><h2>{group.title}</h2><p className="muted">{group.description}</p></div>
+      <div className="table-wrap"><table className="price-config-table"><thead><tr><th>Parâmetro</th><th>Valor</th><th>Descrição</th><th>Ação</th></tr></thead><tbody>
+        {group.keys.map((key) => {
+          const row = rowsByKey.get(key) || { key, value: "", description: "Parâmetro ainda não configurado.", __virtual: true };
+          return <tr key={key}>
+            <td><strong>{priceParameterLabel(key)}</strong><small>{key}</small></td>
+            <td><code>{formatValue(row.value)}</code></td>
+            <td>{String(row.description || "-").replace("[PRECO]", "").trim()}</td>
+            <td><a className="secondary compact" href={`/configuracoes/preco?edit=${encodeURIComponent(key)}`}>Editar</a></td>
+          </tr>;
+        })}
+      </tbody></table></div>
+    </section>)}
+  </div>;
+}
+
+function priceParameterLabel(key: string) {
+  const labels: Record<string, string> = {
+    QUANTIDADE_ANUNCIOS_RECUPERADOS: "Quantidade de anúncios recuperados",
+    PALAVRAS_NEGADAS: "Palavras excluídas",
+    QUANTIDADE_ANUNCIOS_PARA_CALCULO: "Quantidade de anúncios para cálculo",
+    PERCENTUAL_OUTLIER_INFERIOR: "Percentual de outlier inferior",
+    VALORES_EM_GAP: "Quantidade mínima de anúncios válidos",
+    DEFINICAO_PRECO: "Definição do preço",
+    TIPO_DEFLATOR: "Tipo de deflator padrão",
+    VALOR_DEPLATOR: "Valor do deflator padrão"
+  };
+  return labels[key] || key.replace("FAIXA_DEFLATOR_", "Faixa do deflator ");
 }
 
 function ConfigurationTable({
@@ -244,7 +302,7 @@ function ConfigurationTable({
                               {row.access_token || row.refresh_token ? "Reconectar Shopee" : "Conectar Shopee"}
                             </a>
                           )}
-                          {isVirtualSetting ? (
+                          {section === "preco" ? null : isVirtualSetting ? (
                             <span className="muted compact-label">Sem valor salvo</span>
                           ) : (
                             <form action={deleteConfigurationAction}>

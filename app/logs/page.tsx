@@ -5,6 +5,7 @@ import { LogGrid, type LogGridRow } from "./log-grid";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+const LOG_RETENTION_DAYS = 60;
 
 type PipelineRun = {
   id: string;
@@ -45,7 +46,7 @@ export default async function LogsPage() {
         <div className="topbar">
           <div>
             <h1>Logs</h1>
-            <div className="subtitle">Histórico das sincronizações e dos processos do sistema.</div>
+            <div className="subtitle">Histórico das sincronizações e dos processos do sistema, mantido por 60 dias.</div>
           </div>
         </div>
 
@@ -66,11 +67,13 @@ export default async function LogsPage() {
 async function getAllPipelineRuns() {
   const rows: PipelineRun[] = [];
   const pageSize = 1000;
+  const cutoff = retentionCutoff();
   for (let from = 0; ; from += pageSize) {
     const { data } = await supabaseAdmin()
       .from("pipeline_runs")
       .select("id,status,stage,metrics,error_message,started_at,finished_at,created_at")
       .in("stage", ["product_load", "drive_collect"])
+      .gte("created_at", cutoff)
       .order("created_at", { ascending: false })
       .range(from, from + pageSize - 1)
       .throwOnError();
@@ -84,10 +87,12 @@ async function getAllPipelineRuns() {
 async function getAllPipelineLogs() {
   const rows: PipelineLog[] = [];
   const pageSize = 1000;
+  const cutoff = retentionCutoff();
   for (let from = 0; ; from += pageSize) {
     const { data } = await supabaseAdmin()
       .from("pipeline_logs")
       .select("id,message,payload,created_at")
+      .gte("created_at", cutoff)
       .order("created_at", { ascending: false })
       .range(from, from + pageSize - 1)
       .throwOnError();
@@ -96,6 +101,10 @@ async function getAllPipelineLogs() {
     if (page.length < pageSize) break;
   }
   return rows;
+}
+
+function retentionCutoff() {
+  return new Date(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function runToGridRow(run: PipelineRun): LogGridRow & { sortDate: string } {

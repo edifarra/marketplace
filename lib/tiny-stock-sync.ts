@@ -214,8 +214,9 @@ async function advance(progress: TinyProgress, action: "update" | "migrate" | "d
 }
 
 async function updateInventory(productId: string, sku: string, stock: number) {
-  await supabaseAdmin().from("estoque").upsert({ product_id: productId, sku, estoque_fisico: stock,
-    estoque_disponivel: stock, updated_at: new Date().toISOString() }, { onConflict: "product_id" }).throwOnError();
+  const db = supabaseAdmin();
+  await db.from("estoque").upsert({ product_id: productId, sku }, { onConflict: "product_id" }).throwOnError();
+  await db.rpc("set_physical_inventory", { p_product_id: productId, p_quantity: stock }).throwOnError();
 }
 
 async function removeMismatchedMarketplaceLinks(productId: string, sku: string) {

@@ -4,6 +4,7 @@ import { getGoogleDriveSettings } from "@/lib/google-drive-config";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { loadProductsFromDriveImages } from "@/lib/product-loader";
 import { sendPendingProductsToConfiguredTarget } from "@/lib/product-sender";
+import { processPendingProductPrices } from "@/lib/price-processor";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -210,6 +211,7 @@ async function runAutomaticStages(driveResult: { totalMoved: number; totalCopied
   if (hasNewPhotos && values.get("CARREGAMENTO_PRODUTOS_AUTOMATICO") === "SIM") {
     result.productLoad = await loadProductsFromDriveImages();
   }
+  result.priceProcessing = await processPendingProductPrices(5);
   if (values.get("ENVIAR_PRODUTOS_AUTOMATICO") === "SIM") {
     result.productSend = await sendPendingProductsToConfiguredTarget(5);
   }

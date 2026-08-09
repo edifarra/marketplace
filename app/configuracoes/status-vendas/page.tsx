@@ -1,104 +1,57 @@
 import { Sidebar } from "@/app/components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { saveSaleStatusMapping } from "./actions";
+import { StatusMappingsTable } from "./status-mappings-table";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const INTERNAL_STATUSES = [
-  ["aguardando_pagamento", "Aguardando pagamento"],
-  ["pagamento_em_processamento", "Pagamento em processamento"],
-  ["paga", "Paga"],
-  ["pronta_para_envio", "Pronta para envio"],
-  ["a_caminho", "A caminho"],
-  ["saiu_para_entrega", "Saiu para entrega"],
-  ["entregue", "Entregue"],
-  ["concluida", "Concluída"],
-  ["cancelada", "Cancelada"],
-  ["reembolsada", "Reembolsada"],
-  ["devolucao_solicitada", "Devolução solicitada"],
-  ["cancelamento_solicitado", "Cancelamento solicitado"]
-] as const;
-
 type Props = { searchParams?: { marketplace?: string; sucesso?: string; erro?: string } };
 
+const MARKETPLACES = [
+  ["mercado_livre", "Mercado Livre"],
+  ["shopee", "Shopee"]
+] as const;
+
 export default async function SaleStatusMappingsPage({ searchParams }: Props) {
-  const marketplace = searchParams?.marketplace || "";
-  let query = supabaseAdmin().from("status_venda").select("*")
-    .order("marketplace").order("external_status");
-  if (marketplace) query = query.eq("marketplace", marketplace);
-  const { data, error } = await query;
+  const requestedMarketplace = String(searchParams?.marketplace || "mercado_livre");
+  const marketplace = MARKETPLACES.some(([value]) => value === requestedMarketplace)
+    ? requestedMarketplace
+    : "mercado_livre";
+  const { data, error } = await supabaseAdmin().from("status_venda").select("*")
+    .eq("marketplace", marketplace).order("external_status");
 
   return <main className="shell"><Sidebar /><section className="main">
     <div className="topbar"><div>
       <h1>De–Para de Status de Vendas</h1>
-      <div className="subtitle">Defina como cada status e substatus recebido dos marketplaces aparece no sistema.</div>
+      <div className="subtitle">Configure os status de cada marketplace e abra somente os substatus que precisar revisar.</div>
     </div></div>
 
     {searchParams?.sucesso && <div className="message success">{searchParams.sucesso}</div>}
     {(searchParams?.erro || error) && <div className="message error">{searchParams?.erro || error?.message}</div>}
 
     <section className="section card">
-      <div className="table-toolbar">
-        <div><h2>Mapeamentos</h2><div className="muted">Novas combinações recebidas são incluídas automaticamente.</div></div>
+      <div className="status-marketplace-picker">
+        <div>
+          <label htmlFor="marketplace-status-filter">Marketplace</label>
+          <div className="muted">Selecione a integração cujos status deseja configurar.</div>
+        </div>
         <form className="search-form">
-          <select name="marketplace" defaultValue={marketplace}>
-            <option value="">Todos os marketplaces</option>
-            <option value="mercado_livre">Mercado Livre</option>
-            <option value="shopee">Shopee</option>
+          <select id="marketplace-status-filter" name="marketplace" defaultValue={marketplace}>
+            {MARKETPLACES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <button className="secondary compact" type="submit">Filtrar</button>
+          <button className="primary compact" type="submit">Selecionar</button>
         </form>
       </div>
-      <div className="table-wrap">
-      <table className="status-mapping-table">
-        <thead><tr>
-          <th>Marketplace</th><th>Status externo</th><th>Substatus externo</th>
-          <th>Status no sistema e descrição</th><th>Regras</th><th>Ação</th>
-        </tr></thead>
-        <tbody>
-          {(data || []).map((row) => {
-            const [externalStatus, externalSubstatus = "—"] = String(row.external_status).split("::");
-            const formId = `status-mapping-${row.id}`;
-            return <tr key={row.id}>
-              <td>{row.marketplace === "mercado_livre" ? "Mercado Livre" : row.marketplace === "shopee" ? "Shopee" : row.marketplace}</td>
-              <td><code>{externalStatus}</code></td>
-              <td><code>{externalSubstatus}</code></td>
-              <td><div className="status-mapping-fields">
-                <select form={formId} name="internal_status" defaultValue={canonicalStatus(row.internal_status)}>
-                  {INTERNAL_STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-                <input form={formId} name="description" defaultValue={row.description || ""} aria-label="Descrição exibida" placeholder="Descrição exibida" required />
-              </div></td>
-              <td><div className="status-mapping-rules">
-                <label><input form={formId} type="checkbox" name="reserves_stock" defaultChecked={row.reserves_stock} /><span>Reserva de estoque</span></label>
-                <label><input form={formId} type="checkbox" name="final_status" defaultChecked={row.final_status} /><span>Status final</span></label>
-                {externalSubstatus === "—" && <label title="Replica esta configuração para todas as combinações deste status">
-                  <input form={formId} type="checkbox" name="apply_to_substatuses" defaultChecked /><span>Aplicar aos substatus</span>
-                </label>}
-              </div></td>
-              <td>
-                <form id={formId} action={saveSaleStatusMapping}>
-                  <input type="hidden" name="id" value={row.id} />
-                  <button className="primary compact" type="submit">Salvar</button>
-                </form>
-              </td>
-            </tr>;
-          })}
-        </tbody>
-      </table>
+    </section>
+
+    <section className="section card">
+      <div className="table-toolbar">
+        <div>
+          <h2>Status de {MARKETPLACES.find(([value]) => value === marketplace)?.[1]}</h2>
+          <div className="muted">Clique em um status para mostrar ou ocultar seus substatus.</div>
+        </div>
       </div>
+      <StatusMappingsTable rows={data || []} marketplace={marketplace} />
     </section>
   </section></main>;
-}
-
-function canonicalStatus(value: string) {
-  const aliases: Record<string, string> = {
-    criada: "pronta_para_envio",
-    nao_paga: "aguardando_pagamento",
-    processada: "pronta_para_envio",
-    enviada: "a_caminho"
-  };
-  const normalized = aliases[value] || value;
-  return INTERNAL_STATUSES.some(([status]) => status === normalized) ? normalized : "paga";
 }

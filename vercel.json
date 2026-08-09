@@ -11,6 +11,14 @@
     {
       "path": "/api/marketplace-queue/process?limit=50",
       "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/retention/cleanup",
+      "schedule": "45 5 * * *"
+    },
+    {
+      "path": "/api/prices/process?limit=5",
+      "schedule": "0 6 * * *"
     }
   ]
 }

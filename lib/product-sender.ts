@@ -30,6 +30,10 @@ const PENDING_STATUSES = ["draft", "ready", "publishing"];
 
 export async function sendProductToConfiguredTarget(productId: string): Promise<SendResult> {
   const supabase = supabaseAdmin();
+  const productStatus = await supabase.from("products").select("status").eq("id", productId).single().throwOnError();
+  if (["pending_price", "manual_price"].includes(productStatus.data.status)) {
+    return { ok: false, productId, message: "Produto pendente de preço. Processe ou informe o preço antes do envio." };
+  }
   const existingTinyId = await getProductTinyId(productId);
   if (existingTinyId) {
     const tinyResult = await updateTinyProduct(productId, existingTinyId);

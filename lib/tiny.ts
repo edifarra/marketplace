@@ -197,6 +197,23 @@ export async function getTinyProductSnapshot(id: string) {
   return { ...product, saldo: Number(inventory.saldo || 0), depositos: inventory.depositos || [] };
 }
 
+export async function getTinyProductById(id: string) {
+  const settings = await getTinySettings();
+  const body = new URLSearchParams({ token: settings.token, formato: settings.formato, id });
+  const response = await fetch("https://api.tiny.com.br/api2/produto.obter.php", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+    cache: "no-store"
+  });
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Erro HTTP Tiny ao obter produto ${id}: ${response.status}`);
+  const json = JSON.parse(raw) as Record<string, unknown>;
+  const retorno = (json.retorno || {}) as Record<string, unknown>;
+  if (String(retorno.status || "") === "Erro") throw new Error(`Erro Tiny: ${extractTinyErrors(json) || raw}`);
+  return (retorno.produto || {}) as Record<string, unknown>;
+}
+
 export async function getTinyProductInventory(id: string) {
   const settings = await getTinySettings();
   const body = new URLSearchParams({ token: settings.token, formato: settings.formato, id });
@@ -483,6 +500,7 @@ function buildTinyProductPayload(product: Record<string, unknown>, settings: Tin
     .map((image) => String(image.cloudinary_url || image.url || image.local_url || ""))
     .map(toTinyImageUrl)
     .filter(Boolean);
+  const productValue = (key: string) => product[key] ?? type[key];
 
   return {
     produtos: [
@@ -503,12 +521,12 @@ function buildTinyProductPayload(product: Record<string, unknown>, settings: Tin
           garantia: type.warranty_months ? `${type.warranty_months} meses` : "",
           categoria: String(type.tiny_category || type.marketplace_category || "").trim().replace(/\s*>+\s*/g, " >> "),
           descricao_complementar: buildProductDescription(product, type, brand, special),
-          peso_liquido: formatTinyDecimal(type.weight_net),
-          peso_bruto: formatTinyDecimal(type.weight_gross),
+          peso_liquido: formatTinyDecimal(productValue("weight_net")),
+          peso_bruto: formatTinyDecimal(productValue("weight_gross")),
           tipo_embalagem: 2,
-          largura_embalagem: formatTinyDecimal(type.width),
-          altura_embalagem: formatTinyDecimal(type.height),
-          comprimento_embalagem: formatTinyDecimal(type.length),
+          largura_embalagem: formatTinyDecimal(productValue("width")),
+          altura_embalagem: formatTinyDecimal(productValue("height")),
+          comprimento_embalagem: formatTinyDecimal(productValue("length")),
           estoque_atual: getInventoryQuantity(inventory, product.stock),
           estoque_minimo: 0,
           estoque_maximo: 0,

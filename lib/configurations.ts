@@ -34,10 +34,11 @@ export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
     table: "config_types",
     keyField: "code",
     searchFields: ["code", "description", "sku_group", "marketplace_category"],
-    listFields: ["code", "description", "sku_group", "sku_max", "marketplace_category"],
+    listFields: ["code", "description", "search_term", "sku_group", "sku_max", "marketplace_category"],
     fields: [
       { name: "code", label: "Sigla", type: "text", required: true },
       { name: "description", label: "Descricao", type: "text", required: true },
+      { name: "search_term", label: "Termo de Busca", type: "text" },
       { name: "sku_max", label: "SKU Max", type: "number" },
       { name: "marketplace_category", label: "Categoria", type: "text" },
       { name: "weight_net", label: "Peso liquido", type: "number" },
@@ -94,7 +95,13 @@ export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
       "VALOR_DEPLATOR",
       "VALOR_MINIMO",
       "PERCENTUAL_OUTLIER_INFERIOR",
-      "VALORES_EM_GAP"
+      "VALORES_EM_GAP",
+      "PALAVRAS_NEGADAS",
+      "FAIXA_DEFLATOR_1",
+      "FAIXA_DEFLATOR_2",
+      "FAIXA_DEFLATOR_3",
+      "FAIXA_DEFLATOR_4",
+      "FAIXA_DEFLATOR_5"
     ],
     marker: "[PRECO]",
     fields: [
@@ -245,6 +252,10 @@ export async function saveConfiguration(formData: FormData) {
   const definition = configDefinitions[section];
   const originalKey = optionalString(formData.get("originalKey"));
   const payload = parsePayload(section, definition, formData);
+  const validationError = validatePriceConfiguration(section, payload);
+  if (validationError) {
+    redirect(`/configuracoes/${section}?erro=${encodeURIComponent(validationError)}`);
+  }
   applySettingsMarker(definition, payload);
   const supabase = supabaseAdmin();
 
@@ -260,7 +271,30 @@ export async function saveConfiguration(formData: FormData) {
   redirect(`/configuracoes/${section}${successMessage ? `?sucesso=${encodeURIComponent(successMessage)}` : ""}`);
 }
 
+function validatePriceConfiguration(section: ConfigSection, payload: Record<string, unknown>) {
+  if (section !== "preco" || !String(payload.key || "").startsWith("FAIXA_DEFLATOR_")) return "";
+  const value = payload.value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "A faixa do deflator deve ser um JSON válido.";
+  }
+  const range = value as Record<string, unknown>;
+  const min = Number(range.min);
+  const max = Number(range.max);
+  const deflatorValue = Number(range.value);
+  const deflator = String(range.deflator || "").toLowerCase();
+  if (![min, max, deflatorValue].every(Number.isFinite) || min > max) {
+    return "Informe valores numéricos válidos para min, max e value da faixa.";
+  }
+  if (!["valor", "porcentagem"].includes(deflator)) {
+    return "O deflator da faixa deve ser valor ou porcentagem.";
+  }
+  return "";
+}
+
 function configurationSuccessMessage(section: ConfigSection, updated: boolean) {
+  if (section === "preco") {
+    return "Atributo atualizado com sucesso.";
+  }
   if (section === "tipo") {
     return `Tipo ${updated ? "atualizado" : "criado"} com sucesso.`;
   }

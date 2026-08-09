@@ -6,6 +6,7 @@ type ProductDescriptionData = {
   model?: string | null;
   version?: string | null;
   board_code?: string | null;
+  description?: string | null;
 };
 
 type TypeDescriptionConfig = {
@@ -28,6 +29,9 @@ export function buildProductDescription(
   brand: BrandDescriptionConfig | null | undefined,
   special?: SpecialDescriptionConfig | null
 ) {
+  if (String(product.description || "").trim()) {
+    return String(product.description).trim();
+  }
   let description = applyTemplate(
     type?.description_template || "Produto: [NOME_PRODUTO_COMPLETO]",
     {

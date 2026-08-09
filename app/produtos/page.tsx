@@ -94,7 +94,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
               <label>Status<select name="status" defaultValue={filters.status}><option value="">Todos</option>{filterOptions.statuses.map(status => <option value={status} key={status}>{formatProductStatus(status)}</option>)}</select></label>
               <label>Marketplaces<select name="marketplace" defaultValue={filters.marketplace}><option value="">Todos</option><option value="linked">Com vinculo</option><option value="unlinked">Sem vinculo</option></select></label>
               <label>Marca<select name="brand" defaultValue={filters.brand}><option value="">Todas</option>{filterOptions.brands.map(item => <option value={item.code} key={item.code}>{item.name || item.code}</option>)}</select></label>
-              <label>Tipo de Produto<select name="type" defaultValue={filters.type}><option value="">Todos</option>{filterOptions.types.map(item => <option value={item.code} key={item.code}>{item.name || item.code}</option>)}</select></label>
+              <label>Tipo de Produto<select name="type" defaultValue={filters.type}><option value="">Todos</option>{filterOptions.types.map(item => <option value={item.code} key={item.code}>{item.description || item.code}</option>)}</select></label>
               <label>Ordenar por<select name="sort" defaultValue={filters.sort}><option value="recent">Mais recente</option><option value="updated">Data de atualizacao</option><option value="sku">Codigo SKU</option><option value="name">Nome do produto</option></select></label>
             </div>
           </form>
@@ -397,12 +397,12 @@ async function getProductFilterOptions() {
   const [statuses, brands, types] = await Promise.all([
     db.from("products").select("status").order("status"),
     db.from("config_brands").select("code,name").order("name"),
-    db.from("config_types").select("code,name").order("name")
+    db.from("config_types").select("code,description").order("description")
   ]);
   return {
     statuses: [...new Set((statuses.data || []).map(row => String(row.status)).filter(Boolean))],
     brands: (brands.data || []) as Array<{ code: string; name: string }>,
-    types: (types.data || []) as Array<{ code: string; name: string }>
+    types: (types.data || []) as Array<{ code: string; description: string }>
   };
 }
 
@@ -411,8 +411,14 @@ function hasProductIntegration(product: ProductRow) {
 }
 
 function formatProductStatus(status: string) {
+  if (status === "pending_price") {
+    return "Aguardando Preço";
+  }
+  if (status === "manual_price") {
+    return "Definir Preço Manual";
+  }
   if (["draft", "ready"].includes(status)) {
-    return "A Enviar";
+    return "Pendente de Envio";
   }
 
   const labels: Record<string, string> = {

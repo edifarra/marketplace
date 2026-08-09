@@ -212,6 +212,15 @@ export class ShopeeClient {
     });
   }
 
+  async deleteProduct(accessToken: string, shopId: string | number, itemId: string | number) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/product/delete_item", {
+      accessToken,
+      shopId,
+      method: "POST",
+      body: { item_id: Number(itemId) }
+    });
+  }
+
   async createShippingDocument(
     accessToken: string,
     shopId: string | number,
@@ -249,6 +258,22 @@ export class ShopeeClient {
     packageNumber?: string | null
   ) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/get_tracking_number", {
+      accessToken,
+      shopId,
+      query: {
+        order_sn: orderSn,
+        ...(packageNumber ? { package_number: packageNumber } : {})
+      }
+    });
+  }
+
+  async getTrackingInfo(
+    accessToken: string,
+    shopId: string | number,
+    orderSn: string,
+    packageNumber?: string | null
+  ) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/logistics/get_tracking_info", {
       accessToken,
       shopId,
       query: {

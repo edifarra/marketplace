@@ -14,9 +14,12 @@ const PUBLIC_PATHS = ["/login", "/acesso-negado"];
 const TECHNICAL_API_PATHS = [
   "/api/webhooks",
   "/api/marketplace-queue/process",
+  "/api/prices/process",
+  "/api/prices/evaluate",
   "/api/mercado-livre/oauth/callback",
   "/api/shopee/oauth/callback",
   "/api/google/oauth/callback",
+  "/api/pipeline/products",
   "/api/pipeline/run"
 ];
 

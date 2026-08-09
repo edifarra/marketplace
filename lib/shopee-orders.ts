@@ -54,6 +54,13 @@ export async function processShopeeOrder(
     || packageList[0]?.package_number
     || ""
   );
+  const previousHistory = await getSavedShopeeHistory(orderSn);
+  const trackingInfo = await fetchShopeeTrackingInfo(client, accessToken, shopId, orderSn, shipmentId);
+  const shopeeHistory = mergeShopeeHistory(previousHistory, trackingInfo, {
+    orderStatus: status,
+    logisticsStatus: String(packageList[0]?.logistics_status || ""),
+    occurredAt: updateTime || order.update_time || notification.timestamp || Date.now()
+  });
 
   return registerMarketplaceSale({
     activityId,
@@ -68,7 +75,7 @@ export async function processShopeeOrder(
     externalListingId: order.item_id || items[0]?.item_id,
     status,
     mappingStatus: status,
-    mappingSubstatus: String(order.order_substatus || order.substatus || ""),
+    mappingSubstatus: String(order.order_substatus || order.substatus || packageList[0]?.logistics_status || ""),
     items: items.map((item: Record<string, any>) => ({
       sku: String(item.model_sku || item.item_sku || item.sku || ""),
       title: String(item.item_name || item.model_name || ""),
@@ -81,8 +88,64 @@ export async function processShopeeOrder(
     marketplaceAccountId: account.id,
     marketplaceNickname: account.name,
     soldAt: shopeeDate(order.create_time || order.create_time_timestamp),
-    rawPayload: { notification, order }
+    rawPayload: { notification, order, shopeeHistory, trackingInfo }
   });
+}
+
+async function getSavedShopeeHistory(orderSn: string) {
+  const { data, error } = await supabaseAdmin().from("venda").select("raw_data")
+    .eq("marketplace", "shopee").eq("order_id", orderSn).maybeSingle();
+  if (error) throw new Error(error.message);
+  const raw = (data?.raw_data || {}) as Record<string, any>;
+  return Array.isArray(raw.payload?.shopeeHistory) ? raw.payload.shopeeHistory : [];
+}
+
+async function fetchShopeeTrackingInfo(
+  client: ReturnType<typeof createShopeeClient>,
+  accessToken: string,
+  shopId: string,
+  orderSn: string,
+  packageNumber: string
+) {
+  try {
+    const result = await client.getTrackingInfo(accessToken, shopId, orderSn, packageNumber || undefined);
+    const response = (result.response || result) as Record<string, any>;
+    return Array.isArray(response.tracking_info) ? response.tracking_info : [];
+  } catch {
+    // A Shopee pode ainda não liberar o rastreamento antes de o envio ser organizado.
+    return [];
+  }
+}
+
+function mergeShopeeHistory(
+  saved: Array<Record<string, any>>,
+  tracking: Array<Record<string, any>>,
+  observed: { orderStatus: string; logisticsStatus: string; occurredAt: unknown }
+) {
+  const events: Array<Record<string, any>> = [
+    ...saved,
+    ...tracking.map((event) => ({
+      date: shopeeDate(event.update_time || event.create_time || event.time),
+      status: String(event.logistics_status || event.status || ""),
+      description: String(event.description || event.logistics_status || event.status || ""),
+      source: "shopee_tracking"
+    })),
+    {
+      date: shopeeDate(observed.occurredAt),
+      status: observed.logisticsStatus || observed.orderStatus,
+      order_status: observed.orderStatus,
+      description: observed.logisticsStatus || observed.orderStatus,
+      source: "observed"
+    }
+  ].filter((event) => event.date && event.status);
+  const unique = new Map<string, Record<string, any>>();
+  for (const event of events) {
+    const key = `${event.date}|${event.status}|${event.order_status || ""}`;
+    unique.set(key, event);
+  }
+  return [...unique.values()].sort((left, right) =>
+    new Date(String(left.date)).getTime() - new Date(String(right.date)).getTime()
+  );
 }
 
 async function isOlderThanSavedOrder(orderSn: string, incomingUpdateTime: string) {

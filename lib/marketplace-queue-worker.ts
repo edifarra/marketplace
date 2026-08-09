@@ -6,6 +6,7 @@ import {
 } from "./marketplace-queue";
 import { processShopeeOrderSynchronized } from "./shopee-orders";
 import { supabaseAdmin } from "./supabase-admin";
+import { activityDescription } from "./marketplace-activity-labels";
 
 const SHOPEE_ORDER_PUSH_CODES = new Set([3, 4, 15, 29, 30, 37, 47]);
 const SHOPEE_ACCOUNT_PUSH_CODES = new Set([1, 2, 12]);
@@ -52,7 +53,7 @@ async function processMercadoLivreActivity(activity: Record<string, any>) {
   if (topic !== "orders_v2" && topic !== "shipments") {
     return completeQueuedActivity(
       String(activity.id),
-      `Notificacao reconhecida: ${String(payload.resource || "recurso nao informado")}`,
+      activityDescription("mercado_livre", topic, payload),
       { topic, acknowledged: true }
     );
   }
@@ -113,7 +114,7 @@ async function processShopeeActivity(activity: Record<string, any>) {
     String(activity.id),
     SHOPEE_ORDER_PUSH_CODES.has(code)
       ? `Push Shopee ${code} reconhecido sem pedido identificavel.`
-      : `Push Shopee ${code || "sem codigo"} reconhecido; nao altera vendas.`,
+      : activityDescription("shopee", String(code || "notification"), payload),
     { code, acknowledged: true }
   );
 }
@@ -178,4 +179,3 @@ function isShopeeVerificationPush(payload: Record<string, any>) {
   const code = String(payload.code ?? "").toLowerCase();
   return !payload.shop_id && ["", "0", "test", "verification"].includes(code);
 }
-

@@ -1,6 +1,6 @@
 export type Marketplace = "mercado_livre" | "shopee";
 
-export type ProductStatus = "draft" | "ready" | "publishing" | "active" | "paused" | "error";
+export type ProductStatus = "pending_price" | "manual_price" | "draft" | "ready" | "publishing" | "active" | "paused" | "error";
 
 export type PhotoNameParts = {
   sourceKey: string;

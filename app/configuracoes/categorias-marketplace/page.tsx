@@ -13,8 +13,8 @@ export default async function CategoriesPage({ searchParams }: { searchParams?: 
   const byCategory = new Map((mappings.data || []).map(row => [String(row.internal_category), row]));
   return <main className="shell"><Sidebar /><section className="main"><div className="topbar"><div><h1>Categorias Marketplace</h1><div className="subtitle">DE-PARA das categorias internas com Mercado Livre, Shopee e Tiny.</div></div></div>
     {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}{searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
-    <section className="card"><div className="table-wrap"><table><thead><tr><th>Categoria interna</th><th>Mercado Livre</th><th>Shopee</th><th>Tiny</th><th>Acao</th></tr></thead><tbody>
+    <section className="category-mapping-list">
       {categories.map(category => <CategoryMappingRow key={category} category={category} mapping={byCategory.get(category)} />)}
-      {!categories.length && <tr><td colSpan={5}>Nenhuma categoria interna configurada.</td></tr>}
-    </tbody></table></div></section></section></main>;
+      {!categories.length && <div className="card">Nenhuma categoria interna configurada.</div>}
+    </section></section></main>;
 }

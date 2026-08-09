@@ -3,6 +3,7 @@ import { supabaseAdmin } from "./supabase-admin";
 import { getMarketplaceClient } from "./marketplaces";
 import { Marketplace } from "./types";
 import { salePostedAt } from "./sales-fulfillment";
+import { activityDescription } from "./marketplace-activity-labels";
 
 export type MarketplaceSaleInput = {
   activityId?: string;
@@ -39,7 +40,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     await supabase.from("marketplace_activities").update({
       event_type: input.eventType || "notification",
       order_id: orderId || null,
-      description: input.eventType || "Evento recebido",
+      description: activityDescription(input.marketplace, String(input.eventType || "notification"), input.rawPayload as Record<string, any>),
       value: number(input.value),
       item_count: items.reduce((sum, item) => sum + item.quantity, 0),
       status: "processing",
@@ -52,7 +53,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       event_type: input.eventType || "notification",
       external_event_id: eventId,
       order_id: orderId || null,
-      description: input.eventType || "Evento recebido",
+      description: activityDescription(input.marketplace, String(input.eventType || "notification"), input.rawPayload as Record<string, any>),
       value: number(input.value),
       item_count: items.reduce((sum, item) => sum + item.quantity, 0),
       status: "received",
@@ -85,10 +86,8 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     );
 
     const previousSale = await supabase.from("venda")
-      .select("id,raw_data,status_venda(reserves_stock)")
+      .select("id,raw_data")
       .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
-    const previousStatus = previousSale.data?.status_venda as unknown as { reserves_stock?: boolean } | null;
-    const shouldReserveStock = Boolean(statusResult.data?.reserves_stock) && !previousStatus?.reserves_stock;
     const previousRawData = (previousSale.data?.raw_data as Record<string, unknown> | null) || {};
     const detectedPostedAt = salePostedAt({
       marketplace: input.marketplace,
@@ -125,7 +124,19 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
         venda_id: vendaId, order_id: orderId, sku: item.sku, quantidade: item.quantity,
         valor_unitario: item.unitPrice, valor_total: item.totalPrice, raw_data: input.rawPayload
       }, { onConflict: "venda_id,sku" }).throwOnError();
-      if (shouldReserveStock) await reserveStock(productId, item.quantity);
+    }
+
+    const transition = await supabase.rpc("reconcile_sale_inventory", {
+      p_sale_id: vendaId,
+      p_reserve: Boolean(statusResult.data?.reserves_stock),
+      p_release: Boolean(statusResult.data?.releases_stock),
+      p_deduct_physical: Boolean(statusResult.data?.deducts_physical_stock) || Boolean(detectedPostedAt)
+    }).throwOnError();
+    for (const inventory of transition.data || []) {
+      await syncListingsStock(String(inventory.product_id), number(inventory.estoque_disponivel), {
+        marketplace: input.marketplace,
+        accountId: input.marketplaceAccountId
+      });
     }
 
     await supabase.from("marketplace_activities").update({
@@ -150,12 +161,12 @@ async function resolveSaleStatus(marketplace: Marketplace, externalStatus: strin
   const compoundStatus = substatus ? `${status}${STATUS_SEPARATOR}${substatus}` : status;
 
   const exact = await supabase.from("status_venda")
-    .select("id,reserves_stock,final_status")
+    .select("id,reserves_stock,final_status,deducts_physical_stock,releases_stock")
     .eq("marketplace", marketplace).eq("external_status", compoundStatus).maybeSingle().throwOnError();
   if (exact.data || !substatus) return exact;
 
   const fallback = await supabase.from("status_venda")
-    .select("internal_status,description,reserves_stock,final_status")
+    .select("internal_status,description,reserves_stock,final_status,deducts_physical_stock,releases_stock")
     .eq("marketplace", marketplace).eq("external_status", status).maybeSingle().throwOnError();
   const inferred = inferDefaultStatusMapping(status, substatus);
   const inserted = await supabase.from("status_venda").insert({
@@ -164,11 +175,13 @@ async function resolveSaleStatus(marketplace: Marketplace, externalStatus: strin
     internal_status: inferred.internalStatus || fallback.data?.internal_status || status.toLowerCase(),
     description: inferred.description || fallback.data?.description || `${status} / ${substatus}`,
     reserves_stock: inferred.reservesStock ?? fallback.data?.reserves_stock ?? false,
-    final_status: inferred.finalStatus ?? fallback.data?.final_status ?? false
-  }).select("id,reserves_stock,final_status").single();
+    final_status: inferred.finalStatus ?? fallback.data?.final_status ?? false,
+    deducts_physical_stock: inferred.deductsPhysical ?? fallback.data?.deducts_physical_stock ?? false,
+    releases_stock: inferred.releasesStock ?? fallback.data?.releases_stock ?? false
+  }).select("id,reserves_stock,final_status,deducts_physical_stock,releases_stock").single();
   if (inserted.error && /duplicate|unique/i.test(inserted.error.message)) {
     return supabase.from("status_venda")
-      .select("id,reserves_stock,final_status")
+      .select("id,reserves_stock,final_status,deducts_physical_stock,releases_stock")
       .eq("marketplace", marketplace).eq("external_status", compoundStatus).single().throwOnError();
   }
   if (inserted.error) throw inserted.error;
@@ -179,15 +192,16 @@ function inferDefaultStatusMapping(status: string, substatus: string) {
   const normalizedStatus = status.toLowerCase();
   const normalizedSubstatus = substatus.toLowerCase();
   if (["out_for_delivery", "first_visit"].includes(normalizedSubstatus)) {
-    return { internalStatus: "saiu_para_entrega", description: "Saiu para entrega", reservesStock: false, finalStatus: false };
+    return { internalStatus: "saiu_para_entrega", description: "Saiu para entrega", reservesStock: false, finalStatus: false, deductsPhysical: true, releasesStock: false };
   }
   if (["dropped_off", "picked_up", "in_hub", "in_packing_list"].includes(normalizedSubstatus) || normalizedStatus === "shipped") {
-    return { internalStatus: "a_caminho", description: "A caminho", reservesStock: false, finalStatus: false };
+    return { internalStatus: "a_caminho", description: "A caminho", reservesStock: false, finalStatus: false, deductsPhysical: true, releasesStock: false };
   }
   if (normalizedStatus === "ready_to_ship" || normalizedStatus === "handling") {
-    return { internalStatus: "pronta_para_envio", description: "Pronta para envio", reservesStock: false, finalStatus: false };
+    return { internalStatus: "pronta_para_envio", description: "Pronta para envio", reservesStock: true, finalStatus: false, deductsPhysical: false, releasesStock: false };
   }
-  return { internalStatus: "", description: "", reservesStock: undefined, finalStatus: undefined };
+  const cancelled = ["cancelled", "canceled", "refunded"].includes(normalizedStatus);
+  return { internalStatus: "", description: "", reservesStock: cancelled ? false : true, finalStatus: undefined, deductsPhysical: false, releasesStock: cancelled };
 }
 
 async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: string, price = 0, title = "") {
@@ -201,7 +215,9 @@ async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: 
   }
   if (!result.data) throw new Error(`Nao foi possivel criar o produto ${sku}.`);
   const productId = String(result.data.id);
-  await supabase.from("estoque").upsert({ product_id: productId, sku, estoque_fisico: 0, estoque_disponivel: 0 }, { onConflict: "product_id" }).throwOnError();
+  // Nao sobrescreve o saldo de um produto ja existente ao receber outra
+  // notificacao da venda.
+  await supabase.from("estoque").upsert({ product_id: productId, sku }, { onConflict: "product_id" }).throwOnError();
   const existingListing = await supabase.from("listings").select("id")
     .eq("product_id", productId).eq("marketplace", marketplace).limit(1).maybeSingle().throwOnError();
   const listingData = {
@@ -216,19 +232,15 @@ async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: 
   return productId;
 }
 
-async function reserveStock(productId: string, quantity: number) {
+export async function syncListingsStock(productId: string, stock: number, origin?: { marketplace?: string; accountId?: string }) {
   const supabase = supabaseAdmin();
-  const current = await supabase.from("estoque").select("estoque_fisico").eq("product_id", productId).single().throwOnError();
-  const stock = Math.max(number(current.data.estoque_fisico) - quantity, 0);
-  await supabase.from("estoque").update({ estoque_fisico: stock }).eq("product_id", productId).throwOnError();
-  await syncListingsStock(productId, stock);
-}
-
-export async function syncListingsStock(productId: string, stock: number) {
-  const supabase = supabaseAdmin();
-  const result = await supabase.from("listings").select("id,marketplace,external_listing_id").eq("product_id", productId).throwOnError();
+  const setting = await supabase.from("settings").select("value").eq("key", "PRODUCT_SEND_TARGET").maybeSingle().throwOnError();
+  if (String(setting.data?.value || "TINY") !== "MARKETPLACE_DIRETO") return;
+  const result = await supabase.from("listings").select("id,marketplace,marketplace_account_id,external_listing_id").eq("product_id", productId).throwOnError();
   for (const listing of result.data || []) {
     if (!listing.external_listing_id) continue;
+    if (origin?.accountId && listing.marketplace_account_id === origin.accountId) continue;
+    if (!origin?.accountId && origin?.marketplace === listing.marketplace) continue;
     const client = getMarketplaceClient(listing.marketplace);
     if (stock <= 0) await client.pauseListing(listing.external_listing_id);
     else await client.updateStock(listing.external_listing_id, stock);

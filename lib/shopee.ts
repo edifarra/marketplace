@@ -141,6 +141,19 @@ export async function getValidShopeeAccessToken(account: ShopeeAccountConfig) {
   return refreshMarketplaceAccountToken(account.id);
 }
 
+export async function removeShopeeListing(accountId: string, itemId: string) {
+  const accounts = await selectMarketplaceAccounts(
+    "id,name,marketplace,active,shop_id,account_id,access_token,refresh_token,token_expires_at,status"
+  );
+  const account = ((accounts || []) as unknown as ShopeeAccountConfig[]).find((item) => item.id === accountId);
+  if (!account) throw new Error(`Conta Shopee nao encontrada para excluir o anuncio ${itemId}.`);
+  const shopId = account.shop_id || account.account_id;
+  if (!shopId) throw new Error(`Shop ID nao configurado para ${account.name}.`);
+  const accessToken = await getValidShopeeAccessToken(account);
+  const config = await getShopeeOAuthConfig(account.id);
+  await createShopeeClient(config).deleteProduct(accessToken, shopId, itemId);
+}
+
 function extractShopeeItemIds(payload: Record<string, unknown>) {
   const response = payload.response as Record<string, unknown> | undefined;
   const items = (response?.item || response?.item_list || []) as Array<Record<string, unknown>>;

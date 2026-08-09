@@ -25,7 +25,9 @@ export function parsePhotoName(fileName: string): PhotoNameParts {
   const [typeCode, brandCode, prefixSpecialCode] = splitPrefix(firstBlock);
   const tailTokens = middleBlocks.slice(2).flatMap((block) => block.split("-")).filter(Boolean);
   const specialCandidate = tailTokens.at(-1);
-  const hasSpecial = !!specialCandidate && specialCandidate.length <= 3 && specialCandidate === specialCandidate.toUpperCase();
+  // Os sufixos especiais legados (por exemplo, S e D) sao marcadores de uma
+  // letra. Numeros e siglas da placa, como 173 ou CS, pertencem a versao.
+  const hasSpecial = !!specialCandidate && /^[A-Z]$/.test(specialCandidate);
   const versionTokens = hasSpecial ? tailTokens.slice(0, -1) : tailTokens;
 
   return {

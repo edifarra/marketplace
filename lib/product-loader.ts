@@ -99,7 +99,6 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
   const filesByName = new Map(validFiles.map((file) => [file.name, file]));
   const configs = await loadConfigs();
   const initialStock = await getNumericSetting("ESTOQUE_INICIAL", 1);
-  const defaultPrice = Math.max(await getNumericSetting("VALOR_MINIMO", 20), 20);
   let processedFiles = invalidFiles.length;
   await reportProgress(onProgress, files.length, processedFiles);
   const result: ProductLoadResult = {
@@ -275,6 +274,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         especial: special?.includeDescription || "",
         sku: skuInfo.sku
       });
+      const calculatedPrice = 0;
       const imageUploads = [];
       for (const [index, photoName] of group.photos.slice(0, 6).entries()) {
         const driveFile = filesByName.get(photoName);
@@ -373,7 +373,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           specialCode: main.specialCode,
           title,
           stock: initialStock,
-          price: defaultPrice
+          price: calculatedPrice
         }
       };
       const product = await supabase
@@ -388,9 +388,9 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           version: main.version || null,
           board_code: main.boardCode || null,
           title,
-          price: defaultPrice,
+          price: calculatedPrice,
           stock: initialStock,
-          status: "draft"
+          status: "pending_price"
         })
         .select("id")
         .single()
@@ -416,10 +416,10 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           productId: product.data.id,
           sku: skuInfo.sku,
           stock: initialStock,
-          price: defaultPrice
+          price: calculatedPrice
         }
       };
-      await createDraftListings(product.data.id, skuInfo.sku, initialStock, defaultPrice);
+      await createDraftListings(product.data.id, skuInfo.sku, initialStock, calculatedPrice);
       failureContext = {
         stage: "drive_move_enviadas",
         fileName: group.photos.join(", "),
@@ -439,10 +439,11 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           productId: product.data.id,
           sku: skuInfo.sku,
           title,
+          price: calculatedPrice,
           imageCount: imageUploads.length,
           movedFiles: movement.moved,
           destinationFolder: "Enviadas",
-          status: "draft"
+          status: "pending_price"
         }
       });
     } catch (error) {

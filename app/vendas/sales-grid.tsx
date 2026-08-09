@@ -12,6 +12,7 @@ export type SaleGridRow = {
   totalItems: number;
   value: string;
   status: string;
+  unpaid: boolean;
   flex: boolean;
   shippingAction: "print_label" | "emit_dce" | "arrange_shipment" | null;
   shippingActionText: string | null;
@@ -94,7 +95,7 @@ function SaleEntry({ row, expanded, onToggle }: { row: SaleGridRow; expanded: bo
     }} role="button" tabIndex={0} aria-expanded={expanded}>
       <td>{row.date}</td>
       <td><span className="log-process"><span className="log-chevron">›</span><Image className="marketplace-mini-logo" src={marketplaceIcon(row.marketplaceCode)} width={25} height={25} alt="" />{row.marketplace}{row.flex && <span className="flex-badge" title="Mercado Envios Flex">Flex</span>}</span></td>
-      <td>{row.nickname}</td><td>{row.totalItems}</td><td>{row.value}</td><td><span className="status">{row.status}</span></td>
+      <td>{row.nickname}</td><td>{row.totalItems}</td><td>{row.value}</td><td><span className={`status${row.unpaid ? " unpaid" : ""}`}>{row.status}</span></td>
       <td>
         {row.shippingAction === "print_label" && <a className="secondary compact link-button sale-label-button" href={`/api/vendas/${row.id}/etiqueta`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Imprimir etiqueta</a>}
         {row.shippingAction === "emit_dce" && <button className="secondary compact sale-label-button" disabled={working} onClick={prepareShipping}>{working ? "Emitindo..." : "Emitir DC-e"}</button>}

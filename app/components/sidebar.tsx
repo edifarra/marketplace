@@ -25,8 +25,10 @@ export async function Sidebar() {
         <a href="/">Painel</a>
         <a href="/vendas">Vendas</a>
         <a href="/produtos">Produtos e anuncios</a>
-        <a href="/estoque">Migracao e Estoque</a>
+        <a href="/historico-estoque">Estoque</a>
+        <a href="/estoque">Migração de Estoque</a>
         <a href="/fotos">Fotos</a>
+        <a href="/avaliacao-preco">Avaliação de Preço</a>
         <a href="/logs">Logs</a>
         <a href="/atividades-marketplace">Atividades Marketplace</a>
         <details className="nav-group" open>

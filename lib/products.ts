@@ -4,7 +4,9 @@ import { deleteCloudinaryResource } from "./cloudinary";
 import { deleteLocalImagePath, deleteLocalProductFolder } from "./local-images";
 import { applyTemplate, nextSku } from "./pipeline";
 import { supabaseAdmin } from "./supabase-admin";
-import { deactivateTinyProductById } from "./tiny";
+import { removeMercadoLivreListing } from "./mercado-livre";
+import { removeShopeeListing } from "./shopee";
+import { deactivateTinyProductById, getTinyProductById } from "./tiny";
 import { BrandConfig, SpecialConfig, TypeConfig } from "./types";
 
 type DbTypeConfig = {
@@ -168,7 +170,13 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
 
 export async function deleteProductById(formData: FormData) {
   const productId = requiredText(formData, "productId");
+  const tinyAdsRemoved = String(formData.get("tinyAdsRemoved") || "") === "true";
   const supabase = supabaseAdmin();
+
+  const inspection = await inspectProductDeletion(productId, tinyAdsRemoved);
+  if (inspection.status !== "ready") {
+    redirect(`/produtos?erro=${encodeURIComponent(inspection.message)}`);
+  }
 
   const { data: product, error } = await getProductForDelete(productId);
 
@@ -183,24 +191,30 @@ export async function deleteProductById(formData: FormData) {
     status?: string | null;
     sent_target?: string | null;
     tiny_product_id?: string | null;
-    listings?: Array<{ external_listing_id?: string | null }>;
+    listings?: MarketplaceListingForDelete[];
     product_images?: ProductImageForDelete[];
   };
 
-  const hasPublishedListing = (typed.listings || []).some((listing) => Boolean(listing.external_listing_id));
-  if (hasPublishedListing) {
-    redirect(`/produtos?erro=${encodeURIComponent("Nao foi possivel excluir: existe anuncio publicado para este produto.")}`);
+  const marketplaceListings = await getMarketplaceListingsForDelete(typed.id, typed.listings || []);
+  for (const listing of marketplaceListings) {
+    if (listing.marketplace === "mercado_livre") {
+      await removeMercadoLivreListing(listing.accountId, listing.externalId);
+    } else if (listing.marketplace === "shopee") {
+      await removeShopeeListing(listing.accountId, listing.externalId);
+    } else {
+      throw new Error(`Marketplace ${listing.marketplace} nao suportado para exclusao do anuncio ${listing.externalId}.`);
+    }
   }
 
   const tinyProductId = typed.tiny_product_id || await getTinyProductIdFromLastResult(typed.id);
-  if (tinyProductId) {
+  if (tinyProductId && !inspection.tinyProductMissing) {
     try {
       await deactivateTinyProductById(tinyProductId);
     } catch (tinyError) {
-      redirect(`/produtos?erro=${encodeURIComponent(`Nao foi possivel inativar no Tiny: ${tinyError instanceof Error ? tinyError.message : String(tinyError)}`)}`);
+      if (!isTinyProductNotFound(tinyError)) {
+        redirect(`/produtos?erro=${encodeURIComponent(`Os anuncios dos marketplaces foram removidos, mas nao foi possivel inativar no Tiny: ${tinyError instanceof Error ? tinyError.message : String(tinyError)}`)}`);
+      }
     }
-  } else if (typed.sent_target === "TINY") {
-    redirect(`/produtos?erro=${encodeURIComponent("Nao foi possivel excluir: produto marcado como enviado ao Tiny, mas sem codigo tiny_product_id para inativacao.")}`);
   }
 
   for (const image of typed.product_images || []) {
@@ -210,6 +224,7 @@ export async function deleteProductById(formData: FormData) {
 
   await deleteLocalProductFolder(typed.sku);
   await supabase.from("product_images").delete().eq("product_id", typed.id).throwOnError();
+  await supabase.from("product_marketplaces").delete().eq("product_id", typed.id).throwOnError();
   await supabase.from("listings").delete().eq("product_id", typed.id).throwOnError();
   await supabase.from("pipeline_logs").delete().filter("payload->>sourceKey", "eq", typed.source_key);
   await supabase.from("products").delete().eq("id", typed.id).throwOnError();
@@ -217,6 +232,146 @@ export async function deleteProductById(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/produtos");
   redirect("/produtos");
+}
+
+export type ProductDeletionInspection = {
+  status: "stock_mismatch" | "tiny_ads" | "ready" | "error";
+  message: string;
+  tinyProductId?: string;
+  tinyProductUrl?: string;
+  tinyAdCount?: number;
+  tinyProductMissing?: boolean;
+};
+
+export async function inspectProductDeletion(productId: string, manualTinyConfirmation = false): Promise<ProductDeletionInspection> {
+  const supabase = supabaseAdmin();
+  const productResult = await getProductForDelete(productId);
+  if (productResult.error || !productResult.data) {
+    return { status: "error", message: "Produto nao encontrado." };
+  }
+  const product = productResult.data as { id: string; sent_target?: string | null; tiny_product_id?: string | null };
+  const inventory = await supabase.from("estoque")
+    .select("estoque_fisico,estoque_disponivel")
+    .eq("product_id", productId)
+    .maybeSingle()
+    .throwOnError();
+  const physical = Number(inventory.data?.estoque_fisico ?? 0);
+  const available = Number(inventory.data?.estoque_disponivel ?? 0);
+  if (physical !== available) {
+    return {
+      status: "stock_mismatch",
+      message: `A exclusao foi bloqueada porque o estoque fisico (${physical}) e o disponivel (${available}) sao diferentes. Regularize as reservas antes de excluir.`
+    };
+  }
+
+  const tinyProductId = product.tiny_product_id || await getTinyProductIdFromLastResult(product.id);
+  const hasTinyIntegration = Boolean(tinyProductId || product.sent_target === "TINY");
+  if (!hasTinyIntegration) {
+    return { status: "ready", message: "Produto pronto para exclusao." };
+  }
+  if (!tinyProductId) {
+    return { status: "error", message: "O produto esta integrado ao Tiny, mas nao possui o ID necessario para consultar os anuncios vinculados." };
+  }
+
+  const tinyProductUrl = `https://erp.olist.com/produtos#edit/${encodeURIComponent(tinyProductId)}`;
+  try {
+    const tinyProduct = await getTinyProductById(tinyProductId);
+    if (!tinyMappingsWereReturned(tinyProduct)) {
+      if (manualTinyConfirmation) {
+        return {
+          status: "ready",
+          message: "Remocao manual dos anuncios no Tiny confirmada pelo operador.",
+          tinyProductId,
+          tinyProductUrl
+        };
+      }
+      return {
+        status: "tiny_ads",
+        message: "O Tiny nao disponibiliza os anuncios pela API desta conta. Abra o produto no Tiny, remova manualmente todos os anuncios vinculados e depois confirme abaixo.",
+        tinyProductId,
+        tinyProductUrl
+      };
+    }
+    const tinyAdCount = countTinyMappings(tinyProduct);
+    if (tinyAdCount > 0) {
+      return {
+        status: "tiny_ads",
+        message: `Existem ${tinyAdCount} anuncio(s) vinculado(s) a este produto no Tiny. Remova-os manualmente antes de continuar.`,
+        tinyProductId,
+        tinyProductUrl,
+        tinyAdCount
+      };
+    }
+    return { status: "ready", message: "Produto pronto para exclusao.", tinyProductId, tinyProductUrl };
+  } catch (error) {
+    if (isTinyProductNotFound(error)) {
+      return {
+        status: "ready",
+        message: "O produto nao foi encontrado no Tiny; a exclusao pode continuar sem inativacao.",
+        tinyProductId,
+        tinyProductUrl,
+        tinyProductMissing: true
+      };
+    }
+    return { status: "error", message: `Nao foi possivel consultar os anuncios no Tiny: ${error instanceof Error ? error.message : String(error)}`, tinyProductId, tinyProductUrl };
+  }
+}
+
+function tinyMappingsWereReturned(product: Record<string, unknown>) {
+  if (Object.prototype.hasOwnProperty.call(product, "mapeamentos")) return true;
+  const variations = Array.isArray(product.variacoes) ? product.variacoes : [];
+  return variations.some((entry) => {
+    const variation = entry && typeof entry === "object" && "variacao" in entry
+      ? (entry as { variacao?: Record<string, unknown> }).variacao
+      : entry as Record<string, unknown>;
+    return Boolean(variation && Object.prototype.hasOwnProperty.call(variation, "mapeamentos"));
+  });
+}
+
+type MarketplaceListingForDelete = {
+  marketplace?: string | null;
+  marketplace_account_id?: string | null;
+  external_listing_id?: string | null;
+};
+
+async function getMarketplaceListingsForDelete(productId: string, listings: MarketplaceListingForDelete[]) {
+  const links = await supabaseAdmin().from("product_marketplaces")
+    .select("marketplace,marketplace_account_id,marketplace_product_id,existe_no_marketplace")
+    .eq("product_id", productId)
+    .throwOnError();
+  const candidates = [
+    ...listings.map((listing) => ({
+      marketplace: String(listing.marketplace || ""),
+      accountId: String(listing.marketplace_account_id || ""),
+      externalId: String(listing.external_listing_id || "")
+    })),
+    ...(links.data || []).filter((link) => link.existe_no_marketplace !== false).map((link) => ({
+      marketplace: String(link.marketplace || ""),
+      accountId: String(link.marketplace_account_id || ""),
+      externalId: String(link.marketplace_product_id || "")
+    }))
+  ].filter((listing) => listing.externalId);
+  const unique = new Map(candidates.map((listing) => [`${listing.marketplace}:${listing.accountId}:${listing.externalId}`, listing]));
+  for (const listing of unique.values()) {
+    if (!listing.accountId) throw new Error(`Conta nao identificada para excluir o anuncio ${listing.externalId} do ${listing.marketplace}.`);
+  }
+  return [...unique.values()];
+}
+
+function countTinyMappings(product: Record<string, unknown>) {
+  const ownMappings = Array.isArray(product.mapeamentos) ? product.mapeamentos.length : 0;
+  const variations = Array.isArray(product.variacoes) ? product.variacoes : [];
+  return variations.reduce((total, entry) => {
+    const variation = entry && typeof entry === "object" && "variacao" in entry
+      ? (entry as { variacao?: Record<string, unknown> }).variacao
+      : entry as Record<string, unknown>;
+    return total + (Array.isArray(variation?.mapeamentos) ? variation.mapeamentos.length : 0);
+  }, ownMappings);
+}
+
+function isTinyProductNotFound(error: unknown) {
+  return /produto.*(nao|não).*(encontrado|localizado)|registro.*(nao|não).*(encontrado|localizado)|codigo de erro[^0-9]*20\b/i
+    .test(error instanceof Error ? error.message : String(error));
 }
 
 async function getProductForDelete(productId: string) {
@@ -232,6 +387,8 @@ async function getProductForDelete(productId: string) {
       tiny_product_id,
       listings (
         id,
+        marketplace,
+        marketplace_account_id,
         external_listing_id
       ),
       product_images (
@@ -259,6 +416,8 @@ async function getProductForDelete(productId: string) {
       status,
       listings (
         id,
+        marketplace,
+        marketplace_account_id,
         external_listing_id
       ),
       product_images (

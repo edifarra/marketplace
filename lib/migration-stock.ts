@@ -237,18 +237,22 @@ export async function updateDivergentStockByLowest(sku: string) {
   const stocks = [systemStock, ...links.map((link) => effectiveMarketplaceStock(link))];
   const lowest = Math.min(...stocks);
 
+  // Os marketplaces informam saldo disponivel. Para ajustar esse saldo sem
+  // apagar reservas, preservamos a diferenca atual entre fisico e disponivel.
+  const physicalStock = Number(inventory.data?.estoque_fisico ?? systemStock);
+  const reservedStock = Math.max(physicalStock - systemStock, 0);
+  const targetPhysicalStock = lowest + reservedStock;
+
   await supabase
     .from("products")
-    .update({ stock: lowest, status: lowest <= 0 ? "paused" : "active", updated_at: new Date().toISOString() })
+    .update({ status: lowest <= 0 ? "paused" : "active", updated_at: new Date().toISOString() })
     .eq("id", product.data.id)
     .throwOnError();
-  await supabase.from("estoque").upsert({
-    product_id: product.data.id,
-    sku: normalizedSku,
-    estoque_fisico: lowest,
-    estoque_disponivel: lowest,
-    updated_at: new Date().toISOString()
-  }, { onConflict: "product_id" }).throwOnError();
+  await supabase.from("estoque").upsert({ product_id: product.data.id, sku: normalizedSku }, { onConflict: "product_id" }).throwOnError();
+  await supabase.rpc("set_physical_inventory", {
+    p_product_id: product.data.id,
+    p_quantity: targetPhysicalStock
+  }).throwOnError();
 
   for (const link of links) {
     try {

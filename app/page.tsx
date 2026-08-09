@@ -48,6 +48,7 @@ export default async function HomePage() {
   const driveSettings = await getGoogleDriveSettings();
   const driveRunStatus = buildDriveRunStatus(lastDriveRun, driveLastRunSettings ?? []);
   const driveNeedsAttention = !driveConfigured || driveRunStatus.status !== "done";
+  const driveNeedsReconnect = isGoogleDriveTokenExpiredOrRevoked(driveRunStatus.errorMessage);
 
   return (
     <main className="shell">
@@ -101,7 +102,7 @@ export default async function HomePage() {
                       </span>
                     )}
                     <span>Google Drive</span>
-                    {driveNeedsAttention && (
+                    {driveNeedsAttention && !driveNeedsReconnect && (
                       <a className="secondary compact link-button pipeline-verify" href="/configuracoes/google-drive">
                         Verificar
                       </a>
@@ -116,14 +117,20 @@ export default async function HomePage() {
                   </div>
                 </td>
                 <td>
-                  <PipelineProgressButton
-                    endpoint="/api/pipeline/run?force=1"
-                    progressEndpoint="/api/pipeline/drive/progress"
-                    idleLabel="Executar Agora"
-                    runningLabel="Processando..."
-                    disabled={!driveConfigured}
-                    hideSuccessMessage
-                  />
+                  {driveNeedsReconnect ? (
+                    <a className="secondary link-button pipeline-review-drive" href="/configuracoes/google-drive">
+                      Revisar GoogleDrive
+                    </a>
+                  ) : (
+                    <PipelineProgressButton
+                      endpoint="/api/pipeline/run?force=1"
+                      progressEndpoint="/api/pipeline/drive/progress"
+                      idleLabel="Executar Agora"
+                      runningLabel="Processando..."
+                      disabled={!driveConfigured}
+                      hideSuccessMessage
+                    />
+                  )}
                 </td>
               </tr>
               <tr>
@@ -429,6 +436,10 @@ function driveStatusLabel(status: string | null | undefined, errorMessage: strin
     return "Conta conectada";
   }
 
+  if (isGoogleDriveTokenExpiredOrRevoked(errorMessage)) {
+    return "Reconectar Google Drive";
+  }
+
   if (!status) {
     return "Aguardando primeira execucao";
   }
@@ -513,6 +524,13 @@ function settingToString(value: unknown) {
 
 function isLegacyGoogleOAuthError(value: string | null | undefined) {
   return Boolean(value?.includes("GOOGLE_OAUTH_CLIENT_ID"));
+}
+
+function isGoogleDriveTokenExpiredOrRevoked(value: string | null | undefined) {
+  const message = String(value || "").toLowerCase();
+  return message.includes("token has been expired or revoked")
+    || message.includes("token has been revoked")
+    || (message.includes("invalid_grant") && (message.includes("expired") || message.includes("revoked")));
 }
 
 function extractDriveMetrics(metrics: unknown) {

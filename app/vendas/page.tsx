@@ -14,7 +14,9 @@ type Sale = {
   created_at: string; updated_at: string; status_venda: { internal_status?: string; description?: string } | null;
 };
 
-export default async function SalesPage() {
+export default async function SalesPage({ searchParams }: { searchParams?: { orderId?: string; sku?: string } }) {
+  const orderIdFilter = String(searchParams?.orderId || "").trim().toLocaleUpperCase("pt-BR");
+  const skuFilter = normalizeSku(searchParams?.sku);
   const db = supabaseAdmin();
   const [{ data: sales }, { data: items }, { data: accounts }, { data: products }] = await Promise.all([
     db.from("venda").select("id,marketplace,order_id,status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,shipment_id,raw_data,created_at,updated_at,status_venda(internal_status,description)").order("data_venda", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
@@ -25,7 +27,10 @@ export default async function SalesPage() {
   const productTitles = new Map((products || []).map((product) => [normalizeSku(product.sku), String(product.title || "")]));
   const itemMap = new Map<string, Array<Record<string, unknown>>>();
   for (const item of items || []) itemMap.set(String(item.venda_id), [...(itemMap.get(String(item.venda_id)) || []), item]);
-  const sortedSales = ((sales || []) as unknown as Sale[]).sort(compareSales);
+  const sortedSales = ((sales || []) as unknown as Sale[])
+    .filter((sale) => !orderIdFilter || sale.order_id.toLocaleUpperCase("pt-BR").includes(orderIdFilter))
+    .filter((sale) => !skuFilter || (itemMap.get(sale.id) || []).some((item) => normalizeSku(item.sku).includes(skuFilter)))
+    .sort(compareSales);
   const rows = sortedSales.map((sale): SaleGridRow => {
     const raw = sale.raw_data || {};
     const account = resolveAccount(sale, raw, accounts || []);
@@ -43,6 +48,7 @@ export default async function SalesPage() {
       totalItems: saleItems.reduce((total, item) => total + Number(item.quantidade || 0), 0),
       value: money(sale.valor_produtos),
       status: sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original),
+      unpaid: isUnpaidSale(sale),
       flex: isFlexShipping(shipping),
       shippingAction: deferred ? null : saleShippingAction(sale),
       shippingActionText: deferred?.label || null,
@@ -71,13 +77,25 @@ export default async function SalesPage() {
 
   return <main className="shell"><Sidebar /><section className="main">
     <div className="topbar"><div><h1>Vendas</h1><div className="subtitle">Vendas efetivas recebidas dos marketplaces e seus status mais recentes.</div></div><UpdateSalesButton /></div>
-    <section className="section card"><div className="table-toolbar"><div><h2>Vendas dos Marketplaces</h2><div className="muted">Clique em uma venda para visualizar os valores e itens.</div></div></div><SalesGrid rows={rows} /></section>
+    <section className="card form-card">
+      <form action="/vendas" method="get">
+        <div className="table-toolbar">
+          <div><h2>Filtros</h2><div className="muted">Localize uma venda pelo pedido, pelo SKU ou pelos dois campos.</div></div>
+          <div className="row-actions"><button className="secondary" type="submit">Aplicar</button><a className="secondary link-button" href="/vendas">Limpar filtros</a></div>
+        </div>
+        <div className="form-grid">
+          <label>ID do Pedido<input name="orderId" placeholder="Ex.: 260803B7UJXWWW" defaultValue={searchParams?.orderId || ""} /></label>
+          <label>SKU do Produto<input name="sku" placeholder="Ex.: 345TC" defaultValue={searchParams?.sku || ""} /></label>
+        </div>
+      </form>
+    </section>
+    <section className="section card"><div className="table-toolbar"><div><h2>Vendas dos Marketplaces</h2><div className="muted">{rows.length} venda(s) encontrada(s). Clique em uma venda para visualizar os valores e itens.</div></div></div><SalesGrid rows={rows} /></section>
   </section></main>;
 }
 
 function extractSourceTitles(raw: Record<string, unknown>) {
   const payload = (raw.payload || raw) as Record<string, any>;
-  const orderItems = payload?.order?.order_items || payload?.data?.items || payload?.data?.item_list || payload?.items || [];
+  const orderItems = payload?.order?.order_items || payload?.order?.item_list || payload?.data?.items || payload?.data?.item_list || payload?.items || [];
   const titles = new Map<string, string>();
   for (const item of Array.isArray(orderItems) ? orderItems : []) {
     const sku = item?.item?.seller_sku || item?.item?.seller_custom_field || item?.model_sku || item?.item_sku || item?.sku;
@@ -122,16 +140,32 @@ function saleTimestamp(sale: Sale) {
 }
 function extractShippingHistory(raw: Record<string, unknown>) {
   const payload = (raw.payload || raw) as Record<string, any>;
-  const history = Array.isArray(payload.shipmentHistory) ? payload.shipmentHistory : [];
+  const history = Array.isArray(payload.shipmentHistory)
+    ? payload.shipmentHistory
+    : Array.isArray(payload.shopeeHistory) ? payload.shopeeHistory : [];
   return [...history]
     .sort((a: Record<string, any>, b: Record<string, any>) => new Date(String(a.date || "")).getTime() - new Date(String(b.date || "")).getTime())
     .map((event: Record<string, any>) => ({
       date: dateTime(String(event.date || "")),
       status: shippingStatusLabel(String(event.status || ""), String(event.substatus || "")),
-      description: shippingEventDescription(String(event.status || ""), String(event.substatus || ""))
+      description: event.description && event.source === "shopee_tracking"
+        ? String(event.description)
+        : shippingEventDescription(String(event.status || ""), String(event.substatus || ""))
     }));
 }
 function shippingStatusLabel(status: string, substatus: string) {
+  const normalized = String(substatus || status).toUpperCase();
+  const shopee: Record<string, string> = {
+    LOGISTICS_NOT_START: "Aguardando início", LOGISTICS_READY: "Pronto para envio",
+    LOGISTICS_REQUEST_CREATED: "Coleta solicitada", LOGISTICS_PICKUP_PENDING: "Aguardando coleta",
+    LOGISTICS_PICKUP_RETRY: "Nova tentativa de coleta", LOGISTICS_PICKUP_DONE: "Coletado",
+    LOGISTICS_PICKUP_FAILED: "Falha na coleta", LOGISTICS_PARCEL_RECEIVED: "Recebido pela transportadora",
+    LOGISTICS_TRANSPORTING: "Em trânsito", LOGISTICS_DELIVERING: "Saiu para entrega",
+    LOGISTICS_DELIVERY_DONE: "Entregue", LOGISTICS_DELIVERY_FAILED: "Falha na entrega",
+    LOGISTICS_REQUEST_CANCELED: "Envio cancelado", LOGISTICS_COD_REJECTED: "Pagamento recusado",
+    LOGISTICS_LOST: "Pacote extraviado", LOGISTICS_INVALID: "Envio inválido", LOGISTICS_UNKNOWN: "Situação desconhecida"
+  };
+  if (shopee[normalized]) return shopee[normalized];
   if (status === "delivered") return "Entregue";
   if (substatus === "out_for_delivery" || substatus === "first_visit") return "Última etapa";
   if (status === "shipped" || ["picked_up", "in_hub", "dropped_off"].includes(substatus)) return "A caminho";
@@ -155,6 +189,19 @@ function shippingEventDescription(status: string, substatus: string) {
     out_for_delivery: "O pacote saiu para entrega.",
     delivered: "Entregamos o pacote."
   };
+  const shopeeDescriptions: Record<string, string> = {
+    LOGISTICS_NOT_START: "Aguardando o início do processo logístico.", LOGISTICS_READY: "O pacote está pronto para envio.",
+    LOGISTICS_REQUEST_CREATED: "A solicitação de coleta foi criada.", LOGISTICS_PICKUP_PENDING: "A transportadora ainda fará a coleta.",
+    LOGISTICS_PICKUP_RETRY: "A transportadora fará uma nova tentativa de coleta.", LOGISTICS_PICKUP_DONE: "A transportadora coletou o pacote.",
+    LOGISTICS_PICKUP_FAILED: "A tentativa de coleta não foi concluída.", LOGISTICS_PARCEL_RECEIVED: "A transportadora recebeu o pacote.",
+    LOGISTICS_TRANSPORTING: "O pacote está em trânsito.", LOGISTICS_DELIVERING: "O pacote saiu para entrega.",
+    LOGISTICS_DELIVERY_DONE: "O pacote foi entregue.", LOGISTICS_DELIVERY_FAILED: "A tentativa de entrega não foi concluída.",
+    LOGISTICS_REQUEST_CANCELED: "O envio foi cancelado.", LOGISTICS_COD_REJECTED: "O pagamento na entrega foi recusado.",
+    LOGISTICS_LOST: "A transportadora informou o extravio do pacote.", LOGISTICS_INVALID: "A situação logística foi marcada como inválida.",
+    LOGISTICS_UNKNOWN: "A Shopee não detalhou a situação logística."
+  };
+  const normalized = String(substatus || status).toUpperCase();
+  if (shopeeDescriptions[normalized]) return shopeeDescriptions[normalized];
   return descriptions[substatus] || descriptions[status] || String(substatus || status).replaceAll("_", " ");
 }
 function marketplaceLabel(value: string) { return value === "mercado_livre" ? "Mercado Livre" : value === "shopee" ? "Shopee" : value; }
@@ -177,4 +224,9 @@ function statusLabel(value: string | null | undefined) {
     devolucao_solicitada: "Devolução solicitada", cancelamento_solicitado: "Cancelamento solicitado"
   };
   return labels[normalized] || String(value || "Não informado").replaceAll("_", " ");
+}
+
+function isUnpaidSale(sale: Sale) {
+  const status = String(sale.status_venda?.internal_status || sale.status_original || "").toLowerCase();
+  return ["aguardando_pagamento", "nao_paga", "payment_required", "payment_in_process", "unpaid"].includes(status);
 }

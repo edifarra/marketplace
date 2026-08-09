@@ -4,6 +4,7 @@ import { sendProductDetailAction } from "../actions";
 import { IntegrationDeleteButton } from "./integration-delete-button";
 import { buildProductDescription } from "@/lib/dynamic-product-description";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { ProductEditor } from "./product-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ type ProductDetail = {
   tiny_product_id?: string | null;
   created_at: string;
   product_images: Array<{
+    id: string;
     original_name: string;
     url: string | null;
     local_url?: string | null;
@@ -69,7 +71,7 @@ export default async function ProductDetailPage({
   searchParams
 }: {
   params: { id: string };
-  searchParams?: { erro?: string; sucesso?: string };
+  searchParams?: { erro?: string; sucesso?: string; editar?: string };
 }) {
   const product = await getProduct(params.id);
 
@@ -87,17 +89,35 @@ export default async function ProductDetailPage({
   const typed = product as ProductDetail;
   const integrations = buildIntegrationRows(typed);
   const hasIntegration = integrations.length > 0;
-  const [{ data: type }, { data: brand }, { data: special }] = await Promise.all([
+  const [{ data: type }, { data: brand }, { data: special }, types, brands, specials] = await Promise.all([
     supabase.from("config_types").select("*").eq("code", typed.type_code).maybeSingle(),
     supabase.from("config_brands").select("*").eq("code", typed.brand_code).maybeSingle(),
     typed.special_code
       ? supabase.from("config_specials").select("*").eq("code", typed.special_code).maybeSingle()
-      : Promise.resolve({ data: null })
+      : Promise.resolve({ data: null }),
+    supabase.from("config_types").select("code,description").order("description"),
+    supabase.from("config_brands").select("code,name").order("name"),
+    supabase.from("config_specials").select("code,notes,include_description").order("code")
   ]);
   const description = removeSpecialFragments(
     buildProductDescription(typed, type, brand, special),
     String(special?.remove_description || "")
   );
+
+  if (searchParams?.editar === "1") {
+    const row = typed as unknown as Record<string, unknown>;
+    const editable = { ...typed, description,
+      width: Number(row.width ?? type?.width ?? 0), height: Number(row.height ?? type?.height ?? 0), length: Number(row.length ?? type?.length ?? 0),
+      weight_net: Number(row.weight_net ?? type?.weight_net ?? 0), weight_gross: Number(row.weight_gross ?? type?.weight_gross ?? 0) };
+    return <main className="shell"><Sidebar /><section className="main"><div className="topbar"><div><h1>Editar produto</h1><div className="subtitle">As alterações serão gravadas neste produto e enviadas às integrações.</div></div></div>
+      {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
+      <ProductEditor product={editable as unknown as Record<string, string | number | null>}
+        types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}` }))}
+        brands={(brands.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.name}` }))}
+        specials={(specials.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.notes || item.include_description || item.code}` }))}
+        images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: image.cloudinary_url || image.local_url || image.url || "", position: image.position })).filter(image => image.url)} />
+    </section></main>;
+  }
 
   return (
     <main className="shell">
@@ -105,10 +125,12 @@ export default async function ProductDetailPage({
       <section className="main">
         <div className="topbar">
           <div>
-            <h1>{typed.sku}</h1>
+            <h1><a className="editable-sku-link" href={`/produtos/${typed.id}?editar=1`} title="Editar produto">{typed.sku}</a></h1>
             <div className="subtitle">{typed.title}</div>
           </div>
           <div className="row-actions">
+            <a className="secondary" href={`/historico-estoque?produto=${typed.id}`}>Histórico de Estoque</a>
+            <a className="secondary" href={`/produtos/${typed.id}?editar=1`}>Editar produto</a>
             <form action={sendProductDetailAction}>
               <input type="hidden" name="productId" value={typed.id} />
               <button className="primary" type="submit">{hasIntegration ? "Atualizar" : "Enviar"}</button>
@@ -229,6 +251,7 @@ async function getProduct(id: string) {
     .select(`
       *,
       product_images (
+        id,
         original_name,
         url,
         local_url,
@@ -262,6 +285,7 @@ async function getProduct(id: string) {
     .select(`
       *,
       product_images (
+        id,
         original_name,
         url,
         position,
@@ -357,7 +381,7 @@ function buildIntegrationRows(product: ProductDetail): IntegrationRow[] {
       continue;
     }
 
-    const isShopee = listing.marketplace === "shopee";
+    const isShopee = String(listing.marketplace || "").toLowerCase() === "shopee";
     rows.push({
       key: listing.id,
       integration: isShopee ? "SHOPEE" : "MERCADO_LIVRE",
@@ -367,7 +391,7 @@ function buildIntegrationRows(product: ProductDetail): IntegrationRow[] {
       status: listing.status,
       sentAt: formatDate(listing.last_sync_at),
       canRemove: !isShopee
-      ,url: listing.external_url || (isShopee ? shopeeProductUrl(listing.external_listing_id) : mercadoLivreUrl(listing.external_listing_id))
+      ,url: isShopee ? shopeeProductUrl(listing.external_listing_id) : (listing.external_url || mercadoLivreUrl(listing.external_listing_id))
       ,accountId: listing.marketplace_account_id || ""
     });
   }
@@ -427,8 +451,14 @@ function formatDate(value: string | null | undefined) {
 }
 
 function formatProductStatus(status: string) {
+  if (status === "pending_price") {
+    return "Aguardando Preço";
+  }
+  if (status === "manual_price") {
+    return "Definir Preço Manual";
+  }
   if (["draft", "ready"].includes(status)) {
-    return "A Enviar";
+    return "Pendente de Envio";
   }
 
   const labels: Record<string, string> = {

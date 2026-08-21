@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "crypto";
 import { supabaseAdmin } from "./supabase-admin";
-import { getMarketplaceClient } from "./marketplaces";
 import { Marketplace } from "./types";
 import { salePostedAt } from "./sales-fulfillment";
 import { activityDescription } from "./marketplace-activity-labels";
+import { notifyNewSale } from "./telegram-notifications";
+import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
 
 export type MarketplaceSaleInput = {
   activityId?: string;
@@ -43,8 +44,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       description: activityDescription(input.marketplace, String(input.eventType || "notification"), input.rawPayload as Record<string, any>),
       value: number(input.value),
       item_count: items.reduce((sum, item) => sum + item.quantity, 0),
-      status: "processing",
-      raw_payload: input.rawPayload
+      status: "processing"
     }).eq("id", activityId).throwOnError();
     await history(activityId, "sale_processing", "success", { eventId, orderId });
   } else {
@@ -74,6 +74,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     await history(activityId, "received", "success", { eventId, orderId });
   }
 
+  let vendaId = "";
   try {
     if (!orderId) throw new Error("ID da venda nao encontrado no evento.");
     if (items.length === 0) throw new Error("Nenhum item com SKU encontrado no evento.");
@@ -116,12 +117,19 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       },
       updated_at: new Date().toISOString()
     }, { onConflict: "marketplace,order_id" }).select("id").single().throwOnError();
-    const vendaId = String(vendaResult.data.id);
+    vendaId = String(vendaResult.data.id);
 
     for (const item of items) {
-      const productId = await ensureProduct(input.marketplace, item.sku, input.externalListingId, item.unitPrice, item.title);
+      const product = await ensureProduct(
+        input.marketplace,
+        item.sku,
+        input.externalListingId,
+        item.unitPrice,
+        item.title,
+        input.marketplaceAccountId
+      );
       await supabase.from("venda_item").upsert({
-        venda_id: vendaId, order_id: orderId, sku: item.sku, quantidade: item.quantity,
+        venda_id: vendaId, order_id: orderId, sku: product.sku, quantidade: item.quantity,
         valor_unitario: item.unitPrice, valor_total: item.totalPrice, raw_data: input.rawPayload
       }, { onConflict: "venda_id,sku" }).throwOnError();
     }
@@ -139,17 +147,35 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       });
     }
 
+    const audit = await auditSaleInventory(vendaId);
+    const failedAudit = audit.find((row) => String(row.status) !== "success");
+    if (failedAudit) {
+      throw new Error(`Auditoria de estoque falhou para ${failedAudit.sku}: ${failedAudit.mensagem}`);
+    }
+
     await supabase.from("marketplace_activities").update({
       venda_id: vendaId, status: "processed", processed_at: new Date().toISOString()
     }).eq("id", activityId).throwOnError();
     await history(activityId, "completed", "success", { vendaId, items: items.length });
+    if (!previousSale.data) await notifyNewSale(vendaId);
     return { duplicated: false, activityId, vendaId };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (vendaId) {
+      await auditSaleInventory(vendaId).catch((auditError) => {
+        console.error("[sale_inventory_audit]", auditError);
+      });
+    }
     await supabase.from("marketplace_activities").update({ status: "error", processing_error: message, processed_at: new Date().toISOString() }).eq("id", activityId);
     await history(activityId, "processing", "error", { error: message });
     throw error;
   }
+}
+
+async function auditSaleInventory(vendaId: string) {
+  const result = await supabaseAdmin().rpc("audit_sale_inventory", { p_sale_id: vendaId });
+  if (result.error) throw new Error(`Falha ao auditar estoque da venda: ${result.error.message}`);
+  return (result.data || []) as Array<{ sku: string; status: string; mensagem: string }>;
 }
 
 const STATUS_SEPARATOR = "::";
@@ -204,24 +230,49 @@ function inferDefaultStatusMapping(status: string, substatus: string) {
   return { internalStatus: "", description: "", reservesStock: cancelled ? false : true, finalStatus: undefined, deductsPhysical: false, releasesStock: cancelled };
 }
 
-async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: string, price = 0, title = "") {
+async function ensureProduct(
+  marketplace: Marketplace,
+  sku: string,
+  listingId?: string,
+  price = 0,
+  title = "",
+  marketplaceAccountId?: string
+) {
   const supabase = supabaseAdmin();
-  let result = await supabase.from("products").select("id").eq("sku", sku).maybeSingle().throwOnError();
+  if (listingId && marketplaceAccountId) {
+    const linked = await supabase.from("listings").select("product_id,external_sku,products(sku)")
+      .eq("marketplace_account_id", marketplaceAccountId).eq("external_listing_id", listingId)
+      .limit(1).maybeSingle().throwOnError();
+    if (linked.data?.product_id) {
+      const linkedProduct = linked.data.products as unknown as { sku?: string | null } | null;
+      return { productId: String(linked.data.product_id), sku: String(linkedProduct?.sku || linked.data.external_sku || sku) };
+    }
+  }
+
+  let result = await supabase.from("products").select("id,sku").eq("sku", sku).limit(1).maybeSingle().throwOnError();
+  if (!result.data) {
+    result = await supabase.from("products").select("id,sku").ilike("sku", sku).order("created_at").limit(1).maybeSingle().throwOnError();
+  }
   if (!result.data) {
     result = await supabase.from("products").insert({
       sku, source_key: `marketplace_${marketplace}_${sku}`, model: sku,
       title: title.trim() || `Produto ${sku}`, price, status: "active"
-    }).select("id").single().throwOnError();
+    }).select("id,sku").single().throwOnError();
   }
   if (!result.data) throw new Error(`Nao foi possivel criar o produto ${sku}.`);
   const productId = String(result.data.id);
   // Nao sobrescreve o saldo de um produto ja existente ao receber outra
   // notificacao da venda.
   await supabase.from("estoque").upsert({ product_id: productId, sku }, { onConflict: "product_id" }).throwOnError();
-  const existingListing = await supabase.from("listings").select("id")
-    .eq("product_id", productId).eq("marketplace", marketplace).limit(1).maybeSingle().throwOnError();
+  let existingListingQuery = supabase.from("listings").select("id")
+    .eq("product_id", productId).eq("marketplace", marketplace);
+  existingListingQuery = marketplaceAccountId
+    ? existingListingQuery.eq("marketplace_account_id", marketplaceAccountId)
+    : existingListingQuery.is("marketplace_account_id", null);
+  const existingListing = await existingListingQuery.limit(1).maybeSingle().throwOnError();
   const listingData = {
     product_id: productId, marketplace, external_listing_id: listingId || null,
+    marketplace_account_id: marketplaceAccountId || null,
     external_sku: sku, status: "active" as const, stock: 0, price
   };
   if (existingListing.data?.id) {
@@ -229,23 +280,45 @@ async function ensureProduct(marketplace: Marketplace, sku: string, listingId?: 
   } else {
     await supabase.from("listings").insert(listingData).throwOnError();
   }
-  return productId;
+  return { productId, sku: String(result.data.sku || sku) };
 }
 
-export async function syncListingsStock(productId: string, stock: number, origin?: { marketplace?: string; accountId?: string }) {
+export async function syncListingsStock(productId: string, stock: number, origin?: { marketplace?: string; accountId?: string; sourceType?: string }, processImmediately = true) {
   const supabase = supabaseAdmin();
-  const setting = await supabase.from("settings").select("value").eq("key", "PRODUCT_SEND_TARGET").maybeSingle().throwOnError();
-  if (String(setting.data?.value || "TINY") !== "MARKETPLACE_DIRETO") return;
-  const result = await supabase.from("listings").select("id,marketplace,marketplace_account_id,external_listing_id").eq("product_id", productId).throwOnError();
-  for (const listing of result.data || []) {
-    if (!listing.external_listing_id) continue;
-    if (origin?.accountId && listing.marketplace_account_id === origin.accountId) continue;
-    if (!origin?.accountId && origin?.marketplace === listing.marketplace) continue;
-    const client = getMarketplaceClient(listing.marketplace);
-    if (stock <= 0) await client.pauseListing(listing.external_listing_id);
-    else await client.updateStock(listing.external_listing_id, stock);
-    await supabase.from("listings").update({ stock, status: stock <= 0 ? "paused" : "active", last_sync_at: new Date().toISOString(), error_message: null }).eq("id", listing.id).throwOnError();
+  const [result, legacyLinks, product, inventory] = await Promise.all([
+    supabase.from("listings").select("id,marketplace,marketplace_account_id,external_listing_id,stock,status").eq("product_id", productId).throwOnError(),
+    supabase.from("product_marketplaces").select("id,marketplace,marketplace_account_id,marketplace_product_id,estoque_marketplace,status_anuncio")
+      .eq("product_id", productId).eq("existe_no_marketplace", true).throwOnError(),
+    supabase.from("products").select("sku,title,tiny_product_id").eq("id", productId).single().throwOnError(),
+    supabase.from("estoque").select("stock_version").eq("product_id", productId).single().throwOnError()
+  ]);
+  const targets = new Map<string, Record<string, any>>();
+  for (const listing of result.data || []) targets.set(`${listing.marketplace_account_id}:${listing.external_listing_id}`, listing);
+  for (const link of legacyLinks.data || []) {
+    const key = `${link.marketplace_account_id}:${link.marketplace_product_id}`;
+    if (!targets.has(key)) targets.set(key, { marketplace: link.marketplace, marketplace_account_id: link.marketplace_account_id,
+      external_listing_id: link.marketplace_product_id, stock: link.estoque_marketplace, status: link.status_anuncio });
   }
+  for (const listing of targets.values()) {
+    if (!listing.external_listing_id || !listing.marketplace_account_id) continue;
+    await enqueueOutgoingActivity({
+      destination: listing.marketplace as "mercado_livre" | "shopee",
+      activityType: "stock_update", productId, sku: String(product.data.sku), productName: String(product.data.title || ""),
+      accountId: listing.marketplace_account_id, listingId: listing.external_listing_id,
+      previousData: { stock: listing.stock, status: listing.status }, requestedData: {
+        stock, status: stock <= 0 ? (listing.marketplace === "mercado_livre" ? "paused" : "zero") : "active"
+      }, sourceType: origin?.sourceType || "sale", sourceId: null, stockVersion: Number(inventory.data.stock_version || 0)
+    });
+  }
+  if (product.data.tiny_product_id) {
+    await enqueueOutgoingActivity({ destination: "tiny", activityType: "stock_update", productId,
+      sku: String(product.data.sku), productName: String(product.data.title || ""), listingId: String(product.data.tiny_product_id),
+      previousData: {}, requestedData: { stock, status: stock > 0 ? "active" : "zero" }, sourceType: origin?.sourceType || "sale", sourceId: null,
+      stockVersion: Number(inventory.data.stock_version || 0) });
+  }
+  // Processa imediatamente o primeiro lote; falhas permanecem na fila e sao
+  // recolocadas no fim para as proximas tentativas.
+  if (processImmediately) await drainOutgoingActivities();
 }
 
 async function history(activityId: string, stage: string, status: string, details: Record<string, unknown>) {

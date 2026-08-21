@@ -14,6 +14,7 @@ const PUBLIC_PATHS = ["/login", "/acesso-negado"];
 const TECHNICAL_API_PATHS = [
   "/api/webhooks",
   "/api/marketplace-queue/process",
+  "/api/telegram/dispatch-check",
   "/api/estoque/sync/worker",
   "/api/prices/process",
   "/api/prices/evaluate",
@@ -69,7 +70,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (isUnder(pathname, ["/configuracoes/usuarios", "/api/users"]) && !user.isMaster) {
+  if (isUnder(pathname, ["/configuracoes/usuarios", "/configuracoes/notificacoes-telegram", "/api/users", "/api/telegram/test"]) && !user.isMaster) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Voce nao possui autorizacao para acessar este recurso." }, { status: 403 });
     }

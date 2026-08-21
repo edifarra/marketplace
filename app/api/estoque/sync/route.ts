@@ -29,7 +29,13 @@ export async function POST(request: NextRequest) {
   }
 
   const progress = accountId === "tiny"
-    ? (action === "start" ? await startTinyStockSync() : await stepTinyStockSync())
+    ? (action === "restart"
+      ? await startTinyStockSync(true)
+      : action === "start"
+      ? await startTinyStockSync()
+      : action === "resume"
+        ? await getTinyStockSyncProgress()
+        : await stepTinyStockSync())
     : (action === "start" ? await startMarketplaceStockSync(accountId) : await stepMarketplaceStockSync(accountId));
 
   if (accountId === "tiny" && progress.status === "running") {

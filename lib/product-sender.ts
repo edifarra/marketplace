@@ -1,11 +1,12 @@
-import { createTinyProduct, deactivateTinyProductById, findTinyProductId, updateTinyProduct } from "./tiny";
 import { supabaseAdmin } from "./supabase-admin";
-import { removeMercadoLivreListing } from "./mercado-livre";
+import { publishProductDirectly } from "./direct-marketplace-publisher";
+import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
 
 type SendResult = {
   ok: boolean;
   productId: string;
   message: string;
+  activityIds?: string[];
 };
 
 type BatchSendResult = {
@@ -26,7 +27,8 @@ export type BatchSendProgress = {
   message?: string;
 };
 
-const PENDING_STATUSES = ["draft", "ready", "publishing"];
+export const PENDING_PRODUCT_STATUSES = ["draft", "ready", "publishing"];
+export const AWAITING_SEND_PRODUCT_STATUSES = [...PENDING_PRODUCT_STATUSES, "pending_price", "manual_price"];
 
 export async function sendProductToConfiguredTarget(productId: string): Promise<SendResult> {
   const supabase = supabaseAdmin();
@@ -34,19 +36,6 @@ export async function sendProductToConfiguredTarget(productId: string): Promise<
   if (["pending_price", "manual_price"].includes(productStatus.data.status)) {
     return { ok: false, productId, message: "Produto pendente de preço. Processe ou informe o preço antes do envio." };
   }
-  const existingTinyId = await getProductTinyId(productId);
-  if (existingTinyId) {
-    const tinyResult = await updateTinyProduct(productId, existingTinyId);
-    await markProductAsSent(productId, "TINY", tinyResult.idProduto);
-    await supabase.from("settings").upsert({
-      key: `TINY_LAST_PRODUCT_${productId}`,
-      value: tinyResult,
-      description: "[TINY] Ultimo retorno de envio do produto"
-    });
-
-    return { ok: true, productId, message: `Produto atualizado no Tiny. ID: ${tinyResult.idProduto}` };
-  }
-
   const target = await getProductSendTarget();
 
   if (target === "MARKETPLACE_DIRETO") {
@@ -55,51 +44,46 @@ export async function sendProductToConfiguredTarget(productId: string): Promise<
       return { ok: false, productId, message: "Nenhum MarketPlace configurado." };
     }
 
-    return {
-      ok: false,
-      productId,
-      message: "Envio direto nao confirmado: nenhuma API de publicacao foi executada. O produto permaneceu pendente. Selecione Tiny ou configure a publicacao direta por conta."
-    };
+    const results = await publishProductDirectly(productId, false);
+    return { ok: true, productId, activityIds: results.map(item => String(item.id)), message: results.length
+      ? `${results.length} anuncio(s) enviado(s) para a fila das lojas faltantes.`
+      : "Nenhuma loja faltante para este produto." };
   }
 
-  let tinyResult;
-  try {
-    tinyResult = await createTinyProduct(productId);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/Registro em duplicidade/i.test(message)) throw error;
-    const { data: product } = await supabase.from("products").select("sku,title").eq("id", productId).single().throwOnError();
-    if (/nome do produto/i.test(message)) {
-      tinyResult = await createTinyProduct(productId, true);
-    } else {
-      const reconciledId = await findTinyProductId(String(product.sku || ""));
-      if (!reconciledId) {
-        throw new Error(`${message}. O cadastro existente nao foi localizado de forma unica para vinculacao automatica.`);
-      }
-      tinyResult = await updateTinyProduct(productId, reconciledId);
-    }
+  const existingTinyId = await getProductTinyId(productId);
+  if (existingTinyId) {
+    return { ok: false, productId, message: "Produto ja vinculado ao Tiny. Use Salvar para enviar atualizacoes." };
   }
-
-  await markProductAsSent(productId, "TINY", tinyResult.idProduto);
-  await supabase.from("settings").upsert({
-    key: `TINY_LAST_PRODUCT_${productId}`,
-    value: tinyResult,
-    description: "[TINY] Ultimo retorno de envio do produto"
-  });
-
-  return {
-    ok: true,
-    productId,
-    message: `Produto enviado ao Tiny. ID: ${tinyResult.idProduto}`
-  };
+  const product = await supabase.from("products").select("sku,title").eq("id", productId).single().throwOnError();
+  const activityId = await enqueueOutgoingActivity({ destination: "tiny", activityType: "listing_create", productId,
+    sku: String(product.data.sku), productName: String(product.data.title), requestedData: { useCurrentProductData: true },
+    sourceType: "product_send", sourceId: productId });
+  return { ok: true, productId, activityIds: [activityId], message: "Produto enviado para a fila do Tiny." };
 }
 
 export async function removeProductIntegration(productId: string, integration: string, deleteExternal: boolean, externalId = "", accountId = ""): Promise<SendResult> {
-  if (integration === "MERCADO_LIVRE") {
+  if (integration === "MERCADO_LIVRE" || integration === "SHOPEE") {
     if (!externalId || !accountId) return { ok: false, productId, message: "Anuncio ou conta do Mercado Livre nao informados." };
-    if (deleteExternal) await removeMercadoLivreListing(accountId, externalId);
-    await supabaseAdmin().from("product_marketplaces").update({ existe_no_marketplace: false, status_anuncio: deleteExternal ? "deleted" : "unlinked", updated_at: new Date().toISOString() }).eq("product_id", productId).eq("marketplace_account_id", accountId).eq("marketplace_product_id", externalId).throwOnError();
-    return { ok: true, productId, message: deleteExternal ? "Anuncio excluido no Mercado Livre e vinculo removido." : "Vinculo do Mercado Livre removido apenas do sistema." };
+    if (deleteExternal) {
+      const product = await supabaseAdmin().from("products").select("sku,title").eq("id", productId).single().throwOnError();
+      const destination = integration === "MERCADO_LIVRE" ? "mercado_livre" : "shopee";
+      const activityId = await enqueueOutgoingActivity({ destination, activityType: "listing_delete", productId,
+        sku: product.data.sku, productName: product.data.title, accountId, listingId: externalId, previousData: { status: "active" },
+        requestedData: { status: "deleted" }, sourceType: "product_integration_removal", sourceId: productId });
+      await drainOutgoingActivities();
+      const result = await supabaseAdmin().from("outgoing_marketplace_activities").select("status,processing_error").eq("id", activityId).single().throwOnError();
+      if (result.data.status !== "completed") throw new Error(result.data.processing_error || `Exclusao nao confirmada pela ${integration}.`);
+    }
+    const db = supabaseAdmin();
+    await db.from("product_marketplaces")
+      .update({ existe_no_marketplace: false, status_anuncio: deleteExternal ? "deleted" : "unlinked", updated_at: new Date().toISOString() })
+      .eq("product_id", productId).eq("marketplace_account_id", accountId).eq("marketplace_product_id", externalId).throwOnError();
+    // The detail screen and stock synchronization also read from `listings`.
+    // Keeping this row made an internally removed integration remain visible
+    // and eligible for later stock updates.
+    await db.from("listings").delete()
+      .eq("product_id", productId).eq("marketplace_account_id", accountId).eq("external_listing_id", externalId).throwOnError();
+    return { ok: true, productId, message: deleteExternal ? "Anuncio excluido e vinculo removido." : "Vinculo removido apenas do sistema." };
   }
   if (integration !== "TINY") {
     return { ok: false, productId, message: "Integracao nao suportada para exclusao." };
@@ -115,12 +99,15 @@ export async function removeProductIntegration(productId: string, integration: s
   }
 
   if (deleteExternal && tinyProductId) {
-    const tinyResult = await deactivateTinyProductById(tinyProductId);
-    await supabaseAdmin().from("settings").upsert({
-      key: `TINY_LAST_DEACTIVATE_PRODUCT_${productId}`,
-      value: tinyResult,
-      description: "[TINY] Ultimo retorno de inativacao do produto"
-    });
+    const product = await supabaseAdmin().from("products").select("sku,title").eq("id", productId).single().throwOnError();
+    const activityId = await enqueueOutgoingActivity({ destination: "tiny", activityType: "listing_delete", productId,
+      sku: product.data.sku, productName: product.data.title, listingId: tinyProductId, previousData: { status: "active" },
+      requestedData: { status: "inactive" }, sourceType: "product_integration_removal", sourceId: productId });
+    await drainOutgoingActivities();
+    const result = await supabaseAdmin().from("outgoing_marketplace_activities").select("status,processing_error,confirmed_data").eq("id", activityId).single().throwOnError();
+    if (result.data.status !== "completed") throw new Error(result.data.processing_error || "Inativacao nao confirmada pelo Tiny.");
+    await supabaseAdmin().from("settings").upsert({ key: `TINY_LAST_DEACTIVATE_PRODUCT_${productId}`,
+      value: result.data.confirmed_data, description: "[TINY] Ultimo retorno de inativacao do produto" });
   }
 
   await clearTinyIntegration(productId);
@@ -138,7 +125,7 @@ export async function sendPendingProductsToConfiguredTarget(limit?: number): Pro
   let query = supabase
     .from("products")
     .select("id")
-    .in("status", PENDING_STATUSES)
+    .in("status", PENDING_PRODUCT_STATUSES)
     .order("created_at", { ascending: true });
   if (limit && limit > 0) query = query.limit(limit);
   const { data, error } = await query;

@@ -5,7 +5,10 @@ type CloudinaryUploadResult = {
   secure_url: string;
   public_id: string;
   resource_type: string;
+  version?: number;
 };
+
+const MARKETPLACE_IMAGE_MAX_BYTES = 2_000_000;
 
 type CloudinaryResource = {
   public_id: string;
@@ -43,9 +46,13 @@ export async function uploadProductImageToCloudinary(input: {
   const timestamp = Math.floor(Date.now() / 1000);
   const folder = `produtos/${safeCloudinaryPart(input.brandCode)}`;
   const cloudinaryFileName = buildCloudinaryImageName(input);
+  const contentHash = createHash("sha1").update(input.buffer).digest("hex").slice(0, 10);
+  const uniquePublicName = `${cloudinaryFileName}_${contentHash}`;
   const paramsToSign = {
     folder,
-    public_id: cloudinaryFileName,
+    invalidate: "true",
+    overwrite: "true",
+    public_id: uniquePublicName,
     timestamp: String(timestamp)
   };
   const signature = signCloudinaryParams(paramsToSign, apiSecret);
@@ -54,7 +61,9 @@ export async function uploadProductImageToCloudinary(input: {
   formData.set("api_key", apiKey);
   formData.set("timestamp", String(timestamp));
   formData.set("folder", folder);
-  formData.set("public_id", cloudinaryFileName);
+  formData.set("invalidate", "true");
+  formData.set("overwrite", "true");
+  formData.set("public_id", uniquePublicName);
   formData.set("signature", signature);
 
   const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
@@ -66,8 +75,9 @@ export async function uploadProductImageToCloudinary(input: {
     throw new Error(`Falha no upload Cloudinary: ${json.error?.message || JSON.stringify(json)}`);
   }
 
-  const publicId = json.public_id || `${folder}/${cloudinaryFileName}`;
-  const cloudinaryUrl = transformCloudinaryUrl(cloudName, publicId, input.position);
+  const publicId = json.public_id || `${folder}/${uniquePublicName}`;
+  const delivery = await ensureCloudinaryImageWithinMarketplaceLimit(publicId, input.position, cloudName, json.version);
+  const cloudinaryUrl = delivery.url;
   if (input.position === 1) {
     console.log("Imagem arquivo " + cloudinaryFileName + " link: " + cloudinaryUrl);
   }
@@ -77,8 +87,35 @@ export async function uploadProductImageToCloudinary(input: {
     cloudinaryFileName,
     originalUrl: json.secure_url,
     cloudinaryUrl,
-    bytes: input.buffer.length
+    bytes: delivery.bytes
   };
+}
+
+export async function ensureCloudinaryImageWithinMarketplaceLimit(publicId: string, position: number, knownCloudName?: string, version?: number) {
+  const cloudName = knownCloudName || (await getCloudinarySettings()).cloudName;
+  const normalizedPublicId = publicId.replace(/\.(jpg|jpeg|png|webp|heic|heif)$/i, "");
+  const baseEffects = position === 1 ? "e_background_removal,b_white," : "";
+  const transformations = [
+    `${baseEffects}f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit`,
+    `${baseEffects}f_jpg,fl_lossy,q_75,w_800,h_800,c_limit`,
+    `${baseEffects}f_jpg,fl_lossy,q_60,w_700,h_700,c_limit`,
+    `${baseEffects}f_jpg,fl_lossy,q_50,w_600,h_600,c_limit`
+  ];
+
+  let lastBytes = 0;
+  for (const transformation of transformations) {
+    const versionPart = version ? `/v${version}` : "";
+    const url = `https://res.cloudinary.com/${cloudName}/image/upload/${transformation}${versionPart}/${normalizedPublicId}.jpg`;
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Nao foi possivel validar a imagem processada no Cloudinary: ${response.status}.`);
+    }
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    lastBytes = contentLength || (await response.arrayBuffer()).byteLength;
+    if (lastBytes <= MARKETPLACE_IMAGE_MAX_BYTES) return { url, bytes: lastBytes };
+  }
+
+  throw new Error(`A imagem processada permaneceu acima de 2 MB (${formatBytes(lastBytes)}) mesmo apos nova compressao.`);
 }
 
 export async function listCloudinaryProductImages() {
@@ -129,14 +166,8 @@ export async function listCloudinaryProductImages() {
   return images.sort((a, b) => a.publicId.localeCompare(b.publicId));
 }
 
-function transformCloudinaryUrl(cloudName: string, publicId: string, position: number) {
-  const normalizedPublicId = publicId.replace(/\.(jpg|jpeg|png|webp|heic|heif)$/i, "");
-
-  if (position === 1) {
-    return `https://res.cloudinary.com/${cloudName}/image/upload/e_background_removal,b_white,q_auto:good,f_jpg,w_800,h_800,c_limit/${normalizedPublicId}.jpg`;
-  }
-
-  return `https://res.cloudinary.com/${cloudName}/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/${normalizedPublicId}`;
+function formatBytes(bytes: number) {
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function buildCloudinaryImageName(input: {

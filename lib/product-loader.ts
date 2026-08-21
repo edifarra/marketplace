@@ -2,6 +2,7 @@ import { uploadProductImageToCloudinary } from "./cloudinary";
 import { downloadDriveFile, listDriveImagesFolderFiles, moveDriveFilesToImagesSubfolder, type DriveFile } from "./google-drive";
 import { applyTemplate, groupPhotos, isValidPhotoName, nextSku, parsePhotoName } from "./pipeline";
 import { supabaseAdmin } from "./supabase-admin";
+import { buildProductMarketplaceSnapshot } from "./marketplace-attributes";
 import { BrandConfig, SpecialConfig, TypeConfig } from "./types";
 
 const DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
@@ -360,6 +361,11 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         });
         imageUploads.push({ driveFile, upload, position: index + 1 });
       }
+      const marketplaceSnapshot = await buildProductMarketplaceSnapshot(main.typeCode, {
+        sku: skuInfo.sku, title, brand_name: brand.name, model: main.model, board_code: main.boardCode,
+        product_condition: "used", weight_gross: type.dimensions.weightGross, width: type.dimensions.width,
+        height: type.dimensions.height, length: type.dimensions.length
+      });
       console.log("Produto insert")
       failureContext = {
         stage: "produto_insert",
@@ -391,6 +397,14 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           price: calculatedPrice,
           stock: initialStock,
           status: "pending_price"
+          ,marketplace_categories: marketplaceSnapshot.categories
+          ,marketplace_attributes: marketplaceSnapshot.attributes
+          ,marketplace_attribute_schema_version: 2
+          ,width: type.dimensions.width
+          ,height: type.dimensions.height
+          ,length: type.dimensions.length
+          ,weight_net: type.dimensions.weightNet
+          ,weight_gross: type.dimensions.weightGross
         })
         .select("id")
         .single()

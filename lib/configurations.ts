@@ -50,6 +50,8 @@ export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
       { name: "warranty_months", label: "Garantia meses", type: "number" },
       { name: "title_template", label: "Template titulo", type: "textarea" },
       { name: "description_template", label: "Template descricao", type: "textarea" }
+      ,{ name: "marketplace_attribute_defaults", label: "Atributos iniciais", type: "json" }
+      ,{ name: "marketplace_active_attributes", label: "Atributos ativos", type: "json" }
     ]
   },
   marca: {
@@ -206,11 +208,8 @@ export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
     listFields: ["key", "value", "description"],
     fixedRows: [
       "ESTOQUE_INICIAL",
-      "MAX_FOTOS",
-      "PAUSAR_COM_ESTOQUE_ZERO",
-      "MODO_SAIDA_PRODUTO",
-      "CRIAR_PRODUTO_TINY_API",
-      "ENVIAR_MARKETPLACE_AUTOMATICO"
+      "CARREGAMENTO_PRODUTOS_AUTOMATICO",
+      "ENVIAR_PRODUTOS_AUTOMATICO"
     ],
     marker: "[CONFIG_GERAL]",
     fields: [
@@ -252,7 +251,7 @@ export async function saveConfiguration(formData: FormData) {
   const definition = configDefinitions[section];
   const originalKey = optionalString(formData.get("originalKey"));
   const payload = parsePayload(section, definition, formData);
-  const validationError = validatePriceConfiguration(section, payload);
+  const validationError = validatePriceConfiguration(section, payload) || validateGeneralConfiguration(section, payload);
   if (validationError) {
     redirect(`/configuracoes/${section}?erro=${encodeURIComponent(validationError)}`);
   }
@@ -291,12 +290,33 @@ function validatePriceConfiguration(section: ConfigSection, payload: Record<stri
   return "";
 }
 
+function validateGeneralConfiguration(section: ConfigSection, payload: Record<string, unknown>) {
+  if (section !== "config-geral") return "";
+  const key = String(payload.key || "");
+  const allowed = new Set(["ESTOQUE_INICIAL", "CARREGAMENTO_PRODUTOS_AUTOMATICO", "ENVIAR_PRODUTOS_AUTOMATICO"]);
+  if (!allowed.has(key)) return "Parametro geral nao permitido.";
+  if (key === "ESTOQUE_INICIAL") {
+    const value = Number(payload.value);
+    if (!Number.isInteger(value) || value < 0) return "O estoque inicial deve ser um numero inteiro igual ou maior que zero.";
+    payload.value = value;
+    return "";
+  }
+  const normalized = String(payload.value || "").trim().toUpperCase();
+  if (!new Set(["SIM", "NAO", "NÃO"]).has(normalized)) return "Selecione apenas SIM ou NÃO.";
+  payload.value = normalized === "SIM" ? "SIM" : "NÃO";
+  return "";
+}
+
 function configurationSuccessMessage(section: ConfigSection, updated: boolean) {
   if (section === "preco") {
     return "Atributo atualizado com sucesso.";
   }
   if (section === "tipo") {
     return `Tipo ${updated ? "atualizado" : "criado"} com sucesso.`;
+  }
+
+  if (section === "config-geral") {
+    return "Dados atualizados com sucesso";
   }
 
   if (section === "marca") {
@@ -390,6 +410,10 @@ export async function deleteConfiguration(formData: FormData) {
   const key = requiredString(formData.get("key"), "key");
   const supabase = supabaseAdmin();
 
+  if (section === "config-geral") {
+    redirect(`/configuracoes/config-geral?erro=${encodeURIComponent("As configuracoes gerais obrigatorias nao podem ser excluidas.")}`);
+  }
+
   if (["undefined", "null"].includes(key.toLowerCase())) {
     redirect(`/configuracoes/${section}?erro=${encodeURIComponent("Registro sem identificador valido para exclusao.")}`);
   }
@@ -454,6 +478,7 @@ function filterSectionRows(rows: Record<string, unknown>[], definition: ConfigDe
   return rows.filter((row) => {
     const key = String(row[definition.keyField] || "");
     const description = String(row.description || "");
+    if (definition.title === "ConfigGeral") return definition.fixedRows?.includes(key);
     return definition.fixedRows?.includes(key) || (!!definition.marker && description.includes(definition.marker));
   });
 }

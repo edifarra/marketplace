@@ -2,7 +2,7 @@ import { Sidebar } from "../components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { SalesGrid, type SaleGridRow } from "./sales-grid";
 import { UpdateSalesButton } from "./update-sales-button";
-import { deferredShipping, extractSaleShipping, saleShippingAction } from "@/lib/sales-fulfillment";
+import { deferredShipping, extractSaleShipping, overduePrintedLabel, saleLabelPrintedAt, saleShippingAction } from "@/lib/sales-fulfillment";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -18,19 +18,27 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
   const orderIdFilter = String(searchParams?.orderId || "").trim().toLocaleUpperCase("pt-BR");
   const skuFilter = normalizeSku(searchParams?.sku);
   const db = supabaseAdmin();
-  const [{ data: sales }, { data: items }, { data: accounts }, { data: products }] = await Promise.all([
+  const [{ data: sales }, { data: items }, { data: accounts }, { data: products }, { data: inventoryAudits }] = await Promise.all([
     db.from("venda").select("id,marketplace,order_id,status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,shipment_id,raw_data,created_at,updated_at,status_venda(internal_status,description)").order("data_venda", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
     db.from("venda_item").select("venda_id,sku,quantidade,valor_unitario,valor_total"),
     db.from("config_marketplace_accounts").select("id,name,nickname,marketplace,seller_id,account_id,shop_id"),
-    db.from("products").select("sku,title")
+    db.from("products").select("sku,title,product_images(original_name,url,cloudinary_url,position)"),
+    db.from("venda_estoque_auditoria").select("venda_id,sku,status,mensagem,estoque_fisico,estoque_disponivel,reservas_ativas,estoque_disponivel_esperado,checked_at")
   ]);
   const productTitles = new Map((products || []).map((product) => [normalizeSku(product.sku), String(product.title || "")]));
+  const productImages = new Map((products || []).map((product) => {
+    const images = Array.isArray(product.product_images) ? product.product_images : [];
+    const cover = [...images].sort((left, right) => Number(left.position || 0) - Number(right.position || 0))[0];
+    return [normalizeSku(product.sku), String(cover?.cloudinary_url || cover?.url || "")];
+  }));
   const shippingTodayCount = ((sales || []) as unknown as Sale[])
     .filter(isEffectiveSale)
-    .filter((sale) => !deferredShipping(sale) && Boolean(saleShippingAction(sale)))
+    .filter((sale) => !deferredShipping(sale) && !overduePrintedLabel(sale) && Boolean(saleShippingAction(sale)))
     .length;
   const itemMap = new Map<string, Array<Record<string, unknown>>>();
   for (const item of items || []) itemMap.set(String(item.venda_id), [...(itemMap.get(String(item.venda_id)) || []), item]);
+  const auditMap = new Map<string, Array<Record<string, unknown>>>();
+  for (const audit of inventoryAudits || []) auditMap.set(String(audit.venda_id), [...(auditMap.get(String(audit.venda_id)) || []), audit]);
   const sortedSales = ((sales || []) as unknown as Sale[])
     .filter((sale) => !orderIdFilter || sale.order_id.toLocaleUpperCase("pt-BR").includes(orderIdFilter))
     .filter((sale) => !skuFilter || (itemMap.get(sale.id) || []).some((item) => normalizeSku(item.sku).includes(skuFilter)))
@@ -39,10 +47,22 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
     const raw = sale.raw_data || {};
     const account = resolveAccount(sale, raw, accounts || []);
     const saleItems = itemMap.get(sale.id) || [];
+    const saleAudits = auditMap.get(sale.id) || [];
+    const expectedAuditCount = new Set(saleItems.map((item) => normalizeSku(item.sku))).size;
+    const auditSucceeded = expectedAuditCount > 0 && saleAudits.length === expectedAuditCount
+      && saleAudits.every((audit) => String(audit.status) === "success");
     const sourceTitles = extractSourceTitles(raw);
+    const sourceVariations = extractSourceVariations(raw);
     const shipping = extractSaleShipping(raw);
     const shippingHistory = extractShippingHistory(raw);
     const deferred = deferredShipping(sale);
+    const labelPrinted = Boolean(raw.marketplace_label_printed_at) && saleShippingAction(sale) === "print_label";
+    const shippingOverdue = overduePrintedLabel(sale);
+    const labelPrintedAt = saleLabelPrintedAt(sale);
+    const customer = extractCustomer(raw, sale.marketplace);
+    const displayedStatus = labelPrinted
+      ? "Etiqueta gerada e Impressa"
+      : sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original);
     return {
       id: sale.id,
       date: dateTime(sale.data_venda || sale.created_at),
@@ -50,9 +70,23 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
       marketplace: marketplaceLabel(sale.marketplace),
       nickname: String(raw.marketplace_nickname || account?.nickname || account?.name || "Loja não identificada"),
       totalItems: saleItems.reduce((total, item) => total + Number(item.quantidade || 0), 0),
+      inventoryAudit: {
+        status: auditSucceeded ? "success" : "error",
+        title: auditSucceeded
+          ? "Estoque atualizado e conferido com sucesso."
+          : saleAudits.find((audit) => String(audit.status) !== "success")?.mensagem
+            ? String(saleAudits.find((audit) => String(audit.status) !== "success")?.mensagem)
+            : "Auditoria de estoque ausente ou incompleta.",
+        items: saleAudits.map((audit) => ({
+          sku: String(audit.sku || ""), status: String(audit.status) === "success" ? "success" as const : "error" as const,
+          message: String(audit.mensagem || ""), physical: Number(audit.estoque_fisico || 0), available: Number(audit.estoque_disponivel || 0),
+          activeReservations: Number(audit.reservas_ativas || 0), expectedAvailable: Number(audit.estoque_disponivel_esperado || 0)
+        }))
+      },
       value: money(sale.valor_produtos),
-      status: sale.status_venda?.description || statusLabel(sale.status_venda?.internal_status || sale.status_original),
+      status: displayedStatus,
       unpaid: isUnpaidSale(sale),
+      shippingOverdue,
       flex: isFlexShipping(shipping),
       shippingAction: deferred ? null : saleShippingAction(sale),
       shippingActionText: deferred?.label || null,
@@ -62,22 +96,27 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
       deferredTimestamp: deferred?.timestamp || 0,
       details: [
         { label: "Pedido", value: sale.order_id },
-        { label: "Status recebido", value: sale.status_original || "Não informado" },
-        { label: "Descrição do status", value: sale.status_venda?.description || statusLabel(sale.status_original) },
-        { label: "Código da entrega", value: sale.shipment_id || "Não informado" },
+        { label: "Status", value: sale.status_original || "Não informado" },
+        { label: "Descrição do status", value: displayedStatus },
+        ...(labelPrintedAt ? [{ label: "Etiqueta impressa em", value: dateTime(labelPrintedAt.toISOString()) }] : []),
         { label: "Valor dos produtos", value: money(sale.valor_produtos) },
         { label: "Tarifas", value: negativeMoney(sale.valor_taxas) },
-        { label: "Custo de Frete", value: money(sale.valor_frete) },
+        { label: "Frete", value: money(sale.valor_frete) },
         { label: "Descontos", value: money(sale.valor_descontos) },
         { label: "Valor líquido", value: money(sale.valor_liquido) },
         { label: "Última atualização", value: dateTime(sale.updated_at) }
       ],
+      customer,
+      deliveryCode: sale.shipment_id || "Não informado",
       items: saleItems.map((item) => ({
         sku: String(item.sku || ""),
         description: productTitles.get(normalizeSku(item.sku)) || sourceTitles.get(normalizeSku(item.sku)) || "Descrição não encontrada",
+        variations: sourceVariations.get(normalizeSku(item.sku)) || [],
         quantity: Number(item.quantidade || 0),
         unitValue: money(Number(item.valor_unitario || 0)),
-        totalValue: money(Number(item.valor_total || 0))
+        totalValue: money(Number(item.valor_total || 0)),
+        imageUrl: productImages.get(normalizeSku(item.sku))
+          || `/api/vendas/${sale.id}/imagem?sku=${encodeURIComponent(String(item.sku || ""))}`
       })),
       shippingHistory
     };
@@ -117,6 +156,46 @@ function extractSourceTitles(raw: Record<string, unknown>) {
     if (sku && title) titles.set(normalizeSku(sku), String(title));
   }
   return titles;
+}
+
+function extractSourceVariations(raw: Record<string, unknown>) {
+  const payload = (raw.payload || raw) as Record<string, any>;
+  const orderItems = payload?.order?.order_items || payload?.order?.item_list || payload?.data?.items || payload?.data?.item_list || payload?.items || [];
+  const variations = new Map<string, string[]>();
+  for (const item of Array.isArray(orderItems) ? orderItems : []) {
+    const sku = item?.item?.seller_sku || item?.item?.seller_custom_field || item?.model_sku || item?.item_sku || item?.sku;
+    if (!sku) continue;
+    const attributes = item?.item?.variation_attributes || item?.variation_attributes || item?.variation?.attributes || [];
+    const values = (Array.isArray(attributes) ? attributes : []).map((attribute: Record<string, any>) => {
+      const name = attribute.name || attribute.id || "Variação";
+      const value = attribute.value_name || attribute.value || attribute.value_id;
+      return value ? `${name}: ${value}` : "";
+    }).filter(Boolean);
+    const modelName = String(item?.model_name || "").trim();
+    if (values.length === 0 && modelName && !/^(default|padrão)$/i.test(modelName)) values.push(`Variação: ${modelName}`);
+    variations.set(normalizeSku(sku), [...new Set(values)]);
+  }
+  return variations;
+}
+
+function extractCustomer(raw: Record<string, unknown>, marketplace: string) {
+  const payload = (raw.payload || raw) as Record<string, any>;
+  const order = payload.order || {};
+  const address = order.recipient_address || payload.shipment?.receiver_address || order.shipping?.receiver_address || {};
+  const buyer = order.buyer || {};
+  const name = marketplace === "shopee"
+    ? firstText(order.buyer_username, order.buyer_user_name, buyer.username, address.name)
+    : firstText(
+      address.name,
+      address.receiver_name,
+      [buyer.first_name, buyer.last_name].filter(Boolean).join(" "),
+      buyer.nickname
+    );
+  return { name: name || "Não informado pelo marketplace" };
+}
+
+function firstText(...values: unknown[]) {
+  return values.map((value) => typeof value === "string" || typeof value === "number" ? String(value).trim() : "").find(Boolean) || "";
 }
 
 function normalizeSku(value: unknown) {

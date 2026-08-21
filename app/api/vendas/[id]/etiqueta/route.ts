@@ -57,6 +57,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       const error = await response.text();
       return NextResponse.json({ error: `Falha ao gerar etiqueta: ${error}` }, { status: response.status });
     }
+    await markLabelPrinted(sale);
 
     return new NextResponse(await response.arrayBuffer(), {
       status: 200,
@@ -140,6 +141,7 @@ async function shopeeLabel(sale: Record<string, any>) {
     const document = await client.downloadShippingDocument(
       accessToken, shopId, String(sale.order_id), packageNumber
     );
+    await markLabelPrinted(sale);
     return new NextResponse(document.body, {
       status: 200,
       headers: {
@@ -155,6 +157,15 @@ async function shopeeLabel(sale: Record<string, any>) {
     }
     throw error;
   }
+}
+
+async function markLabelPrinted(sale: Record<string, any>) {
+  const raw = (sale.raw_data || {}) as Record<string, any>;
+  const printedAt = new Date().toISOString();
+  await supabaseAdmin().from("venda").update({
+    raw_data: { ...raw, marketplace_label_printed_at: printedAt },
+    updated_at: printedAt
+  }).eq("id", sale.id).throwOnError();
 }
 
 function isShopeeLabelPendingError(message: string) {

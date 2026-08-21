@@ -463,7 +463,7 @@ async function getTinySpecialConfig(specialCode: string) {
   if (!specialCode) return {};
   const { data } = await supabaseAdmin()
     .from("config_specials")
-    .select("include_description,remove_description")
+    .select("include_description,remove_description,keep_warranty")
     .eq("code", specialCode)
     .maybeSingle();
   return data || {};
@@ -501,6 +501,9 @@ function buildTinyProductPayload(product: Record<string, unknown>, settings: Tin
     .map(toTinyImageUrl)
     .filter(Boolean);
   const productValue = (key: string) => product[key] ?? type[key];
+  const warrantyMonths = product.special_code && special.keep_warranty === false
+    ? 0
+    : Math.max(0, Number(type.warranty_months || 0));
 
   return {
     produtos: [
@@ -518,7 +521,7 @@ function buildTinyProductPayload(product: Record<string, unknown>, settings: Tin
           classe_produto: settings.classeProduto,
           sob_encomenda: settings.sobEncomenda,
           marca: String(brand.name || ""),
-          garantia: type.warranty_months ? `${type.warranty_months} meses` : "",
+          garantia: warrantyMonths ? `${warrantyMonths} meses` : "",
           categoria: String(type.tiny_category || type.marketplace_category || "").trim().replace(/\s*>+\s*/g, " >> "),
           descricao_complementar: buildProductDescription(product, type, brand, special),
           peso_liquido: formatTinyDecimal(productValue("weight_net")),

@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
-import { getTinyProductSnapshot, listTinyProductsPage } from "./tiny";
+import { findTinyProductBySku, getTinyProductSnapshot, listTinyProductsPage } from "./tiny";
 import { supabaseAdmin } from "./supabase-admin";
 import { logSynchronizationResult } from "./synchronization-logs";
+import { clearTinyLink, isTinyNotFoundError, reconcileProductIntegrationStatus } from "./product-integration-status";
 
 type Phase = "prepare" | "listing" | "existing" | "migration" | "deletion" | "done";
 type TinyProgress = {
@@ -18,14 +19,16 @@ type TinyProgress = {
   failedProducts: number;
   percent: number;
   message: string;
+  updatedAt?: string;
 };
 
 const KEY = "TINY_STOCK_SYNC_PROGRESS_V2";
 const DB_BATCH = 250;
+const MAX_PRODUCT_ATTEMPTS = 3;
 
-export async function startTinyStockSync() {
+export async function startTinyStockSync(force = false) {
   const current = await getTinyStockSyncProgress();
-  if (current.status === "running") return current;
+  if (current.status === "running" && !force) return current;
   const progress: TinyProgress = {
     status: "running", phase: "prepare", runId: randomUUID(), page: 0, pages: 0,
     totalFiles: 0, processedFiles: 0, syncedProducts: 0, migratedProducts: 0,
@@ -38,7 +41,9 @@ export async function startTinyStockSync() {
 
 export async function stepTinyStockSync() {
   const progress = await getTinyStockSyncProgress();
-  if (progress.status !== "running") return startTinyStockSync();
+  // Um worker antigo ou atrasado nunca deve criar uma nova execucao sozinho.
+  // Inicio e reinicio sao decisoes explicitas da rota/tela.
+  if (progress.status !== "running") return progress;
   try {
     if (progress.phase === "prepare") return prepareSystemProducts(progress);
     if (progress.phase === "listing") return listTinyPage(progress);
@@ -85,6 +90,12 @@ async function prepareSystemProducts(progress: TinyProgress) {
 }
 
 async function logTinyResult(progress: TinyProgress) {
+  const { data: failedItems } = await supabaseAdmin().from("tiny_sync_items")
+    .select("sku,error_message")
+    .eq("run_id", progress.runId)
+    .eq("status", "failed")
+    .order("created_at")
+    .throwOnError();
   await logSynchronizationResult({
     process: "Sincronismo Tiny",
     status: progress.status === "done" ? "done" : "failed",
@@ -94,7 +105,11 @@ async function logTinyResult(progress: TinyProgress) {
       removed: progress.deletedProducts,
       included: progress.migratedProducts
     },
-    error: progress.status === "failed" ? progress.message : undefined
+    error: progress.status === "failed" ? progress.message : undefined,
+    failures: (failedItems || []).map(item => ({
+      sku: String(item.sku || "nao identificado"),
+      reason: String(item.error_message || "Motivo nao informado")
+    }))
   });
 }
 
@@ -142,18 +157,34 @@ async function listTinyPage(progress: TinyProgress) {
     }, { onConflict: "run_id,sku" }).throwOnError();
   }
   const done = page >= result.pages;
+  let totalFiles = progress.totalFiles;
+  if (done) {
+    const countResult = await db.from("tiny_sync_items")
+      .select("id", { count: "exact", head: true })
+      .eq("run_id", progress.runId)
+      .throwOnError();
+    totalFiles = countResult.count || 0;
+  }
   const next = { ...progress, page, pages: result.pages, phase: done ? "existing" as const : "listing" as const,
-    processedFiles: 0, percent: Math.round((page / Math.max(1, result.pages)) * 20),
-    message: done ? "Atualizando produtos existentes." : `Listando pagina ${page} de ${result.pages} do Tiny.` };
+    totalFiles, processedFiles: 0, percent: Math.round((page / Math.max(1, result.pages)) * 20),
+    message: done ? `0 de ${totalFiles} produtos sincronizados.` : `Listando pagina ${page} de ${result.pages} do Tiny.` };
   await save(next);
   return next;
 }
 
 async function processOne(progress: TinyProgress, action: "update" | "migrate" | "delete") {
   const db = supabaseAdmin();
+  let totalFiles = progress.totalFiles;
+  if (!totalFiles) {
+    const countResult = await db.from("tiny_sync_items")
+      .select("id", { count: "exact", head: true })
+      .eq("run_id", progress.runId)
+      .throwOnError();
+    totalFiles = countResult.count || 0;
+  }
   const { data: item } = await db.from("tiny_sync_items").select("*")
     .eq("run_id", progress.runId).eq("action", action).eq("status", "pending")
-    .order("created_at").limit(1).maybeSingle().throwOnError();
+    .order("updated_at").order("created_at").limit(1).maybeSingle().throwOnError();
   if (!item) return advance(progress, action);
 
   let syncedProducts = progress.syncedProducts;
@@ -162,12 +193,34 @@ async function processOne(progress: TinyProgress, action: "update" | "migrate" |
   let failedProducts = progress.failedProducts;
   try {
     if (action === "update") {
-      const detail = await getTinyProductSnapshot(String(item.tiny_product_id)) as Record<string, unknown>;
+      let detail: Record<string, unknown>;
+      let resolvedTinyProductId = String(item.tiny_product_id);
+      try {
+        detail = await getTinyProductSnapshot(resolvedTinyProductId) as Record<string, unknown>;
+      } catch (error) {
+        if (!isTinyNotFoundError(error)) throw error;
+        const replacement = await findTinyProductBySku(String(item.sku));
+        if (replacement?.id) {
+          resolvedTinyProductId = String(replacement.id);
+          detail = await getTinyProductSnapshot(resolvedTinyProductId) as Record<string, unknown>;
+        } else {
+        await clearTinyLink(String(item.product_id));
+        await reconcileProductIntegrationStatus(String(item.product_id));
+        deletedProducts++;
+        await db.from("tiny_sync_items").update({ status: "done", processed_at: new Date().toISOString(), error_message: "Vinculo Tiny removido: produto nao localizado." }).eq("id", item.id).throwOnError();
+        const next = { ...progress, totalFiles, processedFiles: progress.processedFiles + 1, syncedProducts, migratedProducts, deletedProducts, failedProducts,
+          percent: totalFiles > 0 ? Math.min(99, 20 + Math.round(((syncedProducts + migratedProducts + deletedProducts + failedProducts) / totalFiles) * 79)) : progress.percent,
+          message: progressMessage(totalFiles, syncedProducts, migratedProducts, deletedProducts, failedProducts) };
+        await save(next);
+        return next;
+        }
+      }
       const sku = normalizeSku(detail.codigo || item.sku);
       const stock = stockOf(detail);
       const price = Number(detail.preco ?? detail.preco_promocional ?? item.tiny_data?.preco ?? 0) || 0;
       const title = String(detail.nome || item.tiny_data?.nome || sku).trim();
-      await db.from("products").update({ sku, tiny_product_id: item.tiny_product_id, title, price, stock,
+      const description = tinyDescription(detail);
+      await db.from("products").update({ sku, tiny_product_id: resolvedTinyProductId, title, description, price, stock,
         status: "sent", sent_target: "TINY", tiny_last_synced_on: today(), updated_at: new Date().toISOString() })
         .eq("id", item.product_id).throwOnError();
       await removeMismatchedMarketplaceLinks(String(item.product_id), sku);
@@ -177,22 +230,40 @@ async function processOne(progress: TinyProgress, action: "update" | "migrate" |
       const detail = await getTinyProductSnapshot(String(item.tiny_product_id)) as Record<string, unknown>;
       const stock = stockOf(detail);
       const inserted = await db.from("products").insert({ sku: item.sku, source_key: `TINY_${item.tiny_product_id}`,
-        title: String(detail.nome || item.sku), price: Number(detail.preco || detail.preco_promocional || 0), stock,
+        title: String(detail.nome || item.sku), description: tinyDescription(detail),
+        price: Number(detail.preco || detail.preco_promocional || 0), stock,
         status: "sent", tiny_product_id: item.tiny_product_id, sent_target: "TINY",
         sent_at: new Date().toISOString(), tiny_last_synced_on: today() }).select("id").single().throwOnError();
       await updateInventory(inserted.data.id, item.sku, stock);
       migratedProducts++;
     } else {
-      await deleteProductAndLinks(String(item.product_id));
+      await clearTinyLink(String(item.product_id));
+      await reconcileProductIntegrationStatus(String(item.product_id));
       deletedProducts++;
     }
     await db.from("tiny_sync_items").update({ status: "done", processed_at: new Date().toISOString(), error_message: null }).eq("id", item.id).throwOnError();
   } catch (error) {
-    failedProducts++;
-    await db.from("tiny_sync_items").update({ status: "failed", processed_at: new Date().toISOString(), error_message: errorMessage(error) }).eq("id", item.id).throwOnError();
+    const tinyData = item.tiny_data && typeof item.tiny_data === "object" ? item.tiny_data : {};
+    const attemptCount = Number(tinyData._syncAttemptCount || 0) + 1;
+    const exhausted = attemptCount >= MAX_PRODUCT_ATTEMPTS;
+    if (exhausted) failedProducts++;
+    await db.from("tiny_sync_items").update({
+      status: exhausted ? "failed" : "pending",
+      tiny_data: { ...tinyData, _syncAttemptCount: attemptCount },
+      processed_at: exhausted ? new Date().toISOString() : null,
+      error_message: errorMessage(error),
+      updated_at: new Date().toISOString()
+    }).eq("id", item.id).throwOnError();
   }
-  const next = { ...progress, processedFiles: progress.processedFiles + 1, syncedProducts, migratedProducts, deletedProducts, failedProducts,
-    message: phaseMessage(action, syncedProducts, migratedProducts, deletedProducts) };
+  const completedAttempt = syncedProducts > progress.syncedProducts
+    || migratedProducts > progress.migratedProducts
+    || deletedProducts > progress.deletedProducts
+    || failedProducts > progress.failedProducts;
+  const next = { ...progress, totalFiles, processedFiles: progress.processedFiles + (completedAttempt ? 1 : 0), syncedProducts, migratedProducts, deletedProducts, failedProducts,
+    percent: totalFiles > 0
+      ? Math.min(99, 20 + Math.round(((syncedProducts + migratedProducts + deletedProducts + failedProducts) / totalFiles) * 79))
+      : progress.percent,
+    message: progressMessage(totalFiles, syncedProducts, migratedProducts, deletedProducts, failedProducts) };
   await save(next);
   return next;
 }
@@ -246,24 +317,20 @@ async function removeMismatchedMarketplaceLinks(productId: string, sku: string) 
   }
 }
 
-async function deleteProductAndLinks(productId: string) {
-  const db = supabaseAdmin();
-  await db.from("product_marketplaces").delete().eq("product_id", productId).throwOnError();
-  await db.from("listings").delete().eq("product_id", productId).throwOnError();
-  await db.from("products").delete().eq("id", productId).throwOnError();
-}
-
 async function save(progress: TinyProgress) {
-  await supabaseAdmin().from("settings").upsert({ key: KEY, value: progress,
+  const savedProgress = { ...progress, updatedAt: new Date().toISOString() };
+  await supabaseAdmin().from("settings").upsert({ key: KEY, value: savedProgress,
     description: "[ESTOQUE] Progresso da sincronizacao incremental Tiny", updated_at: new Date().toISOString() }, { onConflict: "key" }).throwOnError();
 }
 
 function normalizeSku(value: unknown) { return String(value || "").trim().toUpperCase(); }
 function stockOf(value: Record<string, unknown>) { return Math.max(0, Math.trunc(Number(value.saldo ?? value.estoque_atual ?? 0) || 0)); }
+function tinyDescription(value: Record<string, unknown>) {
+  return String(value.descricao_complementar ?? value.descricao ?? value.obs ?? "").trim() || null;
+}
 function today() { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date()); }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
-function phaseMessage(action: string, updated: number, migrated: number, deleted: number) {
-  if (action === "update") return `${updated} produtos existentes atualizados hoje.`;
-  if (action === "migrate") return `${migrated} produtos novos incluidos.`;
-  return `${deleted} produtos ausentes excluidos.`;
+function progressMessage(total: number, updated: number, migrated: number, deleted: number, failed: number) {
+  const processed = updated + migrated + deleted + failed;
+  return `${processed} de ${Math.max(total, processed)} produtos sincronizados${failed ? ` (${failed} com erro)` : ""}.`;
 }

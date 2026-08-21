@@ -13,6 +13,7 @@ type StockSyncProgress = {
   migratedProducts?: number;
   deletedProducts?: number;
   failedProducts?: number;
+  updatedAt?: string;
 };
 
 type StockSyncButtonProps = {
@@ -31,9 +32,14 @@ export function StockSyncButton({ accountId, accountName }: StockSyncButtonProps
 
     async function refresh() {
       const current = await getProgress();
+      const tinyNeedsResume = accountId === "tiny"
+        && current?.status === "running"
+        && isStale(current.updatedAt);
       const next = current?.status === "running" && accountId !== "tiny"
         ? await postProgress("step")
-        : current;
+        : tinyNeedsResume
+          ? await postProgress("resume")
+          : current;
       if (!active) return;
       if (next) {
         setProgress(next);
@@ -71,7 +77,7 @@ export function StockSyncButton({ accountId, accountName }: StockSyncButtonProps
     }
   }
 
-  async function postProgress(action: "start" | "step") {
+  async function postProgress(action: "start" | "step" | "resume") {
     return fetch(`/api/estoque/sync?accountId=${encodeURIComponent(accountId)}&action=${action}`, {
       method: "POST",
       cache: "no-store"
@@ -109,13 +115,19 @@ export function StockSyncButton({ accountId, accountName }: StockSyncButtonProps
   );
 }
 
+function isStale(updatedAt?: string) {
+  if (!updatedAt) return true;
+  const timestamp = new Date(updatedAt).getTime();
+  return !Number.isFinite(timestamp) || Date.now() - timestamp > 60_000;
+}
+
 function formatMessage(progress: StockSyncProgress | null) {
   if (!progress) {
     return "Aguardando sincronizacao.";
   }
 
   if (progress.status === "done") {
-    return `${progress.syncedProducts || 0} produtos sincronizados.`;
+    return progress.message || `${progress.syncedProducts || 0} produtos sincronizados.`;
   }
 
   if (progress.status === "failed") {

@@ -132,7 +132,7 @@ export async function linkMarketplaceSkuToProduct(sourceSku: string, targetSku: 
   });
 }
 
-export async function importMarketplaceSku(sku: string) {
+export async function importMarketplaceSku(sku: string, includeTiny = true) {
   const normalizedSku = normalizeSku(sku);
   const supabase = supabaseAdmin();
   const links = await getMarketplaceLinksBySku(normalizedSku);
@@ -150,7 +150,7 @@ export async function importMarketplaceSku(sku: string) {
   const typeCode = await inferTypeCode(normalizedSku);
   const brandCode = await getFirstBrandCode();
   const first = links[0];
-  const tinyProduct = await findTinyProductBySku(normalizedSku);
+  const tinyProduct = includeTiny ? await findTinyProductBySku(normalizedSku) : null;
   if (tinyProduct) {
     const existingTiny = await supabase
       .from("products")
@@ -392,10 +392,41 @@ export async function upsertMarketplaceItem(item: {
 }) {
   const supabase = supabaseAdmin();
   const sku = normalizeSku(item.sku);
-  const [product, account] = await Promise.all([
+  const [product, account, finalModeration] = await Promise.all([
     supabase.from("products").select("id").ilike("sku", sku).maybeSingle().throwOnError(),
-    supabase.from("config_marketplace_accounts").select("name").eq("id", item.accountId).maybeSingle().throwOnError()
+    supabase.from("config_marketplace_accounts").select("name").eq("id", item.accountId).maybeSingle().throwOnError(),
+    supabase.from("marketplace_listing_moderations").select("id")
+      .eq("marketplace", item.marketplace)
+      .eq("marketplace_account_id", item.accountId)
+      .eq("listing_id", item.listingId)
+      .eq("classification", "final")
+      .maybeSingle().throwOnError()
   ]);
+
+  // Inventory scans return closed/removed items as well. Those rows must never
+  // recreate a product link that an item-status webhook has just removed.
+  if (finalModeration.data?.id || isFinalMarketplaceStatus(item.marketplace, item.status, item.rawData)) {
+    await supabase.from("product_marketplaces").upsert({
+      product_id: null,
+      sku,
+      marketplace_account_id: item.accountId,
+      marketplace: item.marketplace,
+      marketplace_product_id: item.listingId,
+      titulo_marketplace: item.title,
+      valor_marketplace: item.price,
+      estoque_marketplace: 0,
+      status_anuncio: item.status,
+      existe_no_marketplace: false,
+      raw_data: item.rawData,
+      last_seen_run_id: item.syncRunId || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "marketplace_account_id,marketplace_product_id" }).throwOnError();
+    await supabase.from("listings").delete()
+      .eq("marketplace_account_id", item.accountId)
+      .eq("external_listing_id", item.listingId)
+      .throwOnError();
+    return;
+  }
 
   await supabase.from("product_marketplaces").upsert({
     product_id: product.data?.id || null,
@@ -428,7 +459,35 @@ export async function upsertMarketplaceItem(item: {
       error_message: null
     };
     await upsertListingRow(listing);
+    try {
+      const { reconcileProductMarketplaceMetadata } = await import("./marketplace-attributes");
+      await reconcileProductMarketplaceMetadata(String(product.data.id), item.marketplace, item.rawData);
+      const { recoverProductImagesFromMarketplaceListing } = await import("./marketplace-image-recovery");
+      await recoverProductImagesFromMarketplaceListing(String(product.data.id), item.rawData);
+    } catch (error) {
+      console.error("Nao foi possivel recuperar as imagens do anuncio durante a sincronizacao.", {
+        productId: product.data.id,
+        listingId: item.listingId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
+}
+
+export function isFinalMarketplaceStatus(
+  marketplace: "mercado_livre" | "shopee",
+  status: string,
+  rawData: Record<string, unknown> = {}
+) {
+  if (marketplace === "mercado_livre") {
+    const normalized = String(status || "").toLowerCase();
+    const subStatus = Array.isArray(rawData.sub_status)
+      ? rawData.sub_status.map((value) => String(value).toLowerCase())
+      : [];
+    return ["closed", "inactive"].includes(normalized) || subStatus.includes("forbidden");
+  }
+  return ["SHOPEE_DELETE", "SELLER_DELETE", "DELETED", "BANNED"]
+    .includes(String(status || "").toUpperCase());
 }
 
 async function relinkMarketplaceProducts() {

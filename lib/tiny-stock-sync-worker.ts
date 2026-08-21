@@ -1,7 +1,9 @@
 import { getTinyStockSyncProgress, stepTinyStockSync } from "./tiny-stock-sync";
 
 const WORK_WINDOW_MS = 42_000;
-const STEP_INTERVAL_MS = 2_500;
+// Cada produto exige duas chamadas ao Tiny (cadastro e estoque). Mantemos o
+// ritmo abaixo do limite da API para evitar bloqueios temporarios.
+const STEP_INTERVAL_MS = 6_000;
 
 export async function runTinyStockSyncWorker(origin: string) {
   const startedAt = Date.now();

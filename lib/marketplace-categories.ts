@@ -12,6 +12,43 @@ export async function listMarketplaceCategories(marketplace: string, parentId?: 
   throw new Error("Marketplace invalido.");
 }
 
+export async function getMarketplaceCategoryPath(marketplace: "mercado_livre" | "shopee", categoryId: string): Promise<string> {
+  if (!categoryId) return "";
+  if (marketplace === "mercado_livre") {
+    const account = (await getActiveMercadoLivreAccounts())[0];
+    if (!account) return "";
+    const token = await getValidMercadoLivreAccessToken(account);
+    const response = await fetch(`https://api.mercadolibre.com/categories/${encodeURIComponent(categoryId)}`, {
+      headers: { authorization: `Bearer ${token}` }, cache: "no-store"
+    });
+    const json = await response.json();
+    if (!response.ok) return "";
+    const path = Array.isArray(json.path_from_root) ? json.path_from_root.map((item: Record<string, unknown>) => String(item.name || "")).filter(Boolean) : [];
+    return path.join(" > ") || String(json.name || "");
+  }
+  const account = (await getActiveShopeeAccounts())[0];
+  if (!account) return "";
+  const shopId = account.shop_id || account.account_id;
+  if (!shopId) return "";
+  const token = await getValidShopeeAccessToken(account);
+  const client = createShopeeClient(await getShopeeOAuthConfig(account.id));
+  const json = await client.getCategories(token, shopId);
+  const rows = (((json.response as Record<string, unknown> | undefined)?.category_list || []) as Array<Record<string, unknown>>);
+  const byId = new Map(rows.map(row => [String(row.category_id), row]));
+  const path: string[] = [];
+  let current = byId.get(categoryId);
+  const visited = new Set<string>();
+  while (current) {
+    const id = String(current.category_id || "");
+    if (!id || visited.has(id)) break;
+    visited.add(id);
+    path.unshift(String(current.display_category_name || current.original_category_name || current.category_name || id));
+    const parent = String(current.parent_category_id || "0");
+    current = parent === "0" ? undefined : byId.get(parent);
+  }
+  return path.join(" > ");
+}
+
 async function listMercadoLivre(parentId?: string | null) {
   const account = (await getActiveMercadoLivreAccounts())[0];
   if (!account) throw new Error("Conecte uma conta Mercado Livre antes de buscar categorias.");

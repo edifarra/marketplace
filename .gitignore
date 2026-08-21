@@ -10,3 +10,5 @@ service-account.json
 .env*
 *.log
 *.tsbuildinfo
+tmp/
+supabase/.temp/

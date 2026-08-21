@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import type { ProductDeletionInspection } from "@/lib/products";
 import { deleteProductAction, inspectProductDeletionAction } from "./actions";
+import { ProductActionSubmit } from "./product-action-submit";
 
-export function DeleteProductButton({ productId }: { productId: string }) {
+export function DeleteProductButton({ productId, returnTo = "/produtos" }: { productId: string; returnTo?: string }) {
   const [open, setOpen] = useState(false);
   const [inspection, setInspection] = useState<ProductDeletionInspection | null>(null);
   const [checking, startChecking] = useTransition();
@@ -67,7 +68,8 @@ export function DeleteProductButton({ productId }: { productId: string }) {
                   <form action={deleteProductAction}>
                     <input type="hidden" name="productId" value={productId} />
                     <input type="hidden" name="tinyAdsRemoved" value="true" />
-                    <button className="danger" type="submit">Aceitar e excluir</button>
+                    <input type="hidden" name="returnTo" value={returnTo} />
+                    <ProductActionSubmit label="Aceitar e excluir" pendingLabel="Excluindo" danger />
                   </form>
                   <button className="secondary" type="button" onClick={() => setOpen(false)}>Cancelar</button>
                 </div>

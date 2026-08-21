@@ -63,6 +63,17 @@ export async function getMercadoLivreOrder(orderId: string, account: Marketplace
   return mlGet(`/orders/${encodeURIComponent(orderId)}`, accessToken) as Promise<Record<string, any>>;
 }
 
+export async function getMercadoLivreItem(itemId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlGet(`/items/${encodeURIComponent(itemId)}`, accessToken) as Promise<Record<string, any>>;
+}
+
+export async function getMercadoLivreLastModeration(itemId: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const response = await mlGet(`/moderations/last_moderation/${encodeURIComponent(itemId)}-ITM`, accessToken);
+  return Array.isArray(response) ? response as Array<Record<string, any>> : [];
+}
+
 export async function getMercadoLivreShipment(shipmentId: string, account: MarketplaceAccountConfig) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
   return mlGet(`/shipments/${encodeURIComponent(shipmentId)}`, accessToken, { "x-format-new": "true" }) as Promise<Record<string, any>>;
@@ -284,7 +295,7 @@ async function getItemDetails(itemIds: string[], accessToken: string) {
     const batch = itemIds.slice(index, index + 20);
     const params = new URLSearchParams({
       ids: batch.join(","),
-      attributes: "id,title,price,available_quantity,status,seller_custom_field,attributes,variations"
+      attributes: "id,title,category_id,price,available_quantity,status,seller_custom_field,attributes,variations,pictures"
     });
     const json = await mlGet(`/items?${params.toString()}`, accessToken);
     for (const entry of json as Array<{ code?: number; body?: Record<string, unknown> }>) {

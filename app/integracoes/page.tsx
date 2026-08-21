@@ -14,6 +14,7 @@ const supabase = createClient(
 type IntegracoesPageProps = {
   searchParams?: {
     erro?: string;
+    sucesso?: string;
   };
 };
 
@@ -21,13 +22,14 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
   noStore();
 
   const [{ data: settings }, marketplaces] = await Promise.all([
-    supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
+    supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "ENVIAR_PRODUTOS_AUTOMATICO", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
     listMarketplaceAccountViews()
   ]);
 
   const settingMap = new Map((settings ?? []).map((row) => [row.key, row.value]));
   const mode = String(settingMap.get("PRODUCT_SEND_TARGET") || "TINY");
   const errorMessage = searchParams?.erro || "";
+  const automaticSend = String(settingMap.get("ENVIAR_PRODUTOS_AUTOMATICO") || "NÃO").trim().toUpperCase() === "SIM";
 
   return (
     <main className="shell">
@@ -41,6 +43,7 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
         </div>
 
         {errorMessage && <div className="form-error">{errorMessage}</div>}
+        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
 
         <section className="card form-card">
           <h2>Destino de envio</h2>
@@ -53,6 +56,11 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
               <input type="radio" name="mode" value="marketplace" defaultChecked={mode === "MARKETPLACE_DIRETO"} />
               Enviar produto diretamente ao MarketPlace
             </label>
+            <label className="option-row">
+              <input type="checkbox" name="automaticSend" defaultChecked={automaticSend} />
+              Enviar automaticamente
+            </label>
+            <p className="muted">Quando ativado, produtos aprovados pelas regras de preço são enviados automaticamente ao destino selecionado. Desativado, o envio permanece disponível pelos botões manuais.</p>
             <div className="form-actions">
               <a className="secondary" href="/configuracoes/tiny">Configurar Tiny</a>
               <a className="secondary" href="/configuracoes/marketplace">Configurar Marketplaces</a>

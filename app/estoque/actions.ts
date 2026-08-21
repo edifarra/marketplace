@@ -10,6 +10,7 @@ import {
 } from "@/lib/migration-stock";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { synchronizeProductBySku } from "@/lib/product-point-sync";
 
 export async function importMarketplaceSkuAction(formData: FormData) {
   await runStockAction(formData, "marketplace-only", importMarketplaceSku);
@@ -33,6 +34,26 @@ export async function removeMarketplaceOnlyListingsAction(formData: FormData) {
 
 export async function updateDivergentStockAction(formData: FormData) {
   await runStockAction(formData, "stock-divergent", updateDivergentStockByLowest);
+}
+
+export async function synchronizeStockSkuAction(formData: FormData) {
+  const sku = String(formData.get("sku") || "").trim();
+  const view = String(formData.get("view") || "system-only");
+  if (!sku) redirect(`/estoque?view=${encodeURIComponent(view)}&erro=${encodeURIComponent("SKU nao informado.")}`);
+  let result: Awaited<ReturnType<typeof synchronizeProductBySku>>;
+  try {
+    result = await synchronizeProductBySku(sku);
+  } catch (error) {
+    redirect(`/estoque?view=${encodeURIComponent(view)}&erro=${encodeURIComponent(error instanceof Error ? error.message : String(error))}`);
+  }
+  revalidatePath("/");
+  revalidatePath("/estoque");
+  revalidatePath("/produtos");
+  revalidatePath("/logs");
+  const message = result.errors.length
+    ? `Sincronismo do SKU ${result.sku} concluido com ${result.errors.length} alerta(s). Consulte o Log.`
+    : `SKU ${result.sku} sincronizado. ${result.listings.length} anuncio(s) encontrado(s).`;
+  redirect(`/estoque?view=${encodeURIComponent(view)}&sucesso=${encodeURIComponent(message)}`);
 }
 
 export async function linkMarketplaceSkuAction(formData: FormData) {

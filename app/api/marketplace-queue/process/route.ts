@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processMarketplaceQueue } from "@/lib/marketplace-queue-worker";
+import { drainOutgoingActivities } from "@/lib/outgoing-activities";
 
 export const maxDuration = 300;
 
@@ -18,9 +19,9 @@ async function run(request: NextRequest) {
   try {
     const body = request.method === "POST" ? await request.json().catch(() => ({})) : {};
     const limit = Number(body.limit || request.nextUrl.searchParams.get("limit") || 10);
-    return NextResponse.json(await processMarketplaceQueue(limit));
+    const [received, sent] = await Promise.all([processMarketplaceQueue(limit), drainOutgoingActivities()]);
+    return NextResponse.json({ received, sent });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
-

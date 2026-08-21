@@ -4,10 +4,10 @@ import { deleteCloudinaryResource } from "./cloudinary";
 import { deleteLocalImagePath, deleteLocalProductFolder } from "./local-images";
 import { applyTemplate, nextSku } from "./pipeline";
 import { supabaseAdmin } from "./supabase-admin";
-import { removeMercadoLivreListing } from "./mercado-livre";
-import { removeShopeeListing } from "./shopee";
-import { deactivateTinyProductById, getTinyProductById } from "./tiny";
+import { getTinyProductById } from "./tiny";
+import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
 import { BrandConfig, SpecialConfig, TypeConfig } from "./types";
+import { buildProductMarketplaceSnapshot } from "./marketplace-attributes";
 
 type DbTypeConfig = {
   code: string;
@@ -117,6 +117,11 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
   });
 
   const sourceKey = buildManualSourceKey(input, skuInfo.sku);
+  const snapshot = await buildProductMarketplaceSnapshot(input.typeCode, {
+    sku: skuInfo.sku, title, brand_name: brandConfig.name, model: input.model, board_code: input.boardCode,
+    product_condition: "used", weight_gross: typeConfig.dimensions.weightGross, width: typeConfig.dimensions.width,
+    height: typeConfig.dimensions.height, length: typeConfig.dimensions.length
+  });
 
   const productResult = await supabase
     .from("products")
@@ -130,6 +135,14 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
       version: input.version || null,
       board_code: input.boardCode || null,
       title,
+      marketplace_categories: snapshot.categories,
+      marketplace_attributes: snapshot.attributes,
+      marketplace_attribute_schema_version: 2,
+      width: typeConfig.dimensions.width,
+      height: typeConfig.dimensions.height,
+      length: typeConfig.dimensions.length,
+      weight_net: typeConfig.dimensions.weightNet,
+      weight_gross: typeConfig.dimensions.weightGross,
       price: input.price,
       stock: input.stock,
       status: "draft"
@@ -169,7 +182,9 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
 }
 
 export async function deleteProductById(formData: FormData) {
-  const productId = requiredText(formData, "productId");
+    const productId = requiredText(formData, "productId");
+    const requestedReturn = String(formData.get("returnTo") || "/produtos");
+    const returnTo = requestedReturn.startsWith("/produtos") && !requestedReturn.startsWith("//") ? requestedReturn : "/produtos";
   const tinyAdsRemoved = String(formData.get("tinyAdsRemoved") || "") === "true";
   const supabase = supabaseAdmin();
 
@@ -197,25 +212,24 @@ export async function deleteProductById(formData: FormData) {
 
   const marketplaceListings = await getMarketplaceListingsForDelete(typed.id, typed.listings || []);
   for (const listing of marketplaceListings) {
-    if (listing.marketplace === "mercado_livre") {
-      await removeMercadoLivreListing(listing.accountId, listing.externalId);
-    } else if (listing.marketplace === "shopee") {
-      await removeShopeeListing(listing.accountId, listing.externalId);
-    } else {
+    if (!['mercado_livre','shopee'].includes(listing.marketplace)) {
       throw new Error(`Marketplace ${listing.marketplace} nao suportado para exclusao do anuncio ${listing.externalId}.`);
     }
+    await enqueueOutgoingActivity({ destination: listing.marketplace as "mercado_livre" | "shopee", activityType: "listing_delete",
+      productId: typed.id, sku: typed.sku, productName: typed.sku, accountId: listing.accountId, listingId: listing.externalId,
+      previousData: { status: "active" }, requestedData: { status: "deleted" }, sourceType: "product_delete", sourceId: typed.id });
   }
 
   const tinyProductId = typed.tiny_product_id || await getTinyProductIdFromLastResult(typed.id);
   if (tinyProductId && !inspection.tinyProductMissing) {
-    try {
-      await deactivateTinyProductById(tinyProductId);
-    } catch (tinyError) {
-      if (!isTinyProductNotFound(tinyError)) {
-        redirect(`/produtos?erro=${encodeURIComponent(`Os anuncios dos marketplaces foram removidos, mas nao foi possivel inativar no Tiny: ${tinyError instanceof Error ? tinyError.message : String(tinyError)}`)}`);
-      }
-    }
+    await enqueueOutgoingActivity({ destination: "tiny", activityType: "listing_delete", productId: typed.id, sku: typed.sku,
+      productName: typed.sku, listingId: tinyProductId, previousData: { status: "active" }, requestedData: { status: "inactive" },
+      sourceType: "product_delete", sourceId: typed.id });
   }
+  await drainOutgoingActivities();
+  const unresolved = await supabase.from("outgoing_marketplace_activities").select("processing_error")
+    .eq("source_type", "product_delete").eq("source_id", typed.id).neq("status", "completed").limit(1).maybeSingle().throwOnError();
+  if (unresolved.data) redirect(`/produtos?erro=${encodeURIComponent(unresolved.data.processing_error || "Exclusao externa nao confirmada.")}`);
 
   for (const image of typed.product_images || []) {
     await deleteLocalImagePath(image.local_path);
@@ -231,7 +245,7 @@ export async function deleteProductById(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/produtos");
-  redirect("/produtos");
+    redirect(returnTo);
 }
 
 export type ProductDeletionInspection = {

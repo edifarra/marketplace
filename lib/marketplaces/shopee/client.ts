@@ -113,7 +113,8 @@ export class ShopeeClient {
         order_sn_list: orderSns.join(","),
         response_optional_fields: [
           "item_list", "total_amount", "actual_shipping_fee_confirmed",
-          "package_list", "create_time", "update_time"
+          "package_list", "create_time", "update_time", "buyer_username",
+          "recipient_address"
         ].join(",")
       }
     });
@@ -136,6 +137,14 @@ export class ShopeeClient {
       accessToken,
       shopId,
       query: { language }
+    });
+  }
+
+  async getAttributeTree(accessToken: string, shopId: string | number, categoryIds: Array<string | number>, language = "pt-br") {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/product/get_attribute_tree", {
+      accessToken,
+      shopId,
+      query: { category_id_list: categoryIds.map(String).join(","), language }
     });
   }
 
@@ -176,6 +185,31 @@ export class ShopeeClient {
       method: "POST",
       body: payload
     });
+  }
+
+  async updateProduct(accessToken: string, shopId: string | number, payload: Record<string, unknown>) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/product/update_item", { accessToken, shopId, method: "POST", body: payload });
+  }
+
+  async getLogisticsChannels(accessToken: string, shopId: string | number) {
+    return this.signedRequest<Record<string, any>>("/api/v2/logistics/get_channel_list", { accessToken, shopId });
+  }
+
+  async uploadImageFromUrl(accessToken: string, shopId: string | number, imageUrl: string) {
+    const source = await fetch(imageUrl);
+    if (!source.ok) throw new Error(`Nao foi possivel baixar a imagem (${source.status}).`);
+    const path = "/api/v2/media_space/upload_image";
+    const timestamp = currentTimestamp();
+    const params = new URLSearchParams({ partner_id: this.partnerId, timestamp: String(timestamp),
+      sign: this.sign(path, timestamp, accessToken, shopId), access_token: accessToken, shop_id: String(shopId) });
+    const form = new FormData();
+    form.append("image", new Blob([await source.arrayBuffer()], { type: source.headers.get("content-type") || "image/jpeg" }), "product.jpg");
+    const response = await fetch(`${this.baseUrl}${path}?${params}`, { method: "POST", body: form });
+    const json = await response.json().catch(() => ({})) as Record<string, any>;
+    if (!response.ok || json.error) throw new Error(`Falha Shopee ${path} (HTTP ${response.status}): ${JSON.stringify(json)}`);
+    const imageId = json.response?.image_info?.image_id || json.response?.image_id;
+    if (!imageId) throw new Error("Shopee nao retornou o ID da imagem.");
+    return String(imageId);
   }
 
   async updatePrice(accessToken: string, shopId: string | number, itemId: string | number, price: number) {

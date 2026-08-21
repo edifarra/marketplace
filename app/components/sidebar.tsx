@@ -12,6 +12,7 @@ const configLinks = [
   ["Status de Vendas", "/configuracoes/status-vendas"],
   ["Tiny", "/configuracoes/tiny"],
   ["GoogleDrive", "/configuracoes/google-drive"],
+  ["Notificações Telegram", "/configuracoes/notificacoes-telegram"],
   ["Cloudinary", "/configuracoes/cloudinary"],
   ["ConfigGeral", "/configuracoes/config-geral"]
 ];
@@ -29,8 +30,22 @@ export async function Sidebar() {
         <a href="/estoque">Migração de Estoque</a>
         <a href="/fotos">Fotos</a>
         <a href="/avaliacao-preco">Avaliação de Preço</a>
+        <a href="/relatorios">Relatórios</a>
         <a href="/logs">Logs</a>
-        <a href="/atividades-marketplace">Atividades Marketplace</a>
+        <details className="nav-group" open>
+          <summary>Atividades Marketplace</summary>
+          <div className="nav-submenu">
+            <a href="/atividades-marketplace">Atividades Recebidas</a>
+            <a href="/atividades-marketplace/enviadas">Atividades Enviadas</a>
+          </div>
+        </details>
+        <details className="nav-group" open>
+          <summary>Mediações</summary>
+          <div className="nav-submenu">
+            <a href="/mediacoes/anuncios-finalizados">Anúncios Finalizados</a>
+            <a href="/mediacoes/anuncios-em-revisao">Anúncios em Revisão</a>
+          </div>
+        </details>
         <details className="nav-group" open>
           <summary>Configuracoes</summary>
           <div className="nav-submenu">

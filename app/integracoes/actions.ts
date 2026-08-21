@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { refreshMarketplaceAccountToken } from "@/lib/marketplace-token-refresh";
 import { logMarketplaceAccountEvent } from "@/lib/marketplace-account-logs";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -8,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 export async function saveIntegrationModeAction(formData: FormData) {
   const mode = String(formData.get("mode") || "tiny");
   const normalizedMode = mode === "marketplace" ? "MARKETPLACE_DIRETO" : "TINY";
+  const automaticSend = formData.get("automaticSend") === "on";
   const supabase = supabaseAdmin();
 
   await supabase.from("settings").upsert([
@@ -17,19 +19,15 @@ export async function saveIntegrationModeAction(formData: FormData) {
       description: "[INTEGRACOES] Destino de envio do produto: TINY ou MARKETPLACE_DIRETO"
     },
     {
-      key: "CRIAR_PRODUTO_TINY_API",
-      value: normalizedMode === "TINY",
-      description: "[CONFIG_GERAL] Criar produto no Tiny via API"
-    },
-    {
-      key: "ENVIAR_MARKETPLACE_AUTOMATICO",
-      value: normalizedMode === "MARKETPLACE_DIRETO",
-      description: "[CONFIG_GERAL] Enviar produto diretamente aos marketplaces"
+      key: "ENVIAR_PRODUTOS_AUTOMATICO",
+      value: automaticSend ? "SIM" : "NÃO",
+      description: "[CONFIG_GERAL] Enviar automaticamente produtos aprovados ao destino configurado"
     }
   ]);
 
   revalidatePath("/integracoes");
   revalidatePath("/configuracoes/config-geral");
+  redirect(`/integracoes?sucesso=${encodeURIComponent("Dados atualizados com sucesso")}`);
 }
 
 export async function syncMarketplaceAccountAction(formData: FormData) {

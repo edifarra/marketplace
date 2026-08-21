@@ -6,8 +6,16 @@ import { sendProductAction } from "./actions";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { unstable_noStore as noStore } from "next/cache";
 import { InlineProductEditor } from "./inline-product-editor";
+import { SynchronizeProductButton } from "./synchronize-product-button";
+import { CloneProductButton } from "./clone-product-button";
+import { ProductsPosition } from "./products-position";
+import { ExternalProductActionSubmit, ProductActionSubmit } from "./product-action-submit";
+import { getProductActionState } from "@/lib/product-action-rules";
+import { ProductQueueWaiter } from "./product-queue-waiter";
+import { CopySkuButton } from "./copy-sku-button";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 type ProductRow = {
   id: string;
@@ -27,6 +35,7 @@ type ProductRow = {
   listings: {
     id: string;
     marketplace: string;
+    marketplace_account_id?: string | null;
     external_listing_id?: string | null;
     status: string;
   }[];
@@ -44,30 +53,32 @@ const PAGE_SIZE = 100;
 type ProductFilters = {
   q: string;
   status: string;
-  marketplace: "" | "linked" | "unlinked";
+  marketplace: "" | "unlinked" | "tiny_only" | "marketplace_linked";
   brand: string;
   type: string;
   sort: "recent" | "updated" | "sku" | "name";
 };
 
-export default async function ProductsPage({ searchParams }: { searchParams?: { q?: string; page?: string; erro?: string; sucesso?: string; status?: string; marketplace?: string; brand?: string; type?: string; sort?: string } }) {
+export default async function ProductsPage({ searchParams }: { searchParams?: { q?: string; page?: string; erro?: string; sucesso?: string; aguardando?: string; fila?: string; status?: string; marketplace?: string; brand?: string; type?: string; sort?: string } }) {
   noStore();
   const filters: ProductFilters = {
     q: searchParams?.q?.trim() || "",
     status: searchParams?.status?.trim() || "",
-    marketplace: searchParams?.marketplace === "linked" || searchParams?.marketplace === "unlinked" ? searchParams.marketplace : "",
+    marketplace: searchParams?.marketplace === "unlinked" || searchParams?.marketplace === "tiny_only" || searchParams?.marketplace === "marketplace_linked" ? searchParams.marketplace : "",
     brand: searchParams?.brand?.trim() || "",
     type: searchParams?.type?.trim() || "",
     sort: parseSort(searchParams?.sort)
   };
   const requestedPage = Math.max(1, Math.trunc(Number(searchParams?.page || 1)));
-  const [{ products, error, total, page, totalPages }, filterOptions] = await Promise.all([
+  const [{ products, error, total, page, totalPages }, filterOptions, actionConfiguration] = await Promise.all([
     getProducts(requestedPage, filters),
-    getProductFilterOptions()
+    getProductFilterOptions(),
+    getProductActionConfiguration()
   ]);
+  const returnTo = `/produtos?${new URLSearchParams({ ...filterParams(filters), page: String(page) }).toString()}`;
 
   return (
-    <main className="shell">
+    <main className="shell"><ProductsPosition listKey={returnTo} />
       <Sidebar />
       <section className="main">
         <div className="topbar">
@@ -92,7 +103,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
             <div className="form-grid">
               <label>Buscar<input name="q" placeholder="SKU ou titulo" defaultValue={filters.q} /></label>
               <label>Status<select name="status" defaultValue={filters.status}><option value="">Todos</option>{filterOptions.statuses.map(status => <option value={status} key={status}>{formatProductStatus(status)}</option>)}</select></label>
-              <label>Marketplaces<select name="marketplace" defaultValue={filters.marketplace}><option value="">Todos</option><option value="linked">Com vinculo</option><option value="unlinked">Sem vinculo</option></select></label>
+              <label>Marketplaces<select name="marketplace" defaultValue={filters.marketplace}><option value="">Todos</option><option value="unlinked">Sem vinculo</option><option value="tiny_only">Com vinculo apenas no Tiny</option><option value="marketplace_linked">Com vinculo em Marketplaces</option></select></label>
               <label>Marca<select name="brand" defaultValue={filters.brand}><option value="">Todas</option>{filterOptions.brands.map(item => <option value={item.code} key={item.code}>{item.name || item.code}</option>)}</select></label>
               <label>Tipo de Produto<select name="type" defaultValue={filters.type}><option value="">Todos</option>{filterOptions.types.map(item => <option value={item.code} key={item.code}>{item.description || item.code}</option>)}</select></label>
               <label>Ordenar por<select name="sort" defaultValue={filters.sort}><option value="recent">Mais recente</option><option value="updated">Data de atualizacao</option><option value="sku">Codigo SKU</option><option value="name">Nome do produto</option></select></label>
@@ -103,6 +114,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
         <section className="card">
           {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
           {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
+          {searchParams?.fila && <ProductQueueWaiter activityIds={searchParams.fila.split(",").filter(Boolean)} returnTo={returnTo} initialMessage={searchParams.aguardando || "Envio registrado. Aguardando execução da fila..."} />}
           {error && <div className="form-error">Erro ao carregar produtos: {error}</div>}
           <div className="table-toolbar">
             <div>
@@ -132,31 +144,40 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
                     <td colSpan={8}>Nenhum produto encontrado.</td>
                   </tr>
                 ) : (
-                  products.map((product) => (
+                  products.map((product) => {
+                    const actions = productActions(product, actionConfiguration);
+                    return (
                     <tr key={product.id}>
                       <td>
                         <div className="sku-with-thumb">
                           <ProductThumb product={product} />
-                          <Link href={`/produtos/${product.id}`}>{product.sku}</Link>
+                          <span className="sku-value">
+                            <Link href={`/produtos/${product.id}?returnTo=${encodeURIComponent(returnTo)}`}>{product.sku}</Link>
+                            <CopySkuButton sku={product.sku} />
+                          </span>
                         </div>
                       </td>
-                      <InlineProductEditor product={{ id: product.id, title: product.title, price: Number(product.price || 0), physical: Number(product.estoque_fisico ?? product.stock ?? 0), available: Number(product.estoque_disponivel ?? product.stock ?? 0), canEditTitle: !hasProductIntegration(product) }} />
+                      <InlineProductEditor returnTo={returnTo} product={{ id: product.id, title: product.title, price: Number(product.price || 0), physical: Number(product.estoque_fisico ?? product.stock ?? 0), available: Number(product.estoque_disponivel ?? product.stock ?? 0), canEditTitle: true }} />
                       <td>{formatProductStatus(product.status)}</td>
                       <td>
                         <MarketplaceLogos product={product} />
                       </td>
                       <td>
                         <div className="row-actions">
-                          <button className="secondary compact" type="submit" form={`product-edit-${product.id}`}>Salvar</button>
-                          <form action={sendProductAction}>
+                          {actions.showSave && <ExternalProductActionSubmit label="Salvar" form={`product-edit-${product.id}`} />}
+                          {actions.showSend && actions.saveBeforeSend && <ExternalProductActionSubmit label="Enviar" pendingLabel="Salvando e enviando" form={`product-edit-${product.id}`} name="intent" value="send" />}
+                          {actions.showSend && !actions.saveBeforeSend && <form action={sendProductAction}>
                             <input type="hidden" name="productId" value={product.id} />
-                            <button className="secondary compact" type="submit">{hasProductIntegration(product) ? "Atualizar" : "Enviar"}</button>
-                          </form>
-                          <DeleteProductButton productId={product.id} />
+                            <input type="hidden" name="returnTo" value={returnTo} />
+                            <ProductActionSubmit label="Enviar" pendingLabel="Enviando" />
+                          </form>}
+                          <SynchronizeProductButton productId={product.id} returnTo={returnTo} />
+                          <CloneProductButton productId={product.id} returnTo={returnTo} />
+                          <DeleteProductButton productId={product.id} returnTo={returnTo} />
                         </div>
                       </td>
                     </tr>
-                  ))
+                  )})
                 )}
               </tbody>
             </table>
@@ -170,8 +191,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
 
 async function getProducts(requestedPage: number, filters: ProductFilters) {
   const supabase = supabaseAdmin();
-  const linkedIds = filters.marketplace ? await getLinkedProductIds(supabase) : [];
-  const countQuery = applyProductFilters(supabase.from("products").select("id", { count: "exact", head: true }), filters, linkedIds);
+  const countQuery = applyProductFilters(supabase.from("products_with_link_type").select("id", { count: "exact", head: true }), filters);
   const countResult = await countQuery;
   const total = Number(countResult.count || 0);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -179,10 +199,10 @@ async function getProducts(requestedPage: number, filters: ProductFilters) {
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
   let base: Awaited<ReturnType<typeof queryProductsWithSendFields>> | Awaited<ReturnType<typeof queryProductsBaseFields>> =
-    await queryProductsWithSendFields(supabase, from, to, filters, linkedIds);
+    await queryProductsWithSendFields(supabase, from, to, filters);
 
   if (base.error && /sent_target|tiny_product_id|schema cache|Could not find/i.test(base.error.message)) {
-    base = await queryProductsBaseFields(supabase, from, to, filters, linkedIds);
+    base = await queryProductsBaseFields(supabase, from, to, filters);
   }
 
   if (base.error) {
@@ -198,9 +218,9 @@ async function getProducts(requestedPage: number, filters: ProductFilters) {
   const [listings, marketplaceLinks, images, inventory] = await Promise.all([
     supabase
       .from("listings")
-      .select("id,product_id,marketplace,external_listing_id,status")
+      .select("id,product_id,marketplace,marketplace_account_id,external_listing_id,status")
       .in("product_id", ids),
-    supabase.from("product_marketplaces").select("id,product_id,marketplace,marketplace_product_id,status_anuncio").in("product_id", ids).eq("existe_no_marketplace", true),
+    supabase.from("product_marketplaces").select("id,product_id,marketplace,marketplace_account_id,marketplace_product_id,status_anuncio").in("product_id", ids).eq("existe_no_marketplace", true),
     getProductImages(supabase, ids),
     supabase.from("estoque").select("product_id,estoque_fisico,estoque_disponivel").in("product_id", ids)
   ]);
@@ -216,7 +236,7 @@ async function getProducts(requestedPage: number, filters: ProductFilters) {
     const productId = String(link.product_id);
     const current = listingsByProduct.get(productId) || [];
     if (!current.some((item) => item.marketplace === link.marketplace && item.external_listing_id === link.marketplace_product_id)) {
-      current.push({ id: String(link.id), marketplace: String(link.marketplace), external_listing_id: String(link.marketplace_product_id), status: String(link.status_anuncio || "") });
+      current.push({ id: String(link.id), marketplace: String(link.marketplace), marketplace_account_id: String(link.marketplace_account_id), external_listing_id: String(link.marketplace_product_id), status: String(link.status_anuncio || "") });
     }
     listingsByProduct.set(productId, current);
   }
@@ -243,9 +263,9 @@ async function getProducts(requestedPage: number, filters: ProductFilters) {
   };
 }
 
-function queryProductsWithSendFields(supabase: ReturnType<typeof supabaseAdmin>, from: number, to: number, filters: ProductFilters, linkedIds: string[]) {
+function queryProductsWithSendFields(supabase: ReturnType<typeof supabaseAdmin>, from: number, to: number, filters: ProductFilters) {
   let query = supabase
-    .from("products")
+    .from("products_with_link_type")
     .select(`
       id,
       sku,
@@ -260,13 +280,13 @@ function queryProductsWithSendFields(supabase: ReturnType<typeof supabaseAdmin>,
       sent_target,
       tiny_product_id
     `);
-  query = applyProductFilters(query, filters, linkedIds);
+  query = applyProductFilters(query, filters);
   return applyProductOrder(query, filters.sort).range(from, to);
 }
 
-function queryProductsBaseFields(supabase: ReturnType<typeof supabaseAdmin>, from: number, to: number, filters: ProductFilters, linkedIds: string[]) {
+function queryProductsBaseFields(supabase: ReturnType<typeof supabaseAdmin>, from: number, to: number, filters: ProductFilters) {
   let query = supabase
-    .from("products")
+    .from("products_with_link_type")
     .select(`
       id,
       sku,
@@ -279,7 +299,7 @@ function queryProductsBaseFields(supabase: ReturnType<typeof supabaseAdmin>, fro
       created_at,
       updated_at
     `);
-  query = applyProductFilters(query, filters, linkedIds);
+  query = applyProductFilters(query, filters);
   return applyProductOrder(query, filters.sort).range(from, to);
 }
 
@@ -322,7 +342,7 @@ function ProductThumb({ product }: { product: ProductRow }) {
 }
 
 function MarketplaceLogos({ product }: { product: ProductRow }) {
-  const tinySent = product.sent_target === "TINY" || Boolean(product.tiny_product_id) || product.status === "sent";
+  const tinySent = product.sent_target === "TINY" || Boolean(product.tiny_product_id);
   const published = (product.listings || []).filter((listing) => listing.external_listing_id);
   if (!tinySent && published.length === 0) {
     return <span className="muted">Aguardando envio</span>;
@@ -367,14 +387,13 @@ function filterParams(filters: ProductFilters) {
   return Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
 }
 
-function applyProductFilters<T extends { or: Function; eq: Function; in: Function; not: Function }>(query: T, filters: ProductFilters, linkedIds: string[]): T {
+function applyProductFilters<T extends { or: Function; eq: Function }>(query: T, filters: ProductFilters): T {
   let result: any = query;
   if (filters.q) result = result.or(`sku.ilike.%${escapeSearch(filters.q)}%,title.ilike.%${escapeSearch(filters.q)}%`);
   if (filters.status) result = result.eq("status", filters.status);
   if (filters.brand) result = result.eq("brand_code", filters.brand);
   if (filters.type) result = result.eq("type_code", filters.type);
-  if (filters.marketplace === "linked") result = linkedIds.length ? result.in("id", linkedIds) : result.in("id", ["00000000-0000-0000-0000-000000000000"]);
-  if (filters.marketplace === "unlinked" && linkedIds.length) result = result.not("id", "in", `(${linkedIds.join(",")})`);
+  if (filters.marketplace) result = result.eq("integration_link_type", filters.marketplace);
   return result as T;
 }
 
@@ -383,43 +402,58 @@ function applyProductOrder<T extends { order: Function }>(query: T, sort: Produc
   return query.order(order.column, { ascending: order.ascending }) as T;
 }
 
-async function getLinkedProductIds(supabase: ReturnType<typeof supabaseAdmin>) {
-  const [listings, links, tiny] = await Promise.all([
-    supabase.from("listings").select("product_id").not("external_listing_id", "is", null),
-    supabase.from("product_marketplaces").select("product_id").eq("existe_no_marketplace", true).not("product_id", "is", null),
-    supabase.from("products").select("id").or("tiny_product_id.not.is.null,sent_target.eq.TINY")
-  ]);
-  return [...new Set([...(listings.data || []).map(row => String(row.product_id)), ...(links.data || []).map(row => String(row.product_id)), ...(tiny.data || []).map(row => String(row.id))].filter(Boolean))];
-}
-
 async function getProductFilterOptions() {
   const db = supabaseAdmin();
-  const [statuses, brands, types] = await Promise.all([
+  const [enumStatuses, currentStatuses, brands, types] = await Promise.all([
+    db.rpc("list_product_statuses"),
     db.from("products").select("status").order("status"),
     db.from("config_brands").select("code,name").order("name"),
     db.from("config_types").select("code,description").order("description")
   ]);
+  const statuses: string[] = enumStatuses.error
+    ? (currentStatuses.data || []).map(row => String(row.status))
+    : ((enumStatuses.data || []) as Array<{ status: string }>).map(row => String(row.status));
   return {
-    statuses: [...new Set((statuses.data || []).map(row => String(row.status)).filter(Boolean))],
+    statuses: [...new Set(statuses.filter(Boolean))],
     brands: (brands.data || []) as Array<{ code: string; name: string }>,
     types: (types.data || []) as Array<{ code: string; description: string }>
   };
 }
 
 function hasProductIntegration(product: ProductRow) {
-  return Boolean(product.tiny_product_id || product.sent_target === "TINY" || (product.listings || []).some((listing) => listing.external_listing_id));
+  return Boolean(product.tiny_product_id || (product.listings || []).some((listing) => listing.external_listing_id));
+}
+
+type ProductActionConfiguration = { mode: "TINY" | "MARKETPLACE_DIRETO"; activeAccountIds: string[] };
+
+async function getProductActionConfiguration(): Promise<ProductActionConfiguration> {
+  const db = supabaseAdmin();
+  const [setting, accounts] = await Promise.all([
+    db.from("settings").select("value").eq("key", "PRODUCT_SEND_TARGET").maybeSingle(),
+    db.from("config_marketplace_accounts").select("id").in("marketplace", ["mercado_livre", "shopee"]).eq("active", true)
+  ]);
+  return {
+    mode: String(setting.data?.value || "TINY") === "MARKETPLACE_DIRETO" ? "MARKETPLACE_DIRETO" : "TINY",
+    activeAccountIds: (accounts.data || []).map(account => String(account.id))
+  };
+}
+
+function productActions(product: ProductRow, configuration: ProductActionConfiguration) {
+  return getProductActionState(configuration.mode, configuration.activeAccountIds, {
+    tinyProductId: product.tiny_product_id,
+    marketplaceLinks: (product.listings || []).map(listing => ({ accountId: listing.marketplace_account_id, externalId: listing.external_listing_id }))
+  });
 }
 
 function formatProductStatus(status: string) {
   if (status === "pending_price") {
-    return "Aguardando Preço";
+    return "Aguardando avaliação de preço";
   }
   if (status === "manual_price") {
-    return "Definir Preço Manual";
+    return "Aguardando definição manual de preço";
   }
-  if (["draft", "ready"].includes(status)) {
-    return "Pendente de Envio";
-  }
+  if (status === "draft") return "Rascunho — aguardando envio";
+  if (status === "ready") return "Pronto para envio";
 
   const labels: Record<string, string> = {
     publishing: "Enviando",

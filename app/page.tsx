@@ -5,7 +5,8 @@ import { hasGoogleDriveConfig } from "@/lib/google-drive";
 import { getGoogleDriveSettings } from "@/lib/google-drive-config";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getCurrentUser } from "@/lib/auth";
-import { deferredShipping, salePostedAt, saleShippingAction } from "@/lib/sales-fulfillment";
+import { deferredShipping, overduePrintedLabel, salePostedAt, saleShippingAction } from "@/lib/sales-fulfillment";
+import { AWAITING_SEND_PRODUCT_STATUSES } from "@/lib/product-sender";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -68,17 +69,23 @@ export default async function HomePage() {
         <section className="grid metrics">
           <Metric label="Produtos ativos" value={String(dashboardCounts.active)} />
           <Metric label="Estoque zerado" value={String(dashboardCounts.zeroStock)} />
-          <Metric label="Aguardando envio" value={String(dashboardCounts.waiting)} />
-          <Metric label="Erros para revisar" value={String(dashboardCounts.errors)} />
+          <Metric label="Aguardando envio" value={String(dashboardCounts.waiting)} helper="Inclui pendências de avaliação ou definição manual de preço." />
+          <Metric label="Erros para revisar" value={String(dashboardCounts.errors)} helper="Produtos ou anúncios com status ou mensagem de erro." />
         </section>
 
         <section className="grid metrics sales-metrics" aria-label="Resumo de vendas">
+          <Metric label="ENVIOS EM ATRASO" value={String(salesMetrics.overdueShipments)} alert={salesMetrics.overdueShipments > 0} />
           <Metric label="Vendas para enviar hoje" value={String(salesMetrics.toShipToday)} />
           <Metric label="Vendas desta semana" value={String(salesMetrics.currentWeek)} />
-          <MetricWithTrend label="Vendas do mês" value={String(salesMetrics.currentMonthCount)} trend={salesMetrics.monthCountTrend} />
-          <MetricWithTrend label="Valor total das vendas do mês" value={formatCurrency(salesMetrics.currentMonthValue)} trend={salesMetrics.monthValueTrend} />
-          <MetricWithTrend label="Valor líquido a receber" value={formatCurrency(salesMetrics.currentMonthNetValue)} trend={salesMetrics.monthNetTrend} />
-          <MetricWithTrend label="Valor a pagar de frete do mês" value={formatCurrency(salesMetrics.currentMonthFreight)} trend={salesMetrics.monthFreightTrend} />
+          <MetricWithTrend label="Vendas do mês" value={String(salesMetrics.currentMonthCount)} trend={salesMetrics.monthCountTrend} previousMonthTotal={String(salesMetrics.previousFullMonthCount)} />
+          <Metric label="Valor total líquido do dia" value={formatCurrency(salesMetrics.currentDayNetValue)} helper={[
+            `Valor total das taxas: ${formatCurrency(salesMetrics.currentDayFees)}`,
+            `Valor total do frete: ${formatCurrency(salesMetrics.currentDayFreight)}`,
+            `Valor bruto das vendas do dia: ${formatCurrency(salesMetrics.currentDayGrossValue)}`
+          ]} />
+          <MetricWithTrend label="Valor total das vendas do mês" value={formatCurrency(salesMetrics.currentMonthValue)} trend={salesMetrics.monthValueTrend} previousMonthTotal={formatCurrency(salesMetrics.previousFullMonthValue)} />
+          <MetricWithTrend label="Valor líquido a receber" value={formatCurrency(salesMetrics.currentMonthNetValue)} trend={salesMetrics.monthNetTrend} previousMonthTotal={formatCurrency(salesMetrics.previousFullMonthNetValue)} />
+          <MetricWithTrend label="Valor a pagar de frete do mês" value={formatCurrency(salesMetrics.currentMonthFreight)} trend={salesMetrics.monthFreightTrend} previousMonthTotal={formatCurrency(salesMetrics.previousFullMonthFreight)} />
         </section>
 
         <section className="section card" id="pipeline">
@@ -168,35 +175,6 @@ export default async function HomePage() {
           </table>
         </section>
 
-        <section className="section card" id="integracoes">
-          <h2>Integracoes</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Servico</th>
-                <th>Status</th>
-                <th>Origem</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Supabase</td>
-                <td><span className="status">Conectado</span></td>
-                <td>Tabelas products, listings e configuracoes</td>
-              </tr>
-              <tr>
-                <td>Mercado Livre</td>
-                <td><span className="status">Draft</span></td>
-                <td>Anuncios criados em listings antes do envio</td>
-              </tr>
-              <tr>
-                <td>Shopee</td>
-                <td><span className="status">Draft</span></td>
-                <td>Anuncios criados em listings antes do envio</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
       </section>
     </main>
   );
@@ -206,39 +184,26 @@ async function getDashboardProductCounts(supabase: ReturnType<typeof supabaseAdm
   const [
     activeResult,
     zeroStockResult,
-    productsResult,
-    listingLinksResult,
-    marketplaceLinksResult,
+    waitingResult,
     productErrorsResult,
     listingErrorsResult
   ] = await Promise.all([
     supabase.from("products").select("*", { count: "exact", head: true }).gt("stock", 0),
     supabase.from("products").select("*", { count: "exact", head: true }).eq("stock", 0),
-    supabase.from("products").select("id,tiny_product_id,sent_target"),
-    supabase.from("listings").select("product_id").not("external_listing_id", "is", null),
-    supabase.from("product_marketplaces").select("product_id").eq("existe_no_marketplace", true).not("product_id", "is", null),
+    supabase.from("products").select("*", { count: "exact", head: true }).in("status", AWAITING_SEND_PRODUCT_STATUSES),
     supabase.from("products").select("id").eq("status", "error"),
     supabase.from("listings").select("product_id").or("status.eq.error,error_message.not.is.null")
   ]);
 
-  const linkedProductIds = new Set<string>([
-    ...(listingLinksResult.data || []).map((row) => String(row.product_id)),
-    ...(marketplaceLinksResult.data || []).map((row) => String(row.product_id))
-  ]);
-  const waiting = (productsResult.data || []).filter((product) => {
-    const linkedToTiny = Boolean(product.tiny_product_id || product.sent_target === "TINY");
-    return !linkedToTiny && !linkedProductIds.has(String(product.id));
-  }).length;
-
   const errorProductIds = new Set<string>([
     ...(productErrorsResult.data || []).map((row) => String(row.id)),
-    ...(listingErrorsResult.data || []).map((row) => String(row.product_id))
+    ...(listingErrorsResult.data || []).filter((row) => row.product_id).map((row) => String(row.product_id))
   ]);
 
   return {
     active: activeResult.count ?? 0,
     zeroStock: zeroStockResult.count ?? 0,
-    waiting,
+    waiting: waitingResult.count ?? 0,
     errors: errorProductIds.size
   };
 }
@@ -267,10 +232,13 @@ async function getDashboardSalesMetrics(supabase: ReturnType<typeof supabaseAdmi
   const currentWeek = localWeekRange(now);
   const currentMonth = localMonthRange(now, 0);
   const previousMonth = localMonthRange(now, -1);
+  const previousComparableMonth = previousMonthComparableRange(now);
 
-  const toShipToday = sales.filter((sale) =>
-    !deferredShipping(sale) && Boolean(saleShippingAction(sale))
-  ).length;
+  const salesToShipToday = sales.filter((sale) =>
+    !deferredShipping(sale) && !overduePrintedLabel(sale) && Boolean(saleShippingAction(sale))
+  );
+  const toShipToday = salesToShipToday.length;
+  const overdueShipments = sales.filter((sale) => overduePrintedLabel(sale)).length;
 
   const currentWeekCount = sales.filter((sale) => {
     const postedAt = salePostedAt(sale);
@@ -279,37 +247,57 @@ async function getDashboardSalesMetrics(supabase: ReturnType<typeof supabaseAdmi
 
   const monthSales = sales.filter((sale) => isWithin(saleDate(sale), currentMonth.start, currentMonth.end));
   const previousMonthSales = sales.filter((sale) => isWithin(saleDate(sale), previousMonth.start, previousMonth.end));
+  const previousComparableSales = sales.filter((sale) => isWithin(saleDate(sale), previousComparableMonth.start, previousComparableMonth.end));
   const currentMonthValue = sumSales(monthSales);
+  const currentDayNetValue = sumNetSales(salesToShipToday);
+  const currentDayGrossValue = sumSales(salesToShipToday);
+  const currentDayFees = sumSaleField(salesToShipToday, "valor_taxas");
+  const currentDayFreight = sumSaleField(salesToShipToday, "valor_frete");
   const previousMonthValue = sumSales(previousMonthSales);
   const currentMonthNetValue = sumNetSales(monthSales);
   const previousMonthNetValue = sumNetSales(previousMonthSales);
   const currentMonthFreight = sumSaleField(monthSales, "valor_frete");
   const previousMonthFreight = sumSaleField(previousMonthSales, "valor_frete");
+  const previousComparableValue = sumSales(previousComparableSales);
+  const previousComparableNetValue = sumNetSales(previousComparableSales);
+  const previousComparableFreight = sumSaleField(previousComparableSales, "valor_frete");
 
   return {
     toShipToday,
+    overdueShipments,
     currentWeek: currentWeekCount,
     currentMonthCount: monthSales.length,
+    currentDayNetValue,
+    currentDayGrossValue,
+    currentDayFees,
+    currentDayFreight,
     currentMonthValue,
     currentMonthNetValue,
     currentMonthFreight,
-    monthCountTrend: percentageChange(monthSales.length, previousMonthSales.length),
-    monthValueTrend: percentageChange(currentMonthValue, previousMonthValue),
-    monthNetTrend: percentageChange(currentMonthNetValue, previousMonthNetValue),
-    monthFreightTrend: percentageChange(currentMonthFreight, previousMonthFreight)
+    previousFullMonthCount: previousMonthSales.length,
+    previousFullMonthValue: previousMonthValue,
+    previousFullMonthNetValue: previousMonthNetValue,
+    previousFullMonthFreight: previousMonthFreight,
+    monthCountTrend: percentageChange(monthSales.length, previousComparableSales.length),
+    monthValueTrend: percentageChange(currentMonthValue, previousComparableValue),
+    monthNetTrend: percentageChange(currentMonthNetValue, previousComparableNetValue),
+    monthFreightTrend: percentageChange(currentMonthFreight, previousComparableFreight)
   };
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, helper, alert = false }: { label: string; value: string; helper?: string | string[]; alert?: boolean }) {
   return (
-    <div className="card">
+    <div className={`card${alert ? " metric-alert" : ""}`}>
       <div className="metric-label">{label}</div>
       <div className="metric-value">{value}</div>
+      {helper && (Array.isArray(helper)
+        ? helper.map((line) => <div className="metric-comparison" key={line}>{line}</div>)
+        : <div className="metric-comparison">{helper}</div>)}
     </div>
   );
 }
 
-function MetricWithTrend({ label, value, trend }: { label: string; value: string; trend: number }) {
+function MetricWithTrend({ label, value, trend, previousMonthTotal }: { label: string; value: string; trend: number; previousMonthTotal: string }) {
   const direction = trend > 0 ? "up" : trend < 0 ? "down" : "neutral";
   return (
     <div className="card">
@@ -321,7 +309,8 @@ function MetricWithTrend({ label, value, trend }: { label: string; value: string
           {Math.abs(trend)}%
         </span>
       </div>
-      <div className="metric-comparison">comparado ao mês anterior</div>
+      <div className="metric-comparison">comparado ao mesmo período do mês anterior</div>
+      <div className="metric-comparison">Total do mês anterior: {previousMonthTotal}</div>
     </div>
   );
 }
@@ -351,6 +340,14 @@ function localMonthRange(date: Date, monthOffset: number) {
   return { start, end };
 }
 
+function previousMonthComparableRange(date: Date) {
+  const parts = saoPauloParts(date);
+  const start = saoPauloDate(parts.year, parts.month - 2, 1);
+  const previousMonthEnd = saoPauloDate(parts.year, parts.month - 1, 1);
+  const samePeriodEnd = saoPauloDate(parts.year, parts.month - 2, parts.day + 1);
+  return { start, end: samePeriodEnd < previousMonthEnd ? samePeriodEnd : previousMonthEnd };
+}
+
 function saoPauloDate(year: number, zeroBasedMonth: number, day: number) {
   return new Date(Date.UTC(year, zeroBasedMonth, day, 3));
 }
@@ -372,7 +369,7 @@ function sumSales(sales: DashboardSale[]) {
   return sales.reduce((total, sale) => total + Number(sale.valor_produtos || 0), 0);
 }
 
-function sumSaleField(sales: DashboardSale[], field: "valor_frete" | "valor_liquido") {
+function sumSaleField(sales: DashboardSale[], field: "valor_frete" | "valor_taxas" | "valor_liquido") {
   return sales.reduce((total, sale) => total + Number(sale[field] || 0), 0);
 }
 

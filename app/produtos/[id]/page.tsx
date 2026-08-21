@@ -1,11 +1,12 @@
 import { Sidebar } from "@/app/components/sidebar";
-import { sendProductDetailAction } from "../actions";
+import { resendProductIntegrationAction } from "../actions";
 import { IntegrationDeleteButton } from "./integration-delete-button";
 import { buildProductDescription } from "@/lib/dynamic-product-description";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ProductEditor } from "./product-editor";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const supabase = supabaseAdmin();
 
@@ -16,6 +17,7 @@ type ProductDetail = {
   type_code: string;
   brand_code: string;
   special_code: string | null;
+  product_condition: "new" | "used";
   model: string | null;
   version: string | null;
   board_code: string | null;
@@ -49,6 +51,8 @@ type ProductDetail = {
     marketplace_name?: string | null;
     external_url?: string | null;
     marketplace_account_id?: string | null;
+    marketplace_shop_id?: string | null;
+    moderation_reason?: string | null;
   }>;
 };
 
@@ -63,6 +67,7 @@ type IntegrationRow = {
   canRemove: boolean;
   url: string;
   accountId: string;
+  moderationReason?: string;
 };
 
 export default async function ProductDetailPage({
@@ -70,7 +75,7 @@ export default async function ProductDetailPage({
   searchParams
 }: {
   params: { id: string };
-  searchParams?: { erro?: string; sucesso?: string };
+  searchParams?: { erro?: string; sucesso?: string; returnTo?: string };
 }) {
   const product = await getProduct(params.id);
 
@@ -86,16 +91,19 @@ export default async function ProductDetailPage({
   }
 
   const typed = product as ProductDetail;
+  const requestedReturn = String(searchParams?.returnTo || "/produtos");
+  const returnTo = requestedReturn.startsWith("/produtos") && !requestedReturn.startsWith("//") ? requestedReturn : "/produtos";
   const integrations = buildIntegrationRows(typed);
-  const [{ data: type }, { data: brand }, { data: special }, types, brands, specials] = await Promise.all([
+  const [{ data: type }, { data: brand }, { data: special }, types, brands, specials, categoryMappings] = await Promise.all([
     supabase.from("config_types").select("*").eq("code", typed.type_code).maybeSingle(),
     supabase.from("config_brands").select("*").eq("code", typed.brand_code).maybeSingle(),
     typed.special_code
       ? supabase.from("config_specials").select("*").eq("code", typed.special_code).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from("config_types").select("code,description").order("description"),
+    supabase.from("config_types").select("code,description,marketplace_category").order("description"),
     supabase.from("config_brands").select("code,name").order("name"),
-    supabase.from("config_specials").select("code,notes,include_description").order("code")
+    supabase.from("config_specials").select("code,notes,include_description").order("code"),
+    supabase.from("marketplace_category_mappings").select("*").order("internal_category")
   ]);
   const description = removeSpecialFragments(
     buildProductDescription(typed, type, brand, special),
@@ -103,7 +111,12 @@ export default async function ProductDetailPage({
   );
 
   const row = typed as unknown as Record<string, unknown>;
-  const editable = { ...typed, description,
+  const storedCategories = (row.marketplace_categories || {}) as Record<string, unknown>;
+  const correctedCategories = typed.type_code === "OT"
+    ? { ...storedCategories, internal_category: String((storedCategories as any).internal_category || type?.marketplace_category || "") }
+    : { ...storedCategories, internal_category: String(type?.marketplace_category || "") };
+  const editable = { ...typed, description, marketplace_categories: correctedCategories, marketplace_active_attributes: type?.marketplace_active_attributes ?? null,
+    brand_name: String(brand?.name || ""),
     width: Number(row.width ?? type?.width ?? 0), height: Number(row.height ?? type?.height ?? 0), length: Number(row.length ?? type?.length ?? 0),
     weight_net: Number(row.weight_net ?? type?.weight_net ?? 0), weight_gross: Number(row.weight_gross ?? type?.weight_gross ?? 0) };
 
@@ -111,14 +124,20 @@ export default async function ProductDetailPage({
     <main className="shell">
       <Sidebar />
       <section className="main">
+        <div className="product-detail-back"><a className="secondary link-button" href={returnTo}>Voltar para produtos</a></div>
         {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
         {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
 
         <ProductEditor product={editable as unknown as Record<string, string | number | null>}
-          types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}` }))}
+          types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}`, marketplaceCategory: String(item.marketplace_category || "") }))}
           brands={(brands.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.name}` }))}
           specials={(specials.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.notes || item.include_description || item.code}` }))}
-          images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: image.cloudinary_url || image.local_url || image.url || "", position: image.position })).filter(image => image.url)} />
+          images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: image.cloudinary_url || image.local_url || image.url || "", position: image.position })).filter(image => image.url)}
+          categoryMappings={(categoryMappings.data || []) as any}
+          marketplaceLinks={{
+            mercado_livre: integrations.some(item => item.integration === "MERCADO_LIVRE"),
+            shopee: integrations.some(item => item.integration === "SHOPEE")
+          }} />
 
         <section className="section card">
           <h2>Envios realizados</h2>
@@ -145,12 +164,15 @@ export default async function ProductDetailPage({
                       <td>{integration.name}</td>
                       <td><a href={integration.url} target="_blank" rel="noopener noreferrer" className="external-product-link">{integration.code}</a></td>
                       <td>{integration.sku}</td>
-                      <td>{formatProductStatus(integration.status)}</td>
+                      <td>{formatProductStatus(integration.status)}{integration.moderationReason ? <div className="muted">{integration.moderationReason}</div> : null}</td>
                       <td>{integration.sentAt}</td>
                       <td>
                         <div className="row-actions">
-                          <form action={sendProductDetailAction}>
+                          <form action={resendProductIntegrationAction}>
                             <input type="hidden" name="productId" value={typed.id} />
+                            <input type="hidden" name="integration" value={integration.integration} />
+                            <input type="hidden" name="externalId" value={integration.code} />
+                            <input type="hidden" name="accountId" value={integration.accountId} />
                             <button className="secondary compact" type="submit">Reenviar/Atualizar</button>
                           </form>
                           {integration.canRemove ? (
@@ -242,7 +264,7 @@ async function attachMarketplaceLinks(product: Record<string, unknown> | null, p
   if (!product) return product;
   const { data } = await supabase
     .from("product_marketplaces")
-    .select("id,marketplace,marketplace_product_id,marketplace_account_id,sku,status_anuncio,valor_marketplace,estoque_marketplace,updated_at,raw_data,config_marketplace_accounts(name)")
+    .select("id,marketplace,marketplace_product_id,marketplace_account_id,sku,status_anuncio,valor_marketplace,estoque_marketplace,updated_at,raw_data,config_marketplace_accounts(name,shop_id)")
     .eq("product_id", productId)
     .eq("existe_no_marketplace", true);
   const original = (product.listings || []) as ProductDetail["listings"];
@@ -262,9 +284,12 @@ async function attachMarketplaceLinks(product: Record<string, unknown> | null, p
       existing.stock = Number(link.estoque_marketplace || 0);
       existing.price = Number(link.valor_marketplace || existing.price || 0);
       existing.last_sync_at = link.updated_at ? String(link.updated_at) : existing.last_sync_at;
-      existing.marketplace_name = String((link.config_marketplace_accounts as { name?: string } | null)?.name || existing.marketplace_name || "");
+      const account = link.config_marketplace_accounts as { name?: string; shop_id?: string } | null;
+      existing.marketplace_name = String(account?.name || existing.marketplace_name || "");
       existing.marketplace_account_id = String(link.marketplace_account_id || existing.marketplace_account_id || "");
+      existing.marketplace_shop_id = String(account?.shop_id || existing.marketplace_shop_id || "");
       existing.external_url = String((link.raw_data as { permalink?: string } | null)?.permalink || mercadoLivreUrl(String(link.marketplace_product_id)));
+      existing.moderation_reason = String((link.raw_data as { moderation_reason?: string } | null)?.moderation_reason || "");
       continue;
     }
     current.push({
@@ -280,6 +305,8 @@ async function attachMarketplaceLinks(product: Record<string, unknown> | null, p
       ,marketplace_name: String((link.config_marketplace_accounts as { name?: string } | null)?.name || "")
       ,external_url: String((link.raw_data as { permalink?: string } | null)?.permalink || mercadoLivreUrl(String(link.marketplace_product_id)))
       ,marketplace_account_id: String(link.marketplace_account_id || "")
+      ,marketplace_shop_id: String((link.config_marketplace_accounts as { shop_id?: string } | null)?.shop_id || "")
+      ,moderation_reason: String((link.raw_data as { moderation_reason?: string } | null)?.moderation_reason || "")
     });
   }
   return { ...product, listings: current };
@@ -317,9 +344,12 @@ function buildIntegrationRows(product: ProductDetail): IntegrationRow[] {
       sku: listing.external_sku || "-",
       status: listing.status,
       sentAt: formatDate(listing.last_sync_at),
-      canRemove: !isShopee
-      ,url: isShopee ? shopeeProductUrl(listing.external_listing_id) : (listing.external_url || mercadoLivreUrl(listing.external_listing_id))
+      canRemove: true
+      ,url: isShopee
+        ? shopeeProductUrl(listing.marketplace_shop_id || "", listing.external_listing_id)
+        : (listing.external_url || mercadoLivreUrl(listing.external_listing_id))
       ,accountId: listing.marketplace_account_id || ""
+      ,moderationReason: listing.moderation_reason || ""
     });
   }
 
@@ -335,8 +365,10 @@ function tinyProductUrl(productId: string) {
   return `https://erp.tiny.com.br/produtos#edit/${encodeURIComponent(productId)}`;
 }
 
-function shopeeProductUrl(itemId: string) {
-  return `https://shopee.com.br/product/0/${encodeURIComponent(itemId)}`;
+function shopeeProductUrl(shopId: string, itemId: string) {
+  return shopId
+    ? `https://shopee.com.br/product/${encodeURIComponent(shopId)}/${encodeURIComponent(itemId)}`
+    : `https://shopee.com.br/search?keyword=${encodeURIComponent(itemId)}`;
 }
 
 function Info({ label, value }: { label: string; value: string }) {
@@ -379,20 +411,20 @@ function formatDate(value: string | null | undefined) {
 
 function formatProductStatus(status: string) {
   if (status === "pending_price") {
-    return "Aguardando Preço";
+    return "Aguardando avaliação de preço";
   }
   if (status === "manual_price") {
-    return "Definir Preço Manual";
+    return "Aguardando definição manual de preço";
   }
-  if (["draft", "ready"].includes(status)) {
-    return "Pendente de Envio";
-  }
+  if (status === "draft") return "Rascunho — aguardando envio";
+  if (status === "ready") return "Pronto para envio";
 
   const labels: Record<string, string> = {
     publishing: "Enviando",
     sent: "Enviado",
     active: "Ativo",
     paused: "Pausado",
+    under_review: "Finalizado pelo Mercado Livre",
     error: "Erro"
   };
 

@@ -39,6 +39,7 @@ class MercadoLivreClient implements MarketplaceClient {
         buying_mode: "buy_it_now",
         condition: "used",
         listing_type_id: "gold_special",
+        shipping: { mode: "me2", local_pick_up: false, free_shipping: false },
         pictures: payload.images.map((source) => ({ source })),
         attributes: [{ id: "SELLER_SKU", value_name: payload.sku }]
       })

@@ -2,7 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ["playwright-core"]
+    serverComponentsExternalPackages: ["playwright-core"],
+    serverActions: {
+      bodySizeLimit: "50mb"
+    }
   }
 };
 

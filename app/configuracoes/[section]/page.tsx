@@ -9,6 +9,8 @@ import {
 import { formatMarketplaceDateTime, marketplaceDisplayStatus } from "@/lib/marketplace-accounts-view";
 import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
+import { TypeConfiguration } from "../type-configuration";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,14 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
   const marketplaceFirst = section === "marketplace";
   const newMarketplace = normalizeNewMarketplace(searchParams?.novo);
 
+  if (section === "tipo") {
+    const mappings = await supabaseAdmin().from("marketplace_category_mappings").select("*").order("internal_category").throwOnError();
+    return <main className="shell"><Sidebar/><section className="main"><div className="topbar"><div><h1>Configurações: Tipo</h1><div className="subtitle">Tipos, categorias, atributos, medidas e templates.</div></div></div>
+      {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}{searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
+      <TypeConfiguration rows={data.rows} mappings={(mappings.data || []) as any} editRow={data.editRow} showForm={Boolean(data.editRow || searchParams?.novo)}/>
+    </section></main>;
+  }
+
   return (
     <main className="shell">
       <Sidebar />
@@ -67,7 +77,9 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
           </section>
         )}
 
-        {section === "preco" ? (
+        {section === "config-geral" ? (
+          <GeneralConfigurationTable data={data} />
+        ) : section === "preco" ? (
           <>
             {data.editRow && <ConfigurationForm section={section} data={data} newMarketplace={newMarketplace} />}
             <PriceConfigurationGroups data={data} />
@@ -86,6 +98,45 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
       </section>
     </main>
   );
+}
+
+function GeneralConfigurationTable({ data }: { data: ConfigurationPageData }) {
+  const labels: Record<string, { title: string; description: string }> = {
+    ESTOQUE_INICIAL: { title: "Estoque inicial", description: "Quantidade inicial aplicada ao criar um produto." },
+    CARREGAMENTO_PRODUTOS_AUTOMATICO: { title: "Carregamento automático de produtos", description: "Carrega produtos automaticamente após encontrar novas fotos no Google Drive." },
+    ENVIAR_PRODUTOS_AUTOMATICO: { title: "Envio automático de produtos", description: "Envia automaticamente os produtos aprovados pelas regras de preço ao destino definido em Integrações." }
+  };
+  return <section className="card">
+    <div className="table-toolbar"><div><h2>Configurações gerais</h2><p className="muted">Parâmetros obrigatórios do fluxo de produtos.</p></div></div>
+    <div className="table-wrap"><table><thead><tr><th>Parâmetro</th><th>Valor</th><th>Descrição</th><th>Ação</th></tr></thead><tbody>
+      {data.rows.map((row) => {
+        const key = String(row.key || "");
+        const item = labels[key] || { title: key, description: String(row.description || "") };
+        const current = String(row.value ?? "").toUpperCase();
+        return <tr key={key}>
+          <td><strong>{item.title}</strong><small>{key}</small></td>
+          <td colSpan={2}>
+            <form action={saveConfigurationAction} className="inline-edit-form">
+              <input type="hidden" name="section" value="config-geral" />
+              <input type="hidden" name="originalKey" value={key} />
+              <input type="hidden" name="key" value={key} />
+              <input type="hidden" name="description" value={`[CONFIG_GERAL] ${item.description}`} />
+              {key === "ESTOQUE_INICIAL" ? (
+                <input aria-label={item.title} name="value" type="number" min="0" step="1" required defaultValue={String(row.value ?? 0)} />
+              ) : (
+                <select aria-label={item.title} name="value" required defaultValue={current === "SIM" ? "SIM" : "NÃO"}>
+                  <option value="SIM">SIM</option><option value="NÃO">NÃO</option>
+                </select>
+              )}
+              <span className="muted">{item.description}</span>
+              <button className="primary compact" type="submit">Salvar</button>
+            </form>
+          </td>
+          <td><span className="muted">Obrigatória</span></td>
+        </tr>;
+      })}
+    </tbody></table></div>
+  </section>;
 }
 
 function ConfigurationForm({

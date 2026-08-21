@@ -1,0 +1,16 @@
+.git
+.next
+node_modules
+.npm-cache
+.agents
+.codex
+.vscode
+tmp
+work
+outputs
+marketplace-api/node_modules
+*.log
+service-account.json
+.env*
+produtos-render-teste.html
+claro_somos_nos_novos_nomes*.png

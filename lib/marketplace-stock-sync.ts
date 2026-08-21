@@ -11,6 +11,7 @@ import { listMarketplaceAccountRows, updateMarketplaceAccountColumns } from "./m
 import { supabaseAdmin } from "./supabase-admin";
 import { randomUUID } from "crypto";
 import { logSynchronizationResult } from "./synchronization-logs";
+import { reconcileProductIntegrationStatus } from "./product-integration-status";
 
 type StockSyncProgress = {
   status: "idle" | "running" | "done" | "failed";
@@ -220,7 +221,7 @@ async function stepMercadoLivreSync(accountId: string, progress: StockSyncProgre
     processedFiles,
     syncedProducts,
     percent: progress.totalFiles > 0 ? Math.round(20 + (processedFiles / progress.totalFiles) * 80) : 100,
-    message: "Sincronizando anuncios.",
+    message: `${processedFiles} de ${progress.totalFiles} produtos sincronizados.`,
     updatedListings,
     includedListings,
     linkedListings
@@ -310,8 +311,8 @@ async function syncShopeeAccount(accountId: string, progress: StockSyncProgress)
 
 async function finishProgress(progress: StockSyncProgress) {
   let deletedListings = progress.deletedListings;
-  if (progress.marketplace === "mercado_livre" && progress.runId) {
-    deletedListings += await deleteListingsNotSeenInRun(progress.accountId, progress.runId);
+  if (progress.runId) {
+    deletedListings += await deleteListingsNotSeenInRun(progress.accountId, progress.runId, progress.itemIds);
   }
   const finished: StockSyncProgress = {
     ...progress,
@@ -393,14 +394,22 @@ function progressKey(accountId: string) {
   return `MARKETPLACE_STOCK_SYNC_${accountId}`;
 }
 
-async function deleteListingsNotSeenInRun(accountId: string, runId: string) {
+async function deleteListingsNotSeenInRun(accountId: string, runId: string, currentListingIds: string[]) {
   const db = supabaseAdmin();
-  const { data } = await db.from("product_marketplaces")
-    .select("id,marketplace_product_id")
-    .eq("marketplace_account_id", accountId)
-    .or(`last_seen_run_id.is.null,last_seen_run_id.neq.${runId}`)
-    .throwOnError();
-  const stale = data || [];
+  const [marketplaceResult, listingResult] = await Promise.all([
+    db.from("product_marketplaces").select("id,marketplace_product_id,product_id")
+      .eq("marketplace_account_id", accountId)
+      .or(`last_seen_run_id.is.null,last_seen_run_id.neq.${runId}`).throwOnError(),
+    db.from("listings").select("id,external_listing_id,product_id")
+      .eq("marketplace_account_id", accountId).throwOnError()
+  ]);
+  const stale = marketplaceResult.data || [];
+  const currentIds = new Set(currentListingIds.map(String));
+  const staleLegacyListings = (listingResult.data || []).filter(row => !currentIds.has(String(row.external_listing_id || "")));
+  const affectedProductIds = [...new Set([
+    ...stale.map(row => row.product_id ? String(row.product_id) : ""),
+    ...staleLegacyListings.map(row => row.product_id ? String(row.product_id) : "")
+  ].filter(Boolean))];
   for (let index = 0; index < stale.length; index += 200) {
     const batch = stale.slice(index, index + 200);
     const externalIds = batch.map(row => row.marketplace_product_id).filter(Boolean);
@@ -409,7 +418,11 @@ async function deleteListingsNotSeenInRun(accountId: string, runId: string) {
     }
     await db.from("product_marketplaces").delete().in("id", batch.map(row => row.id)).throwOnError();
   }
-  return stale.length;
+  if (staleLegacyListings.length) {
+    await db.from("listings").delete().in("id", staleLegacyListings.map(row => row.id)).throwOnError();
+  }
+  for (const productId of affectedProductIds) await reconcileProductIntegrationStatus(productId);
+  return new Set([...stale.map(row => String(row.marketplace_product_id)), ...staleLegacyListings.map(row => String(row.external_listing_id))]).size;
 }
 
 function normalizeSku(value: unknown) {

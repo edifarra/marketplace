@@ -6,6 +6,8 @@ type FulfillmentSale = {
   raw_data: Record<string, unknown> | null;
 };
 
+const SAO_PAULO_OFFSET_MS = 3 * 60 * 60 * 1000;
+
 export function extractSaleShipping(raw: Record<string, unknown>) {
   const payload = (raw.payload || raw) as Record<string, any>;
   return (payload.shipment || payload.order?.shipping || payload.data?.shipment || {}) as Record<string, any>;
@@ -42,6 +44,37 @@ export function saleShippingAction(sale: FulfillmentSale): SaleShippingAction {
     return "print_label";
   }
   return /^(CONFIRMED|TO_SHIP)$/i.test(status) ? "arrange_shipment" : null;
+}
+
+export function overduePrintedLabel(sale: FulfillmentSale, now = Date.now()) {
+  const printedAt = saleLabelPrintedAt(sale);
+  if (!printedAt || saleShippingAction(sale) !== "print_label") return false;
+
+  const printedInSaoPaulo = new Date(printedAt.getTime() - SAO_PAULO_OFFSET_MS);
+  const deadline = Date.UTC(
+    printedInSaoPaulo.getUTCFullYear(),
+    printedInSaoPaulo.getUTCMonth(),
+    printedInSaoPaulo.getUTCDate(),
+    19,
+    30
+  );
+  return Number.isFinite(deadline) && now >= deadline;
+}
+
+export function saleLabelPrintedAt(sale: FulfillmentSale) {
+  const raw = sale.raw_data || {};
+  const payload = (raw.payload || raw) as Record<string, any>;
+  const history = Array.isArray(payload.shipmentHistory) ? payload.shipmentHistory : [];
+  const candidates = [
+    parseDate(raw.marketplace_label_printed_at),
+    ...history
+      .filter((event: Record<string, any>) =>
+        String(event.status || "").toLowerCase() === "printed"
+        || String(event.substatus || "").toLowerCase() === "printed"
+      )
+      .map((event: Record<string, any>) => parseDate(event.date))
+  ].filter((date: Date | null): date is Date => Boolean(date));
+  return candidates.sort((left, right) => left.getTime() - right.getTime())[0] || null;
 }
 
 export function deferredShipping(sale: FulfillmentSale, now = Date.now()) {

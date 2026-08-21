@@ -2,6 +2,7 @@ import { Sidebar } from "../components/sidebar";
 import { ConfirmActionButton } from "./confirm-action-button";
 import { StockSyncButton } from "./stock-sync-button";
 import { LinkMarketplaceButton } from "./link-marketplace-button";
+import { SynchronizeSkuButton } from "./synchronize-sku-button";
 import {
   deleteSystemProductOnlyAction,
   importMarketplaceSkuAction,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/migration-stock";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 type PageProps = {
   searchParams?: {
@@ -205,6 +207,7 @@ function MarketplacePresenceTable({ rows, view, status, stock }: { rows: Awaited
                 <td><MarketplaceBadges links={row.marketplaces} /></td>
                 <td>
                   <div className="row-actions">
+                    <SynchronizeSkuButton sku={row.sku} view={view} />
                     {isMarketplaceOnly && <ActionForm sku={row.sku} action={importMarketplaceSkuAction} label="Cadastrar" />}
                     {isMarketplaceOnly && <LinkMarketplaceButton sku={row.sku} status={status} stock={stock} />}
                     {isMarketplaceOnly && (
@@ -266,6 +269,7 @@ function SystemOnlyTable({ rows }: { rows: Awaited<ReturnType<typeof getMigratio
                 <td>{row.systemStock ?? 0}</td>
                 <td>
                   <div className="row-actions">
+                    <SynchronizeSkuButton sku={row.sku} view="system-only" />
                     <ActionForm sku={row.sku} action={sendMissingMarketplacesAction} label="Enviar" />
                     <ActionForm
                       sku={row.sku}
@@ -323,7 +327,7 @@ function DivergentStockTable({
                   const links = row.marketplaces.filter((link) => link.marketplace_account_id === account.id);
                   return <td key={account.id}>{links.length ? links.map(formatStockStatus).join(" / ") : "-"}</td>;
                 })}
-                <td><ActionForm sku={row.sku} action={updateDivergentStockAction} label="Atualizar Estoque" /></td>
+                <td><div className="row-actions"><SynchronizeSkuButton sku={row.sku} view="stock-divergent" /><ActionForm sku={row.sku} action={updateDivergentStockAction} label="Atualizar Estoque" /></div></td>
               </tr>
             ))
           )}

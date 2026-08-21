@@ -7,18 +7,25 @@ export type SynchronizationLogTotals = {
   included: number;
 };
 
+export type SynchronizationLogFailure = {
+  sku: string;
+  reason: string;
+};
+
 export async function logSynchronizationResult(input: {
   process: string;
   status: "done" | "failed";
   totals: SynchronizationLogTotals;
   error?: string;
+  failures?: SynchronizationLogFailure[];
 }) {
   const summary = [
     `Produtos avaliados: ${input.totals.evaluated}.`,
     `Produtos atualizados: ${input.totals.updated}.`,
     `Produtos removidos: ${input.totals.removed}.`,
     `Produtos incluidos: ${input.totals.included}.`,
-    input.error ? `Erro: ${input.error}` : ""
+    input.error ? `Erro: ${input.error}` : "",
+    ...(input.failures || []).map(({ sku, reason }) => `SKU ${sku || "nao identificado"} - ${reason || "Motivo nao informado"}.`)
   ].filter(Boolean).join("\n");
 
   try {
@@ -30,7 +37,8 @@ export async function logSynchronizationResult(input: {
         process: input.process,
         status: input.status,
         summary,
-        totals: input.totals
+        totals: input.totals,
+        failures: input.failures || []
       }
     });
   } catch (error) {

@@ -1,0 +1,32 @@
+"use client";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { logoutAction } from "../login/actions";
+
+type Key="inicio"|"sincronizacao"|"relatorios"|"configuracoes"|"usuario";
+type Item={label:string;href:string;master?:boolean};
+const groups:Array<{key:Key;label:string;icon:string;items:Item[];bottom?:boolean}>=[
+ {key:"inicio",label:"Menu principal",icon:"home",items:[["Painel","/"],["Vendas","/vendas"],["Produtos e Anúncios","/produtos"],["Anúncios Finalizados","/mediacoes/anuncios-finalizados"],["Anúncios em Revisão","/mediacoes/anuncios-em-revisao"],["Estoque","/historico-estoque"],["Avaliação de Preço","/avaliacao-preco"]].map(([label,href])=>({label,href}))},
+ {key:"sincronizacao",label:"Sincronização",icon:"sync",items:[["Atividades Recebidas","/atividades-marketplace"],["Atividades Enviadas","/atividades-marketplace/enviadas"],["Fotos","/fotos"],["Integrações","/integracoes"]].map(([label,href])=>({label,href}))},
+ {key:"relatorios",label:"Relatórios e logs",icon:"chart",items:[["Relatórios","/relatorios"],["Migração de Estoque","/estoque"],["Logs","/logs"]].map(([label,href])=>({label,href}))},
+ {key:"configuracoes",label:"Configurações",icon:"settings",bottom:true,items:[...[["Tipo","/configuracoes/tipo"],["Marca","/configuracoes/marca"],["Especial","/configuracoes/especial"],["Preço","/configuracoes/preco"],["SKU","/configuracoes/sku"],["Marketplace","/configuracoes/marketplace"],["Categorias Marketplace","/configuracoes/categorias-marketplace"],["Status de Vendas","/configuracoes/status-vendas"],["Tiny","/configuracoes/tiny"],["Google Drive","/configuracoes/google-drive"],["Notificações Telegram","/configuracoes/notificacoes-telegram"],["Cloudinary","/configuracoes/cloudinary"],["Configurações Gerais","/configuracoes/config-geral"]].map(([label,href])=>({label,href})),{label:"Usuários",href:"/configuracoes/usuarios",master:true}]},
+ {key:"usuario",label:"Usuário conectado",icon:"user",bottom:true,items:[]}
+];
+export function SidebarNavigation({user,compactLogo,fullLogo}:{user:{name:string;isMaster:boolean}|null;compactLogo:string;fullLogo:string}){
+ const pathname=usePathname()||"/"; const visible=useMemo(()=>groups.map(g=>({...g,items:g.items.filter(i=>!i.master||user?.isMaster)})),[user]);
+ const routeGroup=visible.find(g=>g.items.some(i=>isActive(pathname,i.href)))?.key||"inicio"; const [open,setOpen]=useState<Key>(routeGroup); useEffect(()=>setOpen(routeGroup),[routeGroup]);
+ const current=visible.find(g=>g.key===open)||visible[0]; const initials=getInitials(user?.name||"Usuário");
+ const page=visible.flatMap(g=>g.items).filter(i=>isActive(pathname,i.href)).sort((a,b)=>b.href.length-a.href.length)[0]?.label||"Gestão Marketplace.tech";
+ useEffect(()=>{document.title=`${page} | Gestão Marketplace.tech`;let link=document.querySelector<HTMLLinkElement>('link[rel="icon"]');if(!link){link=document.createElement("link");link.rel="icon";document.head.appendChild(link);}link.href=compactLogo||defaultLogo();},[page,compactLogo]);
+ return <aside className="sidebar-shell" onMouseLeave={()=>setOpen(routeGroup)}><div className="sidebar-rail">
+  <a className="sidebar-compact-logo" href="/configuracoes/usuarios" title="Identidade do sistema">{compactLogo?<img src={compactLogo} alt="Logo do sistema"/>:<span>GM</span>}</a>
+  <div className="sidebar-rail-groups">{visible.filter(g=>!g.bottom).map(g=><Rail key={g.key} group={g} selected={open===g.key} setOpen={setOpen} initials={initials}/>)}</div>
+  <div className="sidebar-rail-bottom">{visible.filter(g=>g.bottom).map(g=><Rail key={g.key} group={g} selected={open===g.key} setOpen={setOpen} initials={initials}/>)}</div>
+ </div><div className="sidebar-panel"><a className="sidebar-brand" href="/configuracoes/usuarios" title="Alterar identidade visual">{fullLogo?<img src={fullLogo} alt="Gestão Marketplace.tech"/>:<strong>Gestão<br/>Marketplace<span>.tech</span></strong>}</a>
+ <div className="sidebar-section-title">{current.label}</div>{current.key==="usuario"?<div className="sidebar-user-panel"><div className="sidebar-user-avatar">{initials}</div><strong>{user?.name||"Usuário"}</strong><form action={logoutAction}><button type="submit">Sair</button></form></div>:<nav className="sidebar-menu">{current.items.map(i=><a key={i.href} href={i.href} className={isActive(pathname,i.href)?"active":""}>{i.label}</a>)}</nav>}</div></aside>;
+}
+function Rail({group,selected,setOpen,initials}:{group:typeof groups[number];selected:boolean;setOpen:(k:Key)=>void;initials:string}){return <button type="button" className={`sidebar-rail-button${selected?" selected":""}`} onMouseEnter={()=>setOpen(group.key)} onFocus={()=>setOpen(group.key)} title={group.label} aria-label={group.label}>{group.icon==="user"?<span className="sidebar-initials">{initials}</span>:<Icon name={group.icon}/>}</button>}
+function Icon({name}:{name:string}){const p:Record<string,React.ReactNode>={home:<><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/></>,sync:<><path d="M20 7h-6V1"/><path d="M20 7a8 8 0 0 0-14-2"/><path d="M4 17h6v6"/><path d="M4 17a8 8 0 0 0 14 2"/></>,chart:<><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,settings:<><circle cx="12" cy="12" r="3"/><path d="M19 15l2 2-4 4-2-2a8 8 0 0 1-3 1l-1 3H7l-1-3a8 8 0 0 1-2-2l-3-1v-5l3-1a8 8 0 0 1 1-3L3 6l3-3 2 2a8 8 0 0 1 3-1l1-3h4l1 3a8 8 0 0 1 2 2l3 1v5l-3 1Z"/></>};return <svg viewBox="0 0 24 24" aria-hidden="true">{p[name]}</svg>}
+function isActive(path:string,href:string){if(href==="/")return path==="/";if(href==="/atividades-marketplace")return path===href||(!path.startsWith("/atividades-marketplace/enviadas")&&path.startsWith(`${href}/`));return path===href||path.startsWith(`${href}/`)}
+function getInitials(name:string){const p=name.trim().split(/\s+/);return `${p[0]?.[0]||"U"}${p[1]?.[0]||p[0]?.[1]||""}`.toUpperCase()}
+function defaultLogo(){return "data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#153b73"/><text x="32" y="40" text-anchor="middle" font-family="Arial" font-size="25" font-weight="700" fill="white">GM</text></svg>')}

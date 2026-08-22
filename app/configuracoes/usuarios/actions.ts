@@ -4,6 +4,32 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hashPassword, requireMaster } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { deleteCloudinaryResource, uploadSystemImage } from "@/lib/cloudinary";
+
+export async function updateSystemBrandingAction(formData: FormData) {
+  if (!(await requireMaster())) redirect("/acesso-negado");
+  const compact = formData.get("compactLogo");
+  const full = formData.get("fullLogo");
+  const files = [{ file: compact, key: "SYSTEM_COMPACT_LOGO", assetName: "logo-menu" }, { file: full, key: "SYSTEM_FULL_LOGO", assetName: "logo-nome" }]
+    .filter((item): item is { file: File; key: string; assetName: string } => item.file instanceof File && item.file.size > 0);
+  if (!files.length) redirectWith("erro", "Selecione pelo menos uma imagem.");
+  const db = supabaseAdmin();
+  try {
+    for (const item of files) {
+      if (!item.file.type.startsWith("image/") || item.file.size > 3 * 1024 * 1024) throw new Error("As imagens devem ser PNG, JPG, WebP ou SVG e ter no máximo 3 MB.");
+      const previous = await db.from("settings").select("key,value").in("key", [`${item.key}_URL`, `${item.key}_PUBLIC_ID`]);
+      const previousId = String(previous.data?.find(row => row.key === `${item.key}_PUBLIC_ID`)?.value || "").replace(/^"|"$/g, "");
+      const uploaded = await uploadSystemImage({ buffer: Buffer.from(await item.file.arrayBuffer()), fileName: item.file.name, assetName: item.assetName });
+      await db.from("settings").upsert([
+        { key: `${item.key}_URL`, value: uploaded.url, description: "Identidade visual global do sistema" },
+        { key: `${item.key}_PUBLIC_ID`, value: uploaded.publicId, description: "Identificador Cloudinary da identidade visual" }
+      ], { onConflict: "key" }).throwOnError();
+      if (previousId && previousId !== uploaded.publicId) await deleteCloudinaryResource(previousId);
+    }
+  } catch (error) { redirectWith("erro", error instanceof Error ? error.message : String(error)); }
+  revalidatePath("/", "layout");
+  redirectWith("sucesso", "Identidade visual do sistema atualizada.");
+}
 
 export async function createUserAction(formData: FormData) {
   if (!(await requireMaster())) redirect("/acesso-negado");

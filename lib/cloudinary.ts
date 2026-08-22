@@ -32,6 +32,24 @@ export type CloudinaryProductImage = {
   format: string;
 };
 
+export async function uploadSystemImage(input: { buffer: Buffer; fileName: string; assetName: string }) {
+  const { cloudName, apiKey, apiSecret } = await getCloudinarySettings();
+  const timestamp = Math.floor(Date.now() / 1000);
+  const folder = "sistema/identidade";
+  const contentHash = createHash("sha1").update(input.buffer).digest("hex").slice(0, 10);
+  const publicName = `${safeCloudinaryPart(input.assetName)}_${contentHash}`;
+  const paramsToSign = { folder, invalidate: "true", overwrite: "true", public_id: publicName, timestamp: String(timestamp) };
+  const formData = new FormData();
+  formData.set("file", new Blob([new Uint8Array(input.buffer)]), input.fileName);
+  formData.set("api_key", apiKey); formData.set("timestamp", String(timestamp)); formData.set("folder", folder);
+  formData.set("invalidate", "true"); formData.set("overwrite", "true"); formData.set("public_id", publicName);
+  formData.set("signature", signCloudinaryParams(paramsToSign, apiSecret));
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: formData });
+  const json = await response.json().catch(() => ({})) as Partial<CloudinaryUploadResult> & { error?: { message?: string } };
+  if (!response.ok || !json.secure_url || !json.public_id) throw new Error(`Falha no upload Cloudinary: ${json.error?.message || JSON.stringify(json)}`);
+  return { url: json.secure_url, publicId: json.public_id };
+}
+
 export async function uploadProductImageToCloudinary(input: {
   buffer: Buffer;
   fileName: string;

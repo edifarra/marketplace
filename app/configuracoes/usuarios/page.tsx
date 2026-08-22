@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "@/app/components/sidebar";
 import { requireMaster } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { createUserAction, resetPasswordAction, updateUserAction } from "./actions";
+import { createUserAction, resetPasswordAction, updateSystemBrandingAction, updateUserAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +12,10 @@ export default async function UsersPage({
   searchParams?: { erro?: string; sucesso?: string };
 }) {
   if (!(await requireMaster())) redirect("/acesso-negado");
-  const { data: users, error } = await supabaseAdmin()
-    .from("app_users")
-    .select("id,name,email,is_master,active,last_login_at,created_at")
-    .order("created_at");
+  const [{ data: users, error }, { data: branding }] = await Promise.all([
+    supabaseAdmin().from("app_users").select("id,name,email,is_master,active,last_login_at,created_at").order("created_at"),
+    supabaseAdmin().from("settings").select("key,value").in("key", ["SYSTEM_COMPACT_LOGO_URL", "SYSTEM_FULL_LOGO_URL"])
+  ]);
   if (error) throw error;
 
   return (
@@ -27,6 +27,16 @@ export default async function UsersPage({
         </div>
         {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
         {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
+
+        <section className="section card">
+          <h2>Configurações da Empresa / Sistema</h2>
+          <div className="muted">Estas imagens serão exibidas para todos os usuários.</div>
+          <form action={updateSystemBrandingAction} className="form-grid system-branding-form">
+            <BrandingField label="Logo compacto do menu" name="compactLogo" current={settingValue(branding, "SYSTEM_COMPACT_LOGO_URL")} />
+            <BrandingField label="Imagem do nome do sistema" name="fullLogo" current={settingValue(branding, "SYSTEM_FULL_LOGO_URL")} wide />
+            <div><button className="primary" type="submit">Salvar identidade visual</button></div>
+          </form>
+        </section>
 
         <section className="section card">
           <h2>Criar usuario</h2>
@@ -70,6 +80,14 @@ export default async function UsersPage({
       </section>
     </main>
   );
+}
+
+function BrandingField({ label, name, current, wide = false }: { label: string; name: string; current: string; wide?: boolean }) {
+  return <label>{label}{current ? <img className={wide ? "branding-preview wide" : "branding-preview"} src={current} alt={label} /> : <span className="branding-empty">Nenhuma imagem cadastrada</span>}<input name={name} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" /></label>;
+}
+
+function settingValue(rows: Array<{ key: string; value: unknown }> | null, key: string) {
+  return String(rows?.find(row => row.key === key)?.value || "").replace(/^"|"$/g, "");
 }
 
 function formatDate(value: string | null) {

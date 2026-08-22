@@ -1026,6 +1026,13 @@ th {
 .detail-edit-card { display: grid; align-content: start; gap: 10px; }
 .detail-edit-card label { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .detail-edit-card input, .detail-edit-card select, .detail-description-input { width: 100%; color: var(--text); font: inherit; font-weight: 400; }
+.detail-title-field { position: relative; display: block; min-width: 0; }
+.detail-title-field input { padding-right: 46px; }
+.required-field-error input, .required-field-error select { border-color:#dc2626 !important; background:#fef2f2; box-shadow:0 0 0 1px #dc2626; }
+.required-field-error.card { border-color:#dc2626; box-shadow:0 0 0 1px #dc2626; }
+.required-field-message { grid-column: 2; color:#dc2626; font-size:12px; font-weight:700; }
+.editor-images-heading .required-field-message { display:block; margin-top:6px; }
+.product-detail-footer-actions { justify-content:flex-end; margin:24px 0 8px; }
 .detail-description-input { resize: vertical; min-height: 150px; }
 .product-detail-edit-form .editor-images-heading { margin-top: 0; }
 .topbar button:disabled { cursor: not-allowed; opacity: .45; }

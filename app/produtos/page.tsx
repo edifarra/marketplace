@@ -165,7 +165,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
                       <td>
                         <div className="row-actions">
                           {actions.showSave && <ExternalProductActionSubmit label="Salvar" form={`product-edit-${product.id}`} />}
-                          {actions.showSend && actions.saveBeforeSend && <ExternalProductActionSubmit label="Enviar" pendingLabel="Salvando e enviando" form={`product-edit-${product.id}`} name="intent" value="send" />}
+                          {actions.showSend && actions.saveBeforeSend && <ExternalProductActionSubmit label="Enviar" pendingLabel="Salvando e enviando" form={`product-edit-${product.id}`} name="intent" value="send" requireAvailableStock />}
                           {actions.showSend && !actions.saveBeforeSend && <form action={sendProductAction}>
                             <input type="hidden" name="productId" value={product.id} />
                             <input type="hidden" name="returnTo" value={returnTo} />

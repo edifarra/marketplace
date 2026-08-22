@@ -124,7 +124,6 @@ export default async function ProductDetailPage({
     <main className="shell">
       <Sidebar />
       <section className="main">
-        <div className="product-detail-back"><a className="secondary link-button" href={returnTo}>Voltar para produtos</a></div>
         {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
         {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
 
@@ -137,7 +136,7 @@ export default async function ProductDetailPage({
           marketplaceLinks={{
             mercado_livre: integrations.some(item => item.integration === "MERCADO_LIVRE"),
             shopee: integrations.some(item => item.integration === "SHOPEE")
-          }} />
+          }} returnTo={returnTo} />
 
         <section className="section card">
           <h2>Envios realizados</h2>

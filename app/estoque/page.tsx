@@ -219,7 +219,7 @@ function MarketplacePresenceTable({ rows, view, status, stock }: { rows: Awaited
                         confirm="Deseja remover/inativar os anuncios deste SKU nos marketplaces?"
                       />
                     )}
-                    {isMissingMarketplace && <ActionForm sku={row.sku} action={sendMissingMarketplacesAction} label="Enviar" />}
+                    {isMissingMarketplace && <ActionForm sku={row.sku} action={sendMissingMarketplacesAction} label="Enviar" disabled={Number(row.systemStock || 0) <= 0} />}
                     {isMissingMarketplace && (
                       <ActionForm
                         sku={row.sku}
@@ -270,7 +270,7 @@ function SystemOnlyTable({ rows }: { rows: Awaited<ReturnType<typeof getMigratio
                 <td>
                   <div className="row-actions">
                     <SynchronizeSkuButton sku={row.sku} view="system-only" />
-                    <ActionForm sku={row.sku} action={sendMissingMarketplacesAction} label="Enviar" />
+                    <ActionForm sku={row.sku} action={sendMissingMarketplacesAction} label="Enviar" disabled={Number(row.systemStock || 0) <= 0} />
                     <ActionForm
                       sku={row.sku}
                       action={deleteSystemProductOnlyAction}
@@ -342,13 +342,15 @@ function ActionForm({
   action,
   label,
   danger = false,
-  confirm
+  confirm,
+  disabled = false
 }: {
   sku: string;
   action: (formData: FormData) => Promise<void>;
   label: string;
   danger?: boolean;
   confirm?: string;
+  disabled?: boolean;
 }) {
   return (
     <form action={action}>
@@ -358,7 +360,7 @@ function ActionForm({
           {label}
         </ConfirmActionButton>
       ) : (
-        <button className={danger ? "danger compact" : "secondary compact"} type="submit">{label}</button>
+        <button className={danger ? "danger compact" : "secondary compact"} type="submit" disabled={disabled} title={disabled ? "Estoque disponível deve ser maior que zero para enviar." : undefined}>{label}</button>
       )}
     </form>
   );

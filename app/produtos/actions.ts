@@ -233,11 +233,13 @@ export async function updateProductDetailsAction(formData: FormData) {
   const number = (key: string) => Number(text(key).replace(",", "."));
   const sku = text("sku"); const title = text("title"); const description = text("description");
   const redirectTo = text("redirectTo");
+  const returnTo = safeProductsReturn(text("returnTo") || "/produtos");
+  const detailError = (message: string) => `/produtos/${productId}?returnTo=${encodeURIComponent(returnTo)}&editar=1&erro=${encodeURIComponent(message)}`;
   const typeCode = text("typeCode"); const brandCode = text("brandCode"); const specialCode = text("specialCode") || null;
   const productCondition = text("productCondition") === "new" ? "new" : "used";
   const measures = { height: number("height"), width: number("width"), length: number("length"), weight_net: number("weightNet"), weight_gross: number("weightGross") };
-  if (!productId || !sku || !title || !description || !typeCode || !brandCode || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {
-    redirect(`/produtos/${productId}?editar=1&erro=${encodeURIComponent("Preencha todos os campos com valores válidos.")}`);
+  if (!productId || !sku || !title || title.length > 60 || !description || !typeCode || typeCode === "OT" || !brandCode || brandCode === "NI" || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {
+    redirect(detailError("Preencha os campos obrigatórios com valores válidos."));
   }
   const db = supabaseAdmin();
   const current = await db.from("products").select("*,product_images(id,original_name,cloudinary_public_id,position)").eq("id", productId).single().throwOnError();
@@ -294,10 +296,12 @@ export async function updateProductDetailsAction(formData: FormData) {
       const names = missing.filter(item => item.marketplace === marketplace).map(item => item.name);
       return names.length ? `${marketplace === "shopee" ? "Shopee" : "Mercado Livre"}: ${names.join(", ")}` : "";
     }).filter(Boolean).join(". ");
-    redirect(`/produtos/${productId}?editar=1&erro=${encodeURIComponent(`Não foi possível salvar. Preencha os campos obrigatórios. ${grouped}`)}`);
+    redirect(detailError(`Não foi possível salvar. Preencha os campos obrigatórios. ${grouped}`));
   }
   const keptIds = text("imageOrder").split(",").filter(Boolean);
   const existingImages = (current.data.product_images || []) as Array<{ id: string; original_name: string; cloudinary_public_id?: string | null; position: number }>;
+  const newImages = formData.getAll("newImages").filter(entry => entry instanceof File && entry.size > 0);
+  if (keptIds.length === 0 && newImages.length === 0) redirect(detailError("Preencha os campos obrigatórios: adicione pelo menos a Foto 1."));
   const removed = existingImages.filter(image => !keptIds.includes(image.id));
 
   try {
@@ -314,7 +318,7 @@ export async function updateProductDetailsAction(formData: FormData) {
     }
 
     let position = keptIds.length + 1;
-    for (const entry of formData.getAll("newImages")) {
+    for (const entry of newImages) {
       if (!(entry instanceof File) || entry.size === 0) continue;
       if (!entry.type.startsWith("image/") || entry.size > 8 * 1024 * 1024) throw new Error(`A imagem ${entry.name} deve ser JPG, PNG ou WebP e ter no máximo 8 MB.`);
       const upload = await uploadProductImageToCloudinary({ buffer: Buffer.from(await entry.arrayBuffer()), fileName: entry.name, sku, typeCode, brandCode, model: String(current.data.model || "PRODUTO"), boardCode: String(current.data.board_code || ""), position });
@@ -334,7 +338,7 @@ export async function updateProductDetailsAction(formData: FormData) {
     await enqueueDirectListingUpdates(productId);
   } catch (error) {
     revalidatePath(`/produtos/${productId}`);
-    redirect(`/produtos/${productId}?editar=1&erro=${encodeURIComponent(`Os dados foram processados, mas a atualização não foi concluída: ${error instanceof Error ? error.message : String(error)}`)}`);
+    redirect(detailError(`Os dados foram processados, mas a atualização não foi concluída: ${error instanceof Error ? error.message : String(error)}`));
   }
   revalidatePath("/produtos"); revalidatePath(`/produtos/${productId}`);
   redirect(redirectTo.startsWith("/") && !redirectTo.startsWith("//")

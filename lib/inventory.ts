@@ -157,7 +157,10 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       venda_id: vendaId, status: "processed", processed_at: new Date().toISOString()
     }).eq("id", activityId).throwOnError();
     await history(activityId, "completed", "success", { vendaId, items: items.length });
-    if (!previousSale.data) await notifyNewSale(vendaId);
+    // Toda atualizacao elegivel tenta a notificacao. A chave idempotente do
+    // Telegram impede mensagens duplicadas e evita perder vendas que tenham
+    // sido criadas antes por um evento preliminar ou por uma reconciliacao.
+    await notifyNewSale(vendaId);
     return { duplicated: false, activityId, vendaId };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

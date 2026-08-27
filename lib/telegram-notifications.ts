@@ -45,8 +45,10 @@ export async function notifyNewSale(saleId: string) {
     const lines = ["🛒 NOVA VENDA", "", `Marketplace: ${marketplaceName(sale.marketplace)}`, `Conta: ${account}`, `Pedido: ${sale.order_id}`, `Horário: ${localTime(new Date(), config.timezone)}`, ""];
     for (const item of items) lines.push(`Produto: ${item.title || "Não informado"}`, `SKU: ${item.sku}`, `Quantidade: ${item.quantidade}`, "");
     await sendAndRecord(config, lines.join("\n").trim(), { alertType: "new_sale", key: `new_sale:${sale.marketplace}:${sale.order_id}`, sale, account });
-  } catch {
-    // Telegram nunca pode interromper o processamento da venda.
+  } catch (error) {
+    // Telegram nunca pode interromper o processamento da venda, mas a falha
+    // precisa ficar visivel nos logs para nao desaparecer sem diagnostico.
+    console.error("[telegram_new_sale]", { saleId, error: safeError(error) });
   }
 }
 

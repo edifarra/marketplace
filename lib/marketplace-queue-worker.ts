@@ -9,6 +9,7 @@ import { supabaseAdmin } from "./supabase-admin";
 import { activityDescription } from "./marketplace-activity-labels";
 import { clearMarketplaceModeration, mercadoLivreModerationClass, recordMarketplaceModeration, shopeeModerationClass } from "./marketplace-moderations";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
+import { processMercadoLivreConversationNotification, processShopeeConversationNotification } from "./marketplace-conversations";
 
 const SHOPEE_ORDER_PUSH_CODES = new Set([3, 4, 15, 29, 30, 37, 47]);
 const SHOPEE_ACCOUNT_PUSH_CODES = new Set([1, 2, 12]);
@@ -61,6 +62,10 @@ async function processMercadoLivreActivity(activity: Record<string, any>) {
   // notification aninhado permite recuperar esses eventos sem perde-los.
   const payload = (storedPayload.notification || storedPayload) as Record<string, any>;
   const topic = String(payload.topic || payload.type || "notification");
+  if (["questions", "messages"].includes(topic)) {
+    const result = await processMercadoLivreConversationNotification(activity, payload);
+    return completeQueuedActivity(String(activity.id), result?.description || "Conversa atualizada.", { topic, ...(result || {}) });
+  }
   if (topic === "items") return processMercadoLivreItemActivity(activity, payload);
   if (topic !== "orders_v2" && topic !== "shipments") {
     return completeQueuedActivity(
@@ -113,13 +118,17 @@ async function processMercadoLivreItemActivity(activity: Record<string, any>, pa
   }).eq("marketplace_account_id", account.id).eq("external_listing_id", itemId).throwOnError();
   const classification = mercadoLivreModerationClass(String(item.status || ""), item.sub_status);
   if (classification) {
-    if (classification === "final" && isIncorrectCategoryFinalization(reason)) {
-      await deleteIncorrectCategoryListingBeforeFinalization({
+    const itemStatus = String(item.status || "").toLowerCase();
+    const itemSubStatuses = (Array.isArray(item.sub_status) ? item.sub_status : []).map((value: unknown) => String(value).toLowerCase());
+    const deletionWasValidated = itemStatus === "closed" || itemSubStatuses.includes("forbidden");
+    if (classification === "final" && deletionWasValidated) {
+      await deleteMarketplaceListingBeforeFinalization({
         activityId: String(activity.id),
         accountId: String(account.id),
         itemId,
         productName: String(item.title || itemId),
-        sku: String(item.seller_custom_field || item.attributes?.find((attribute: Record<string, any>) => attribute.id === "SELLER_SKU")?.value_name || "")
+        sku: String(item.seller_custom_field || item.attributes?.find((attribute: Record<string, any>) => attribute.id === "SELLER_SKU")?.value_name || ""),
+        reason: String(reason || "Anuncio finalizado pelo Mercado Livre.")
       });
     }
     await recordMarketplaceModeration({
@@ -143,34 +152,16 @@ async function processMercadoLivreItemActivity(activity: Record<string, any>, pa
   });
 }
 
-export function isIncorrectCategoryFinalization(reason: unknown) {
-  const normalized = String(reason || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/^[\s"'“”‘’]+|[\s"'“”‘’.!?]+$/g, "")
-    .replace(/\s+/g, " ");
-  return normalized === "estava em uma categoria incorreta";
-}
-
-export function shouldFetchMercadoLivreModeration(item: Record<string, any>) {
-  const status = String(item.status || "").toLowerCase();
-  if (status === "under_review") return true;
-  const subStatuses = Array.isArray(item.sub_status) ? item.sub_status : [];
-  if (subStatuses.some((value: unknown) => MERCADO_LIVRE_MODERATION_SUB_STATUSES.has(String(value).toLowerCase()))) return true;
-  const tags = Array.isArray(item.tags) ? item.tags : [];
-  return tags.some((value: unknown) => MERCADO_LIVRE_MODERATION_TAGS.has(String(value).toLowerCase()));
-}
-
-async function deleteIncorrectCategoryListingBeforeFinalization(input: {
+async function deleteMarketplaceListingBeforeFinalization(input: {
   activityId: string;
   accountId: string;
   itemId: string;
   productName: string;
   sku: string;
+  reason: string;
 }) {
   const db = supabaseAdmin();
-  const sourceType = "marketplace_incorrect_category_finalization";
+  const sourceType = "marketplace_finalization_deletion";
   const existing = await db.from("outgoing_marketplace_activities")
     .select("id,status,processing_error")
     .eq("source_type", sourceType)
@@ -191,7 +182,7 @@ async function deleteIncorrectCategoryListingBeforeFinalization(input: {
         productName: input.productName,
         accountId: input.accountId,
         listingId: input.itemId,
-        previousData: { status: "final", reason: "Estava em uma categoria incorreta." },
+        previousData: { status: "final", reason: input.reason },
         requestedData: { status: "deleted" },
         sourceType,
         sourceId: input.activityId
@@ -211,6 +202,10 @@ async function deleteIncorrectCategoryListingBeforeFinalization(input: {
 async function processShopeeActivity(activity: Record<string, any>) {
   const payload = (activity.raw_payload || {}) as Record<string, any>;
   const code = Number(payload.code || 0);
+  if (code === 10) {
+    const result = await processShopeeConversationNotification(payload);
+    return completeQueuedActivity(String(activity.id), result.description, { code, ...result });
+  }
   if (isShopeeVerificationPush(payload)) {
     return completeQueuedActivity(String(activity.id), "Teste de callback Shopee validado.", { code });
   }

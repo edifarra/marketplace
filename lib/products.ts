@@ -119,6 +119,7 @@ export async function createProductFromForm(formData: FormData): Promise<CreateP
   const sourceKey = buildManualSourceKey(input, skuInfo.sku);
   const snapshot = await buildProductMarketplaceSnapshot(input.typeCode, {
     sku: skuInfo.sku, title, brand_name: brandConfig.name, model: input.model, board_code: input.boardCode,
+    special_code: input.specialCode || null,
     product_condition: "used", weight_gross: typeConfig.dimensions.weightGross, width: typeConfig.dimensions.width,
     height: typeConfig.dimensions.height, length: typeConfig.dimensions.length
   });

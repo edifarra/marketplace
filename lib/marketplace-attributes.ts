@@ -86,6 +86,12 @@ async function fetchShopeeDefinitions(categoryId: string, categoryName: string) 
   return { categoryId, categoryName, attributes };
 }
 
+export async function fetchMarketplaceCategoryDefinition(marketplace: MarketplaceCode, categoryId: string, categoryName = "") {
+  return marketplace === "mercado_livre"
+    ? fetchMercadoLivreDefinitions(categoryId, categoryName)
+    : fetchShopeeDefinitions(categoryId, categoryName);
+}
+
 export async function reconcileProductMarketplaceMetadata(
   productId: string,
   marketplace: MarketplaceCode,
@@ -177,6 +183,10 @@ function extractListingAttributeValues(marketplace: MarketplaceCode, rawData: Re
 export async function buildProductMarketplaceSnapshot(typeCode: string, product?: Record<string, any>): Promise<{ categories: MarketplaceValues; attributes: MarketplaceValues }> {
   const db = supabaseAdmin();
   const type = await db.from("config_types").select("marketplace_category,marketplace_attribute_defaults,warranty_months").eq("code", typeCode).single().throwOnError();
+  const special = product?.special_code
+    ? await db.from("config_specials").select("keep_warranty").eq("code", product.special_code).maybeSingle().throwOnError()
+    : { data: null };
+  const warrantyMonths = special.data?.keep_warranty === false ? 0 : type.data.warranty_months;
   if (!type.data.marketplace_category) return { categories: {}, attributes: {} };
   const mapping = await db.from("marketplace_category_mappings").select("*").eq("internal_category", type.data.marketplace_category).maybeSingle().throwOnError();
   if (!mapping.data) return { categories: {}, attributes: {} };
@@ -190,12 +200,12 @@ export async function buildProductMarketplaceSnapshot(typeCode: string, product?
     const categoryId = String(definition?.categoryId || mapping.data[`${marketplace}_code`] || "");
     if (!categoryId) continue;
     categories[marketplace] = { categoryId, attributes: {} };
-    attributes[marketplace] = { categoryId, attributes: resolveInitialValues(marketplace, definition?.attributes || {}, defaults[marketplace]?.attributes || {}, type.data.warranty_months, product) };
+    attributes[marketplace] = { categoryId, attributes: resolveInitialValues(marketplace, definition?.attributes || {}, defaults[marketplace]?.attributes || {}, warrantyMonths, product, special.data?.keep_warranty === false) };
   }
   return { categories, attributes };
 }
 
-function resolveInitialValues(marketplace: MarketplaceCode, definitions: Record<string, AttributeDefinition>, defaults: Record<string, AttributeValue>, warrantyMonths: number, product?: Record<string, any>) {
+function resolveInitialValues(marketplace: MarketplaceCode, definitions: Record<string, AttributeDefinition>, defaults: Record<string, AttributeValue>, warrantyMonths: number, product?: Record<string, any>, forceNoWarranty = false) {
   const values: Record<string, AttributeValue> = structuredClone(defaults || {});
   for (const definition of Object.values(definitions)) {
     const automatic = automaticValue(definition.systemSource, product);
@@ -204,13 +214,25 @@ function resolveInitialValues(marketplace: MarketplaceCode, definitions: Record<
   if (marketplace === "shopee") {
     const durationIds: Record<number, string> = { 1: "776", 2: "789", 3: "799", 6: "810", 12: "822", 24: "831", 36: "857", 60: "843" };
     const hasWarranty = Number(warrantyMonths || 0) > 0 && Boolean(durationIds[Number(warrantyMonths)]);
-    values["100370"] ||= { valueId: hasWarranty ? "2437" : "5576", valueName: hasWarranty ? "Supplier Warranty" : "No Warranty" };
-    values["100121"] ||= { valueId: hasWarranty ? durationIds[Number(warrantyMonths)] : "5577", valueName: hasWarranty ? `${warrantyMonths} Months` : "No Warranty" };
+    const warrantyType = { valueId: hasWarranty ? "2437" : "5576", valueName: hasWarranty ? "Supplier Warranty" : "No Warranty" };
+    const warrantyTime = { valueId: hasWarranty ? durationIds[Number(warrantyMonths)] : "5577", valueName: hasWarranty ? `${warrantyMonths} Months` : "No Warranty" };
+    if (forceNoWarranty) {
+      values["100370"] = warrantyType;
+      values["100121"] = warrantyTime;
+    } else {
+      values["100370"] ||= warrantyType;
+      values["100121"] ||= warrantyTime;
+    }
   }
   if (marketplace === "mercado_livre") {
     const months = Number(warrantyMonths || 0);
-    values.WARRANTY_TYPE ||= months > 0 ? { valueId: "2230280", valueName: "Garantia do vendedor" } : {};
-    values.WARRANTY_TIME ||= months > 0 ? { valueName: `${months} meses` } : {};
+    if (forceNoWarranty) {
+      values.WARRANTY_TYPE = { valueId: "6150835", valueName: "Sem garantia" };
+      delete values.WARRANTY_TIME;
+    } else {
+      values.WARRANTY_TYPE ||= months > 0 ? { valueId: "2230280", valueName: "Garantia do vendedor" } : {};
+      values.WARRANTY_TIME ||= months > 0 ? { valueName: `${months} meses` } : {};
+    }
   }
   return values;
 }

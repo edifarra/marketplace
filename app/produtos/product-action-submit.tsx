@@ -3,15 +3,15 @@
 import { useFormStatus } from "react-dom";
 import { useEffect, useState } from "react";
 
-export function ProductActionSubmit({ label, pendingLabel = label, danger = false }: { label: string; pendingLabel?: string; danger?: boolean }) {
+export function ProductActionSubmit({ label, pendingLabel = label, danger = false, disabledReason }: { label: string; pendingLabel?: string; danger?: boolean; disabledReason?: string }) {
   const { pending } = useFormStatus();
-  return <button className={`${danger ? "danger" : "secondary"} compact product-action-button${pending ? " processing" : ""}`} type="submit" disabled={pending} aria-busy={pending}>
+  return <button className={`${danger ? "danger" : "secondary"} compact product-action-button${pending ? " processing" : ""}`} type="submit" disabled={pending || Boolean(disabledReason)} aria-busy={pending} title={disabledReason}>
     <span>{pending ? pendingLabel : label}</span>
     {pending && <span className="action-dots" aria-hidden="true"><i /><i /><i /></span>}
   </button>;
 }
 
-export function ExternalProductActionSubmit({ label, form, pendingLabel = "Salvando", name, value, requireAvailableStock = false }: { label: string; form: string; pendingLabel?: string; name?: string; value?: string; requireAvailableStock?: boolean }) {
+export function ExternalProductActionSubmit({ label, form, pendingLabel = "Salvando", name, value, requireAvailableStock = false, disabledReason }: { label: string; form: string; pendingLabel?: string; name?: string; value?: string; requireAvailableStock?: boolean; disabledReason?: string }) {
   const [pending, setPending] = useState(false);
   const [stockUnavailable, setStockUnavailable] = useState(requireAvailableStock);
 
@@ -47,7 +47,8 @@ export function ExternalProductActionSubmit({ label, form, pendingLabel = "Salva
     if (intent) intent.value = name === "intent" ? String(value || "") : "";
   };
 
-  return <button className={`secondary compact product-action-button${pending ? " processing" : ""}`} type="submit" form={form} onClick={preserveSubmitIntent} disabled={pending || stockUnavailable} aria-busy={pending} title={stockUnavailable ? "Estoque disponível deve ser maior que zero para enviar." : undefined}>
+  const unavailableReason = disabledReason || (stockUnavailable ? "Estoque disponível deve ser maior que zero para enviar." : undefined);
+  return <button className={`secondary compact product-action-button${pending ? " processing" : ""}`} type="submit" form={form} onClick={preserveSubmitIntent} disabled={pending || Boolean(unavailableReason)} aria-busy={pending} title={unavailableReason}>
     <span>{pending ? pendingLabel : label}</span>
     {pending && <span className="action-dots" aria-hidden="true"><i /><i /><i /></span>}
   </button>;

@@ -13,6 +13,10 @@
       "schedule": "30 5 * * *"
     },
     {
+      "path": "/api/chats/sync",
+      "schedule": "15 6 * * *"
+    },
+    {
       "path": "/api/retention/cleanup",
       "schedule": "45 5 * * *"
     },

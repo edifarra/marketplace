@@ -363,6 +363,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
       }
       const marketplaceSnapshot = await buildProductMarketplaceSnapshot(main.typeCode, {
         sku: skuInfo.sku, title, brand_name: brand.name, model: main.model, board_code: main.boardCode,
+        special_code: main.specialCode || null,
         product_condition: "used", weight_gross: type.dimensions.weightGross, width: type.dimensions.width,
         height: type.dimensions.height, length: type.dimensions.length
       });
@@ -679,11 +680,14 @@ async function insertProductImages(
     driveFile: DriveFile;
     upload: {
       publicId: string;
+      cloudName: string;
       cloudinaryFileName: string;
       cloudinaryUrl: string;
       localPath?: string | null;
       localUrl?: string | null;
       bytes: number;
+      width: number;
+      height: number;
     };
     position: number;
   }>
@@ -696,9 +700,12 @@ async function insertProductImages(
     url: image.upload.cloudinaryUrl,
     cloudinary_url: image.upload.cloudinaryUrl,
     cloudinary_public_id: image.upload.publicId,
+    cloudinary_cloud_name: image.upload.cloudName,
     local_path: image.upload.localPath,
     local_url: image.upload.localUrl,
     bytes: image.upload.bytes,
+    width_px: image.upload.width,
+    height_px: image.upload.height,
     position: image.position,
     status: "uploaded"
   }));

@@ -1,5 +1,6 @@
 import { loginAction } from "./actions";
 import { getMissingAuthConfiguration, isAuthConfigured } from "@/lib/auth";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { PasswordField } from "./password-field";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +9,21 @@ type LoginPageProps = {
   searchParams?: { erro?: string; next?: string; sessao?: string };
 };
 
-export default function LoginPage({ searchParams }: LoginPageProps) {
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const authConfigured = isAuthConfigured();
   const missingConfiguration = getMissingAuthConfiguration();
+  let compactLogo = "";
+  let fullLogo = "";
+
+  if (authConfigured) {
+    const { data } = await supabaseAdmin()
+      .from("settings")
+      .select("key,value")
+      .in("key", ["SYSTEM_COMPACT_LOGO_URL", "SYSTEM_FULL_LOGO_URL"]);
+    const value = (key: string) => String(data?.find(row => row.key === key)?.value || "").replace(/^"|"$/g, "");
+    compactLogo = value("SYSTEM_COMPACT_LOGO_URL");
+    fullLogo = value("SYSTEM_FULL_LOGO_URL");
+  }
   const message = searchParams?.sessao === "expirada"
     ? "Sua sessao expirou. Entre novamente."
     : searchParams?.erro;
@@ -18,9 +31,9 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="login-shell">
       <section className="login-panel">
-        <div>
-          <h1>Entrar</h1>
-          <div className="subtitle">Gestao de estoque e marketplaces</div>
+        <div className="login-brand" aria-label="Gestao Marketplace.tech">
+          {compactLogo ? <img className="login-brand-logo" src={compactLogo} alt="Logo" /> : <span className="login-brand-logo-fallback">GM</span>}
+          {fullLogo ? <img className="login-brand-name" src={fullLogo} alt="Gestao Marketplace.tech" /> : <strong>Gestão<br />Marketplace<span>.tech</span></strong>}
         </div>
         {!authConfigured && (
           <div className="form-error">

@@ -68,6 +68,23 @@ export async function getMercadoLivreItem(itemId: string, account: MarketplaceAc
   return mlGet(`/items/${encodeURIComponent(itemId)}`, accessToken) as Promise<Record<string, any>>;
 }
 
+export async function getMercadoLivreResource(resource: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const path = resource.startsWith("/") ? resource : `/${resource}`;
+  return mlGet(path, accessToken) as Promise<Record<string, any>>;
+}
+
+export async function answerMercadoLivreQuestion(questionId: string, text: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlRequest("/answers", accessToken, "POST", { question_id: Number(questionId), text }) as Promise<Record<string, any>>;
+}
+
+export async function sendMercadoLivrePostSaleMessage(resource: string, text: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const path = resource.startsWith("/") ? resource : `/${resource}`;
+  return mlRequest(path, accessToken, "POST", { text }) as Promise<Record<string, any>>;
+}
+
 export async function getMercadoLivreLastModeration(itemId: string, account: MarketplaceAccountConfig) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
   return fetchMercadoLivreLastModeration(itemId, accessToken);
@@ -368,10 +385,11 @@ export async function mlGet(path: string, accessToken: string, extraHeaders: Rec
   return json;
 }
 
-async function mlRequest(path: string, accessToken: string, method: "GET" | "POST") {
+async function mlRequest(path: string, accessToken: string, method: "GET" | "POST", body?: Record<string, unknown>) {
   const response = await fetch(`${ML_API}${path}`, {
     method,
-    headers: { authorization: `Bearer ${accessToken}` },
+    headers: { authorization: `Bearer ${accessToken}`, ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
     cache: "no-store"
   });
   const json = await response.json().catch(() => ({}));

@@ -70,7 +70,10 @@ export async function cloneProduct(productId: string): Promise<ClonedProduct> {
         url: upload.cloudinaryUrl,
         cloudinary_url: upload.cloudinaryUrl,
         cloudinary_public_id: upload.publicId,
+        cloudinary_cloud_name: upload.cloudName,
         bytes: upload.bytes,
+        width_px: upload.width,
+        height_px: upload.height,
         position: image.position,
         status: "uploaded"
       }).throwOnError();

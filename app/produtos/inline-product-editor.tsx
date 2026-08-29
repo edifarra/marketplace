@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { updateProductInlineAction } from "./actions";
+import { PriceInput } from "./price-input";
 
 export function InlineProductEditor({ product, returnTo }: { product: { id: string; title: string; price: number; physical: number; available: number; canEditTitle: boolean }; returnTo: string }) {
   const stockRef = useRef<HTMLInputElement>(null);
@@ -14,7 +15,7 @@ export function InlineProductEditor({ product, returnTo }: { product: { id: stri
   const formId = `product-edit-${product.id}`;
   return <>
     <td><form id={formId} action={updateProductInlineAction}><input type="hidden" name="productId" value={product.id} /><input type="hidden" name="returnTo" value={returnTo} /><input type="hidden" name="intent" value="" /></form><span className="product-title-field"><input form={formId} name="title" className={`product-title-input ${title.length > 60 ? "title-over-limit" : ""}`} value={title} onChange={(event) => setTitle(event.target.value)} onFocus={() => setTitleFocused(true)} onBlur={() => setTitleFocused(false)} readOnly={!product.canEditTitle} title={product.canEditTitle ? "Titulo editavel" : "Bloqueado: produto vinculado a marketplace"} />{titleFocused && <span className={`title-character-count ${title.length > 60 ? "over-limit" : ""}`} aria-live="polite">{title.length}</span>}</span></td>
-    <td><input form={formId} name="price" className="product-price-input" type="number" min="0" step="0.01" defaultValue={product.price} /></td>
+    <td><PriceInput form={formId} initialValue={product.price} /></td>
     <td><span className="stock-cell"><button type="button" className="stock-button" onClick={() => change(-1)}>-</button><input form={formId} ref={stockRef} name="stock" type="number" min="0" step="1" defaultValue={product.physical} data-reserved-stock={Math.max(product.physical - product.available, 0)} /><button type="button" className="stock-button" onClick={() => change(1)}>+</button></span></td>
     <td>{product.available}</td>
   </>;

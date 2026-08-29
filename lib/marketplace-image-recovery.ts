@@ -45,7 +45,10 @@ export async function recoverProductImagesFromMarketplaceListing(
       url: upload.cloudinaryUrl,
       cloudinary_url: upload.cloudinaryUrl,
       cloudinary_public_id: upload.publicId,
+      cloudinary_cloud_name: upload.cloudName,
       bytes: upload.bytes,
+      width_px: upload.width,
+      height_px: upload.height,
       position,
       status: "uploaded"
     }).throwOnError();

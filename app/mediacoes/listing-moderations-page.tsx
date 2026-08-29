@@ -39,18 +39,18 @@ export async function ListingModerationsPage({ classification, searchParams }: {
   const basePath = isFinal ? "/mediacoes/anuncios-finalizados" : "/mediacoes/anuncios-em-revisao";
   const error = countResult.error || rowsResult.error || accountResult.error;
 
-  return <main className="shell"><Sidebar /><section className="main">
+  return <main className={`shell ${isFinal ? "finalized-listings-page" : "review-listings-page"}`}><Sidebar /><section className="main">
     <div className="topbar"><div><h1>{isFinal ? "Anúncios finalizados" : "Anúncios em revisão"}</h1>
       <div className="subtitle">{isFinal ? "Anúncios encerrados, fechados, removidos ou banidos nos últimos 30 dias." : "Anúncios que podem ser corrigidos, avaliados e reativados. Histórico dos últimos 30 dias."}</div>
     </div></div>
     {error && <div className="form-error">{error.message}</div>}
     <section className="card form-card"><form action={basePath} method="get">
       <div className="table-toolbar"><div><h2>Filtros</h2><div className="muted">Localize por loja, marketplace, SKU, produto ou anúncio.</div></div>
-        <div className="row-actions"><button className="secondary" type="submit">Aplicar</button><a className="secondary link-button" href={basePath}>Limpar filtros</a></div></div>
+        <div className="row-actions"><button className="primary" type="submit">Aplicar</button><a className="secondary link-button" href={basePath}>Limpar filtros</a></div></div>
       <div className="form-grid">
+        <label>Buscar por SKU<input name="search" defaultValue={filters.search} placeholder="Informe o SKU" /></label>
         <label>Loja<select name="store" defaultValue={filters.store}><option value="">Todas</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.nickname || account.name}</option>)}</select></label>
         <label>Marketplace<select name="marketplace" defaultValue={filters.marketplace}><option value="">Todos</option><option value="mercado_livre">Mercado Livre</option><option value="shopee">Shopee</option></select></label>
-        <label>Busca<input name="search" defaultValue={filters.search} placeholder="SKU, produto ou código" /></label>
       </div>
     </form></section>
     <section className="card"><div className="muted">Registro {count ? from + 1 : 0}-{Math.min(from + PAGE_SIZE, count)} de {count.toLocaleString("pt-BR")}</div>

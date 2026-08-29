@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "./supabase-admin";
 import { publishProductDirectly } from "./direct-marketplace-publisher";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
+import { validateMarketplaceImage } from "./marketplace-image-validation";
 
 type SendResult = {
   ok: boolean;
@@ -33,9 +34,13 @@ export const AWAITING_SEND_PRODUCT_STATUSES = [...PENDING_PRODUCT_STATUSES, "pen
 export async function sendProductToConfiguredTarget(productId: string): Promise<SendResult> {
   const supabase = supabaseAdmin();
   const [productStatus, inventory] = await Promise.all([
-    supabase.from("products").select("status").eq("id", productId).single().throwOnError(),
+    supabase.from("products").select("status,product_images(bytes,width_px,height_px)").eq("id", productId).single().throwOnError(),
     supabase.from("estoque").select("estoque_disponivel").eq("product_id", productId).maybeSingle().throwOnError()
   ]);
+  const images = productStatus.data.product_images || [];
+  if (!images.length || images.some(image => validateMarketplaceImage({ width: Number(image.width_px), height: Number(image.height_px), bytes: Number(image.bytes) }).length > 0)) {
+    return { ok: false, productId, message: "Corrija todas as fotos fora do padrão antes de enviar o produto." };
+  }
   if (["pending_price", "manual_price"].includes(productStatus.data.status)) {
     return { ok: false, productId, message: "Produto pendente de preço. Processe ou informe o preço antes do envio." };
   }

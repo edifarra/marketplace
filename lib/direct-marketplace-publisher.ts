@@ -2,6 +2,9 @@ import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-act
 import { supabaseAdmin } from "./supabase-admin";
 import { htmlToPlainText } from "./html-to-plain-text";
 import { buildProductDescription } from "./dynamic-product-description";
+import { mercadoLivrePackageAttributes, resolveEffectiveProduct } from "./effective-product";
+import { fetchMarketplaceCategoryDefinition, type MarketplaceCode, type MarketplaceDefinitions } from "./marketplace-attributes";
+import { getMarketplaceCategoryPath } from "./marketplace-categories";
 
 export async function publishProductDirectly(productId: string, processImmediately = true) {
   const db = supabaseAdmin();
@@ -10,7 +13,7 @@ export async function publishProductDirectly(productId: string, processImmediate
     db.from("estoque").select("estoque_disponivel").eq("product_id", productId).single().throwOnError(),
     db.from("config_marketplace_accounts").select("id,name,marketplace").in("marketplace", ["mercado_livre", "shopee"]).eq("active", true).throwOnError(),
     db.from("listings").select("marketplace_account_id,external_listing_id").eq("product_id", productId).not("external_listing_id", "is", null).throwOnError(),
-    db.from("product_marketplaces").select("marketplace_account_id,marketplace_product_id").eq("product_id", productId).eq("existe_no_marketplace", true).not("marketplace_product_id", "is", null).throwOnError()
+    db.from("product_marketplaces").select("marketplace,marketplace_account_id,marketplace_product_id,status_anuncio,raw_data,updated_at").eq("product_id", productId).eq("existe_no_marketplace", true).not("marketplace_product_id", "is", null).order("updated_at").throwOnError()
   ]);
   const product = productResult.data;
   const linkedAccountIds = new Set([
@@ -22,18 +25,25 @@ export async function publishProductDirectly(productId: string, processImmediate
   if (!missingAccounts.length) return [];
   const [brandResult, typeResult, specialResult] = await Promise.all([
     db.from("config_brands").select("name").eq("code", product.brand_code).maybeSingle().throwOnError(),
-    db.from("config_types").select("description,description_template").eq("code", product.type_code).maybeSingle().throwOnError(),
-    db.from("config_specials").select("include_description,remove_description").eq("code", product.special_code || "__none__").maybeSingle().throwOnError(),
+    db.from("config_types").select("*").eq("code", product.type_code).maybeSingle().throwOnError(),
+    db.from("config_specials").select("include_description,remove_description,keep_warranty").eq("code", product.special_code || "__none__").maybeSingle().throwOnError(),
   ]);
-  const categories = (product.marketplace_categories || {}) as Record<string, any>;
-  const storedAttributes = (product.marketplace_attributes || {}) as Record<string, any>;
+  const mappingResult = typeResult.data?.marketplace_category
+    ? await db.from("marketplace_category_mappings").select("*").eq("internal_category", typeResult.data.marketplace_category).maybeSingle().throwOnError()
+    : { data: null };
+  const listingDefinitions = await loadActiveListingDefinitions(mappingResult.data, marketplaceLinks.data || []);
+  const effective = resolveEffectiveProduct({ product, type: typeResult.data, brand: brandResult.data, special: specialResult.data, inventory: inventoryResult.data,
+    mapping: mappingResult.data, marketplaceLinks: marketplaceLinks.data || [], listingDefinitions });
+  const categories = effective.marketplace_categories as Record<string, any>;
+  const storedAttributes = Object.fromEntries((["mercado_livre", "shopee"] as const).map(marketplace => [marketplace,
+    { attributes: effective.effective_marketplaces[marketplace].payloadAttributes }]));
   const categoryId = String(categories.mercado_livre?.categoryId || "");
   if (missingAccounts.some(account => account.marketplace === "mercado_livre") && !categoryId) throw new Error(`Categoria Mercado Livre nao mapeada para o tipo ${product.type_code}.`);
   const productCondition = product.product_condition === "new" ? "new" : "used";
   const shopeeCondition = productCondition === "new" ? "NEW" : "USED";
-  const description = htmlToPlainText(buildProductDescription(product, typeResult.data, brandResult.data, specialResult.data));
+  const description = htmlToPlainText(buildProductDescription(effective, typeResult.data, brandResult.data, specialResult.data));
   const partNumber = String(product.board_code || product.model || "").trim();
-  const devicePartNumber = String(product.board_code || "").trim();
+  const boardCode = String(product.board_code || "").trim();
   const images = (product.product_images || []).sort((a: any,b: any) => a.position-b.position)
     .map((image: any) => image.cloudinary_url || image.url).filter(Boolean);
   const activityIds: string[] = [];
@@ -46,8 +56,8 @@ export async function publishProductDirectly(productId: string, processImmediate
         sku: String(product.sku), productName: String(product.title), accountId: String(account.id), requestedData: {
           payload: { item_name: String(product.title).slice(0, 120), description,
             item_sku: String(product.sku), category_id: shopeeCategoryId, original_price: Number(product.price),
-            seller_stock: [{ stock: Number(inventoryResult.data.estoque_disponivel || 0) }], weight: Number(product.weight_gross || 0.4),
-            dimension: { package_length: Number(product.length || 1), package_width: Number(product.width || 1), package_height: Number(product.height || 1) },
+            seller_stock: [{ stock: effective.estoque_disponivel }], weight: Number(effective.weight_gross),
+            dimension: { package_length: Number(effective.length), package_width: Number(effective.width), package_height: Number(effective.height) },
             condition: shopeeCondition, gtin_code: "00", brand: { brand_id: 0, original_brand_name: String(brandResult.data?.name || "Sem marca") },
             attribute_list: shopeeAttributes }, imageUrls: images, accountName: account.name
         }, sourceType: "direct_publish", sourceId: productId }));
@@ -58,19 +68,19 @@ export async function publishProductDirectly(productId: string, processImmediate
       productName: String(product.title), accountId: String(account.id), requestedData: {
         payload: {
           family_name: String(product.title).slice(0, 60), category_id: categoryId, price: Number(product.price), currency_id: "BRL",
-          available_quantity: Number(inventoryResult.data.estoque_disponivel || 0), buying_mode: "buy_it_now", condition: productCondition,
+          available_quantity: effective.estoque_disponivel, buying_mode: "buy_it_now", condition: productCondition,
           listing_type_id: "gold_special", pictures: images.map((source: string) => ({ source })),
           shipping: { mode: "me2", local_pick_up: false, free_shipping: false },
           sale_terms: toMercadoLivreSaleTerms(storedAttributes.mercado_livre?.attributes || {}),
           attributes: [
             { id: "SELLER_SKU", value_name: String(product.sku) }, { id: "BRAND", value_name: String(brandResult.data?.name || "") },
             { id: "MODEL", value_name: String(product.model || "") }, { id: "PART_NUMBER", value_name: partNumber },
-            ...(devicePartNumber ? [{ id: "DEVICE_PART_NUMBER", value_name: devicePartNumber }] : []),
+            ...(boardCode ? [
+              { id: "BOARD_CODE", value_name: boardCode },
+              { id: "DEVICE_PART_NUMBER", value_name: boardCode }
+            ] : []),
             { id: "ITEM_CONDITION", value_id: productCondition === "new" ? "2230284" : "2230581", value_name: productCondition === "new" ? "Novo" : "Usado" },
-            { id: "SELLER_PACKAGE_HEIGHT", value_name: `${Number(product.height || 0)} cm` },
-            { id: "SELLER_PACKAGE_WIDTH", value_name: `${Number(product.width || 0)} cm` },
-            { id: "SELLER_PACKAGE_LENGTH", value_name: `${Number(product.length || 0)} cm` },
-            { id: "SELLER_PACKAGE_WEIGHT", value_name: `${Math.round(Number(product.weight_gross || 0) * 1000)} g` },
+            ...mercadoLivrePackageAttributes(effective),
             ...toMercadoLivreAttributes(storedAttributes.mercado_livre?.attributes || {}, CREATE_SYSTEM_ATTRIBUTES)
           ]
         },
@@ -86,16 +96,16 @@ export async function publishProductDirectly(productId: string, processImmediate
   return result.data || [];
 }
 
-export async function enqueueDirectListingUpdates(productId: string, target?: { accountId?: string; listingId?: string; marketplace?: string }, processImmediately = true, changes?: { title?: boolean; price?: boolean; attributes?: boolean; stock?: number }) {
+export async function enqueueDirectListingUpdates(productId: string, target?: { accountId?: string; listingId?: string; marketplace?: string }, processImmediately = true, changes?: { title?: boolean; price?: boolean; attributes?: boolean; images?: boolean; stock?: number }) {
   const db = supabaseAdmin();
   const [productResult, linksResult, listingLinksResult] = await Promise.all([
-    db.from("products").select("id,sku,title,description,price,type_code,special_code,product_condition,marketplace_categories,marketplace_attributes").eq("id", productId).single().throwOnError(),
-    db.from("product_marketplaces").select("marketplace,marketplace_account_id,marketplace_product_id,titulo_marketplace,valor_marketplace")
+    db.from("products").select("*,product_images(position,url,cloudinary_url)").eq("id", productId).single().throwOnError(),
+    db.from("product_marketplaces").select("marketplace,marketplace_account_id,marketplace_product_id,titulo_marketplace,valor_marketplace,family_id,family_name,user_product_id,raw_data")
       .eq("product_id", productId).eq("existe_no_marketplace", true).throwOnError(),
     db.from("listings").select("marketplace,marketplace_account_id,external_listing_id,price")
       .eq("product_id", productId).not("external_listing_id", "is", null).throwOnError()
   ]);
-  const links = new Map<string, { marketplace: string; marketplace_account_id: string; marketplace_product_id: string; titulo_marketplace?: string | null; valor_marketplace?: number | null }>();
+  const links = new Map<string, { marketplace: string; marketplace_account_id: string; marketplace_product_id: string; titulo_marketplace?: string | null; valor_marketplace?: number | null; family_id?: string | null; family_name?: string | null; user_product_id?: string | null; raw_data?: Record<string, any> | null }>();
   for (const link of linksResult.data || []) {
     if (!link.marketplace_account_id || !link.marketplace_product_id) continue;
     links.set(`${link.marketplace_account_id}:${link.marketplace_product_id}`, link as any);
@@ -107,14 +117,32 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
       marketplace_product_id: String(link.external_listing_id), valor_marketplace: Number(link.price || 0) });
   }
   if (!links.size) return [];
-  if (changes && !changes.title && !changes.price && !changes.attributes) return [];
+  if (changes && !changes.title && !changes.price && !changes.attributes && !changes.images) return [];
   const product = productResult.data;
   const fullAttributeUpdate = !changes || Boolean(changes.attributes);
-  const [inventoryResult] = fullAttributeUpdate ? await Promise.all([
-    db.from("estoque").select("estoque_disponivel").eq("product_id", productId).maybeSingle().throwOnError()
-  ]) : [{ data: null }];
+  const imageUrls = changes?.images
+    ? [...(product.product_images || [])]
+      .sort((left, right) => Number(left.position || 0) - Number(right.position || 0))
+      .slice(0, 6)
+      .map(image => String(image.cloudinary_url || image.url || "")).filter(Boolean)
+    : undefined;
+  if (changes?.images && !imageUrls?.length) throw new Error("O anuncio deve possuir pelo menos uma foto.");
+  const [inventoryResult, typeResult, brandResult, specialResult, marketplaceState] = await Promise.all([
+    db.from("estoque").select("estoque_fisico,estoque_disponivel").eq("product_id", productId).maybeSingle().throwOnError(),
+    db.from("config_types").select("*").eq("code", product.type_code).maybeSingle().throwOnError(),
+    db.from("config_brands").select("*").eq("code", product.brand_code).maybeSingle().throwOnError(),
+    db.from("config_specials").select("keep_warranty").eq("code", product.special_code || "__none__").maybeSingle().throwOnError(),
+    db.from("product_marketplaces").select("marketplace,status_anuncio,raw_data,updated_at").eq("product_id", productId).eq("existe_no_marketplace", true).order("updated_at").throwOnError()
+  ]);
+  const mappingResult = typeResult.data?.marketplace_category
+    ? await db.from("marketplace_category_mappings").select("*").eq("internal_category", typeResult.data.marketplace_category).maybeSingle().throwOnError()
+    : { data: null };
+  const listingDefinitions = await loadActiveListingDefinitions(mappingResult.data, marketplaceState.data || []);
+  const effective = resolveEffectiveProduct({ product, type: typeResult.data, brand: brandResult.data, special: specialResult.data, inventory: inventoryResult.data,
+    mapping: mappingResult.data, marketplaceLinks: marketplaceState.data || [], listingDefinitions });
   const stock = Math.max(0, Number(changes?.stock ?? inventoryResult.data?.estoque_disponivel ?? 0));
-  const storedAttributes = (product.marketplace_attributes || {}) as Record<string, any>;
+  const storedAttributes = Object.fromEntries((["mercado_livre", "shopee"] as const).map(marketplace => [marketplace,
+    { attributes: effective.effective_marketplaces[marketplace].payloadAttributes }]));
   const productCondition = product.product_condition === "new" ? "new" : "used";
   const ids = [];
   for (const link of [...links.values()].filter(link =>
@@ -125,17 +153,29 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
     const destination = link.marketplace as "mercado_livre" | "shopee";
     const payload = changes && !changes.attributes
       ? destination === "mercado_livre"
-        ? { ...(changes.price ? { price: Number(product.price) } : {}) }
+        ? { ...(changes.price ? { price: Number(product.price) } : {}), ...(imageUrls ? { pictures: imageUrls.map(source => ({ source })) } : {}) }
         : { ...(changes.title ? { item_name: String(product.title).slice(0, 120) } : {}), ...(changes.price ? { original_price: Number(product.price) } : {}) }
       : destination === "mercado_livre"
-        ? { price: Number(product.price), available_quantity: stock, condition: productCondition, attributes: [{ id: "ITEM_CONDITION", value_id: productCondition === "new" ? "2230284" : "2230581", value_name: productCondition === "new" ? "Novo" : "Usado" }, ...toMercadoLivreAttributes(storedAttributes.mercado_livre?.attributes || {})], sale_terms: toMercadoLivreSaleTerms(storedAttributes.mercado_livre?.attributes || {}) }
+        ? { ...(!link.family_id && !link.family_name && !link.raw_data?.family_id && !link.raw_data?.family_name
+            ? { title: String(product.title).slice(0, 60) } : {}),
+          price: Number(product.price), available_quantity: stock, condition: productCondition,
+          attributes: [
+            { id: "SELLER_SKU", value_name: String(product.sku) }, { id: "BRAND", value_name: effective.brand_name },
+            { id: "MODEL", value_name: String(product.model || "") }, { id: "PART_NUMBER", value_name: String(product.board_code || product.model || "") },
+            ...(product.board_code ? [{ id: "BOARD_CODE", value_name: String(product.board_code) }, { id: "DEVICE_PART_NUMBER", value_name: String(product.board_code) }] : []),
+            { id: "ITEM_CONDITION", value_id: productCondition === "new" ? "2230284" : "2230581", value_name: productCondition === "new" ? "Novo" : "Usado" },
+            ...mercadoLivrePackageAttributes(effective), ...toMercadoLivreAttributes(storedAttributes.mercado_livre?.attributes || {}, CREATE_SYSTEM_ATTRIBUTES)
+          ], sale_terms: toMercadoLivreSaleTerms(storedAttributes.mercado_livre?.attributes || {}), ...(imageUrls ? { pictures: imageUrls.map(source => ({ source })) } : {}) }
         : { item_name: String(product.title).slice(0, 120), description: String(product.description || "").replace(/<br\s*\/?\s*>/gi, "\n"), original_price: Number(product.price), condition: productCondition === "new" ? "NEW" : "USED", gtin_code: "00",
           seller_stock: [{ stock }],
+          weight: Number(effective.weight_gross), dimension: { package_length: Number(effective.length), package_width: Number(effective.width), package_height: Number(effective.height) },
+          item_sku: String(product.sku), brand: { brand_id: 0, original_brand_name: effective.brand_name || "Sem marca" },
           attribute_list: toShopeeAttributes(storedAttributes.shopee?.attributes || {}) };
     ids.push(await enqueueOutgoingActivity({ destination, activityType: "listing_update", productId, sku: product.sku,
       productName: product.title, accountId: link.marketplace_account_id, listingId: link.marketplace_product_id,
       previousData: { title: link.titulo_marketplace, price: link.valor_marketplace }, requestedData: { payload,
         ...(fullAttributeUpdate && destination === "mercado_livre" ? { description: htmlToPlainText(String(product.description || "")) } : {}),
+        ...(imageUrls && destination === "shopee" ? { imageUrls } : {}),
         ...(fullAttributeUpdate ? { stock } : {}) },
       sourceType: "product_update", sourceId: productId }));
   }
@@ -157,7 +197,7 @@ function toShopeeAttributes(values: Record<string, any>) {
 
 const CREATE_SYSTEM_ATTRIBUTES = new Set([
   "WARRANTY_TYPE", "WARRANTY_TIME", "SELLER_SKU", "BRAND", "MODEL", "PART_NUMBER",
-  "DEVICE_PART_NUMBER", "ITEM_CONDITION", "SELLER_PACKAGE_HEIGHT", "SELLER_PACKAGE_WIDTH",
+  "BOARD_CODE", "DEVICE_PART_NUMBER", "ITEM_CONDITION", "SELLER_PACKAGE_HEIGHT", "SELLER_PACKAGE_WIDTH",
   "SELLER_PACKAGE_LENGTH", "SELLER_PACKAGE_WEIGHT"
 ]);
 
@@ -177,4 +217,17 @@ function toMercadoLivreSaleTerms(values: Record<string, any>) {
     const value = values[id]; if (!value?.valueId && !value?.valueName) return [];
     return [{ id, ...(value.valueId ? { value_id: value.valueId } : {}), ...(value.valueName ? { value_name: value.valueName } : {}) }];
   });
+}
+
+async function loadActiveListingDefinitions(mapping: Record<string, any> | null, links: Record<string, any>[]): Promise<MarketplaceDefinitions> {
+  const result: MarketplaceDefinitions = {};
+  for (const marketplace of ["mercado_livre", "shopee"] as MarketplaceCode[]) {
+    const active = links.find(link => String(link.marketplace) === marketplace
+      && ["active", "normal"].includes(String(link.status_anuncio || link.status || "").toLowerCase()));
+    const categoryId = String(active?.raw_data?.category_id || "");
+    if (!categoryId || categoryId === String(mapping?.[`${marketplace}_code`] || "")) continue;
+    const categoryName = await getMarketplaceCategoryPath(marketplace, categoryId).catch(() => "");
+    result[marketplace] = await fetchMarketplaceCategoryDefinition(marketplace, categoryId, categoryName);
+  }
+  return result;
 }

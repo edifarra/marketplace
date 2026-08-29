@@ -190,7 +190,10 @@ export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
     fixedRows: [
       "CLOUDINARY_CLOUD_NAME",
       "CLOUDINARY_API_KEY",
-      "CLOUDINARY_API_SECRET"
+      "CLOUDINARY_API_SECRET",
+      "CLOUDINARY_CLOUD_NAME_RESERVA",
+      "CLOUDINARY_API_KEY_RESERVA",
+      "CLOUDINARY_API_SECRET_RESERVA"
     ],
     marker: "[CLOUDINARY]",
     fields: [
@@ -209,7 +212,9 @@ export const configDefinitions: Record<ConfigSection, ConfigDefinition> = {
     fixedRows: [
       "ESTOQUE_INICIAL",
       "CARREGAMENTO_PRODUTOS_AUTOMATICO",
-      "ENVIAR_PRODUTOS_AUTOMATICO"
+      "ENVIAR_PRODUTOS_AUTOMATICO",
+      "CHAT_SLA_WITH_PRODUCT_HOURS",
+      "CHAT_SLA_WITHOUT_PRODUCT_HOURS"
     ],
     marker: "[CONFIG_GERAL]",
     fields: [
@@ -508,6 +513,9 @@ function defaultSettingDescription(key: string) {
     CLOUDINARY_CLOUD_NAME: "Nome da cloud usado na URL de upload.",
     CLOUDINARY_API_KEY: "API Key da conta Cloudinary.",
     CLOUDINARY_API_SECRET: "API Secret usado para assinar uploads.",
+    CLOUDINARY_CLOUD_NAME_RESERVA: "Nome da cloud da conta reserva, usada somente quando a conta principal atingir limite de uso ou cobrança.",
+    CLOUDINARY_API_KEY_RESERVA: "API Key da conta Cloudinary reserva.",
+    CLOUDINARY_API_SECRET_RESERVA: "API Secret da conta Cloudinary reserva.",
     TINY_TOKEN: "Token da API Tiny para incluir produtos.",
     OLIST_TINY_COOKIE: "Cookie da Olist/Tiny usado em fluxos internos de marketplace.",
     TINY_ENDPOINT_INCLUIR_PRODUTO: "Endpoint da API Tiny para incluir produto.",

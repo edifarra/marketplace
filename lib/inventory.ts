@@ -5,6 +5,7 @@ import { salePostedAt } from "./sales-fulfillment";
 import { activityDescription } from "./marketplace-activity-labels";
 import { notifyNewSale } from "./telegram-notifications";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
+import { enqueueDirectListingUpdates } from "./direct-marketplace-publisher";
 
 export type MarketplaceSaleInput = {
   activityId?: string;
@@ -16,7 +17,7 @@ export type MarketplaceSaleInput = {
   status?: string;
   mappingStatus?: string;
   mappingSubstatus?: string;
-  items?: Array<{ sku: string; title?: string; quantity: number; unitPrice?: number; totalPrice?: number }>;
+  items?: Array<{ sku: string; title?: string; quantity: number; unitPrice?: number; totalPrice?: number; listingId?: string; variationId?: string }>;
   sku?: string;
   quantity?: number;
   value?: number;
@@ -119,20 +120,28 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     }, { onConflict: "marketplace,order_id" }).select("id").single().throwOnError();
     vendaId = String(vendaResult.data.id);
 
+    const canonicalItemSkus = new Set<string>();
     for (const item of items) {
       const product = await ensureProduct(
         input.marketplace,
         item.sku,
-        input.externalListingId,
+        item.listingId || input.externalListingId,
         item.unitPrice,
         item.title,
-        input.marketplaceAccountId
+        input.marketplaceAccountId,
+        item.variationId
       );
+      canonicalItemSkus.add(product.sku);
       await supabase.from("venda_item").upsert({
         venda_id: vendaId, order_id: orderId, sku: product.sku, quantidade: item.quantity,
         valor_unitario: item.unitPrice, valor_total: item.totalPrice, raw_data: input.rawPayload
       }, { onConflict: "venda_id,sku" }).throwOnError();
     }
+    // As APIs podem corrigir o SKU entre notificacoes do mesmo pedido. Remove
+    // a identidade anterior para a venda nao reservar/auditar o item duas vezes.
+    const savedItems = await supabase.from("venda_item").select("id,sku").eq("venda_id", vendaId).throwOnError();
+    const staleItemIds = (savedItems.data || []).filter(item => !canonicalItemSkus.has(String(item.sku))).map(item => item.id);
+    if (staleItemIds.length) await supabase.from("venda_item").delete().in("id", staleItemIds).throwOnError();
 
     const transition = await supabase.rpc("reconcile_sale_inventory", {
       p_sale_id: vendaId,
@@ -176,6 +185,14 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
 }
 
 async function auditSaleInventory(vendaId: string) {
+  const db = supabaseAdmin();
+  const [items, audits] = await Promise.all([
+    db.from("venda_item").select("sku").eq("venda_id", vendaId).throwOnError(),
+    db.from("venda_estoque_auditoria").select("id,sku").eq("venda_id", vendaId).throwOnError()
+  ]);
+  const currentSkus = new Set((items.data || []).map(item => String(item.sku).trim().toUpperCase()));
+  const staleAuditIds = (audits.data || []).filter(item => !currentSkus.has(String(item.sku).trim().toUpperCase())).map(item => item.id);
+  if (staleAuditIds.length) await db.from("venda_estoque_auditoria").delete().in("id", staleAuditIds).throwOnError();
   const result = await supabaseAdmin().rpc("audit_sale_inventory", { p_sale_id: vendaId });
   if (result.error) throw new Error(`Falha ao auditar estoque da venda: ${result.error.message}`);
   return (result.data || []) as Array<{ sku: string; status: string; mensagem: string }>;
@@ -239,16 +256,28 @@ async function ensureProduct(
   listingId?: string,
   price = 0,
   title = "",
-  marketplaceAccountId?: string
+  marketplaceAccountId?: string,
+  variationId?: string
 ) {
   const supabase = supabaseAdmin();
   if (listingId && marketplaceAccountId) {
-    const linked = await supabase.from("listings").select("product_id,external_sku,products(sku)")
-      .eq("marketplace_account_id", marketplaceAccountId).eq("external_listing_id", listingId)
-      .limit(1).maybeSingle().throwOnError();
-    if (linked.data?.product_id) {
-      const linkedProduct = linked.data.products as unknown as { sku?: string | null } | null;
-      return { productId: String(linked.data.product_id), sku: String(linkedProduct?.sku || linked.data.external_sku || sku) };
+    const [linked, marketplaceLink, variationLink] = await Promise.all([
+      supabase.from("listings").select("product_id,external_sku,products(sku)")
+        .eq("marketplace_account_id", marketplaceAccountId).eq("external_listing_id", listingId)
+        .limit(1).maybeSingle().throwOnError(),
+      supabase.from("product_marketplaces").select("product_id,sku,products(sku)")
+        .eq("marketplace_account_id", marketplaceAccountId).eq("marketplace_product_id", listingId)
+        .limit(1).maybeSingle().throwOnError(),
+      variationId
+        ? supabase.from("product_marketplace_variations").select("product_id,sku,products(sku)")
+          .eq("marketplace_account_id", marketplaceAccountId).eq("parent_listing_id", listingId).eq("variation_id", variationId)
+          .limit(1).maybeSingle().throwOnError()
+        : Promise.resolve({ data: null } as any)
+    ]);
+    const match = variationLink.data || marketplaceLink.data || linked.data;
+    if (match?.product_id) {
+      const linkedProduct = match.products as unknown as { sku?: string | null } | null;
+      return { productId: String(match.product_id), sku: String(linkedProduct?.sku || match.sku || match.external_sku || sku) };
     }
   }
 
@@ -288,13 +317,25 @@ async function ensureProduct(
 
 export async function syncListingsStock(productId: string, stock: number, origin?: { marketplace?: string; accountId?: string; sourceType?: string }, processImmediately = true) {
   const supabase = supabaseAdmin();
-  const [result, legacyLinks, product, inventory] = await Promise.all([
+  const [result, legacyLinks, product, inventory, variationLinks] = await Promise.all([
     supabase.from("listings").select("id,marketplace,marketplace_account_id,external_listing_id,stock,status").eq("product_id", productId).throwOnError(),
     supabase.from("product_marketplaces").select("id,marketplace,marketplace_account_id,marketplace_product_id,estoque_marketplace,status_anuncio")
       .eq("product_id", productId).eq("existe_no_marketplace", true).throwOnError(),
-    supabase.from("products").select("sku,title,tiny_product_id").eq("id", productId).single().throwOnError(),
+    supabase.from("products").select("sku,title,tiny_product_id,mercado_livre_parent_listing_id,mercado_livre_variation_id,marketplace_update_pending").eq("id", productId).single().throwOnError(),
     supabase.from("estoque").select("stock_version").eq("product_id", productId).single().throwOnError()
+    ,supabase.from("product_marketplace_variations")
+      .select("marketplace,marketplace_account_id,parent_listing_id,variation_id")
+      .eq("product_id", productId).throwOnError()
   ]);
+  if (stock > 0 && product.data.marketplace_update_pending) {
+    // Publica o retrato atual completo antes/na mesma drenagem do novo saldo.
+    // A atividade permanece na fila em caso de falha, portanto e seguro limpar
+    // o marcador assim que o payload persistente foi criado.
+    await enqueueDirectListingUpdates(productId, undefined, false, {
+      title: true, price: true, attributes: true, images: true, stock
+    });
+    await supabase.from("products").update({ marketplace_update_pending: false }).eq("id", productId).throwOnError();
+  }
   const targets = new Map<string, Record<string, any>>();
   for (const listing of result.data || []) targets.set(`${listing.marketplace_account_id}:${listing.external_listing_id}`, listing);
   for (const link of legacyLinks.data || []) {
@@ -302,14 +343,34 @@ export async function syncListingsStock(productId: string, stock: number, origin
     if (!targets.has(key)) targets.set(key, { marketplace: link.marketplace, marketplace_account_id: link.marketplace_account_id,
       external_listing_id: link.marketplace_product_id, stock: link.estoque_marketplace, status: link.status_anuncio });
   }
+  for (const variation of variationLinks.data || []) {
+    const key = `${variation.marketplace_account_id}:${variation.parent_listing_id}`;
+    if (!targets.has(key)) targets.set(key, {
+      marketplace: variation.marketplace,
+      marketplace_account_id: variation.marketplace_account_id,
+      external_listing_id: variation.parent_listing_id,
+      stock: null,
+      status: "linked"
+    });
+  }
   for (const listing of targets.values()) {
     if (!listing.external_listing_id || !listing.marketplace_account_id) continue;
+    const listingVariationIds = (variationLinks.data || [])
+      .filter(link => String(link.marketplace_account_id) === String(listing.marketplace_account_id)
+        && String(link.parent_listing_id) === String(listing.external_listing_id))
+      .map(link => String(link.variation_id));
     await enqueueOutgoingActivity({
       destination: listing.marketplace as "mercado_livre" | "shopee",
       activityType: "stock_update", productId, sku: String(product.data.sku), productName: String(product.data.title || ""),
       accountId: listing.marketplace_account_id, listingId: listing.external_listing_id,
       previousData: { stock: listing.stock, status: listing.status }, requestedData: {
-        stock, status: stock <= 0 ? (listing.marketplace === "mercado_livre" ? "paused" : "zero") : "active"
+        stock,
+        status: stock <= 0 ? (listing.marketplace === "mercado_livre" ? "paused" : "zero") : "active",
+        ...(listing.marketplace === "mercado_livre" && listingVariationIds.length
+          ? { variationIds: listingVariationIds.map(Number).filter(Boolean) }
+          : listing.marketplace === "shopee" && listingVariationIds.length
+          ? { modelIds: listingVariationIds.map(Number).filter(Boolean) }
+          : {})
       }, sourceType: origin?.sourceType || "sale", sourceId: null, stockVersion: Number(inventory.data.stock_version || 0)
     });
   }
@@ -330,7 +391,7 @@ async function history(activityId: string, stage: string, status: string, detail
 
 function normalizeItems(input: MarketplaceSaleInput) {
   const source = input.items?.length ? input.items : input.sku ? [{ sku: input.sku, quantity: input.quantity || 1 }] : [];
-  return source.map(item => ({ sku: String(item.sku || "").trim(), title: String((item as { title?: string }).title || "").trim(), quantity: Math.max(1, number(item.quantity)), unitPrice: number(item.unitPrice), totalPrice: number(item.totalPrice) || number(item.unitPrice) * Math.max(1, number(item.quantity)) })).filter(item => item.sku);
+  return source.map(item => ({ ...item, sku: String(item.sku || "").trim(), title: String((item as { title?: string }).title || "").trim(), quantity: Math.max(1, number(item.quantity)), unitPrice: number(item.unitPrice), totalPrice: number(item.totalPrice) || number(item.unitPrice) * Math.max(1, number(item.quantity)) })).filter(item => item.sku);
 }
 function number(value: unknown) { const parsed = Number(value || 0); return Number.isFinite(parsed) ? parsed : 0; }
 function payloadHash(payload: unknown) { return createHash("sha256").update(JSON.stringify(payload) + randomUUID().slice(0, 0)).digest("hex"); }

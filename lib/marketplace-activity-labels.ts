@@ -21,7 +21,7 @@ export function activityTypeLabel(marketplace: string, eventType: string) {
   const type = String(eventType || "notification");
   const shopee: Record<string, string> = {
     "1": "Autorização da loja", "2": "Desconexão da loja", "3": "Status do pedido",
-    "4": "Código de rastreamento", "5": "Aviso da Shopee", "10": "Mensagem do comprador",
+    "4": "Código de rastreamento", "5": "Aviso da Shopee", "10": "Nova mensagem",
     "12": "Validade da autorização", "15": "Atualização do pedido", "22": "Alteração do produto",
     "29": "Devolução ou reembolso", "30": "Situação logística", "37": "Atualização do pedido",
     "47": "Dados do pedido"
@@ -30,7 +30,7 @@ export function activityTypeLabel(marketplace: string, eventType: string) {
     orders_v2: "Atualização do pedido", shipments: "Atualização do envio",
     items: "Alteração do anúncio", items_prices: "Alteração de preço",
     "stock-locations": "Alteração de estoque", "user-products-families": "Alteração do catálogo",
-    messages: "Mensagem do comprador", questions: "Pergunta no anúncio",
+    messages: "Nova mensagem", questions: "Nova pergunta",
     orders_feedback: "Avaliação do pedido", public_candidates: "Oportunidade de promoção",
     price_suggestion: "Sugestão de preço", notification: "Notificação"
   };

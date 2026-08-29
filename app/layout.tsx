@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { GlobalMarketplaceNotifications } from "@/app/components/global-marketplace-notifications";
 
 export const metadata: Metadata = {
   title: { default: "Gestão Marketplace.tech", template: "%s | Gestão Marketplace.tech" },
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        {children}
+        <GlobalMarketplaceNotifications />
+      </body>
     </html>
   );
 }

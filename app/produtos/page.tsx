@@ -13,6 +13,8 @@ import { ExternalProductActionSubmit, ProductActionSubmit } from "./product-acti
 import { getProductActionState } from "@/lib/product-action-rules";
 import { ProductQueueWaiter } from "./product-queue-waiter";
 import { CopySkuButton } from "./copy-sku-button";
+import { validateRequiredAttributes, type MarketplaceDefinitions, type MarketplaceValues } from "@/lib/marketplace-attributes";
+import { validateMarketplaceImage } from "@/lib/marketplace-image-validation";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -32,6 +34,8 @@ type ProductRow = {
   updated_at?: string | null;
   sent_target?: string | null;
   tiny_product_id?: string | null;
+  requiredAttributesComplete?: boolean;
+  imagesValid?: boolean;
   listings: {
     id: string;
     marketplace: string;
@@ -45,6 +49,9 @@ type ProductRow = {
     cloudinary_url?: string | null;
     local_url?: string | null;
     position: number;
+    bytes?: number | null;
+    width_px?: number | null;
+    height_px?: number | null;
   }[];
 };
 
@@ -56,10 +63,11 @@ type ProductFilters = {
   marketplace: "" | "unlinked" | "tiny_only" | "marketplace_linked";
   brand: string;
   type: string;
+  availableStock: "" | "positive" | "zero";
   sort: "recent" | "updated" | "sku" | "name";
 };
 
-export default async function ProductsPage({ searchParams }: { searchParams?: { q?: string; page?: string; erro?: string; sucesso?: string; aguardando?: string; fila?: string; status?: string; marketplace?: string; brand?: string; type?: string; sort?: string } }) {
+export default async function ProductsPage({ searchParams }: { searchParams?: { q?: string; page?: string; erro?: string; sucesso?: string; aguardando?: string; fila?: string; status?: string; marketplace?: string; brand?: string; type?: string; availableStock?: string; sort?: string } }) {
   noStore();
   const filters: ProductFilters = {
     q: searchParams?.q?.trim() || "",
@@ -67,6 +75,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
     marketplace: searchParams?.marketplace === "unlinked" || searchParams?.marketplace === "tiny_only" || searchParams?.marketplace === "marketplace_linked" ? searchParams.marketplace : "",
     brand: searchParams?.brand?.trim() || "",
     type: searchParams?.type?.trim() || "",
+    availableStock: searchParams?.availableStock === "positive" || searchParams?.availableStock === "zero" ? searchParams.availableStock : "",
     sort: parseSort(searchParams?.sort)
   };
   const requestedPage = Math.max(1, Math.trunc(Number(searchParams?.page || 1)));
@@ -78,7 +87,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
   const returnTo = `/produtos?${new URLSearchParams({ ...filterParams(filters), page: String(page) }).toString()}`;
 
   return (
-    <main className="shell"><ProductsPosition listKey={returnTo} />
+    <main className="shell products-page"><ProductsPosition listKey={returnTo} />
       <Sidebar />
       <section className="main">
         <div className="topbar">
@@ -98,6 +107,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
               <div className="row-actions">
                 <button className="secondary" type="submit">Aplicar</button>
                 <a className="secondary link-button" href="/produtos">Limpar Filtros</a>
+                <label className="products-sort-control">Ordenar por<select name="sort" defaultValue={filters.sort}><option value="recent">Mais recente</option><option value="updated">Data de atualizacao</option><option value="sku">Codigo SKU</option><option value="name">Nome do produto</option></select></label>
               </div>
             </div>
             <div className="form-grid">
@@ -106,7 +116,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
               <label>Marketplaces<select name="marketplace" defaultValue={filters.marketplace}><option value="">Todos</option><option value="unlinked">Sem vinculo</option><option value="tiny_only">Com vinculo apenas no Tiny</option><option value="marketplace_linked">Com vinculo em Marketplaces</option></select></label>
               <label>Marca<select name="brand" defaultValue={filters.brand}><option value="">Todas</option>{filterOptions.brands.map(item => <option value={item.code} key={item.code}>{item.name || item.code}</option>)}</select></label>
               <label>Tipo de Produto<select name="type" defaultValue={filters.type}><option value="">Todos</option>{filterOptions.types.map(item => <option value={item.code} key={item.code}>{item.description || item.code}</option>)}</select></label>
-              <label>Ordenar por<select name="sort" defaultValue={filters.sort}><option value="recent">Mais recente</option><option value="updated">Data de atualizacao</option><option value="sku">Codigo SKU</option><option value="name">Nome do produto</option></select></label>
+              <label>Estoque Disponível<select name="availableStock" defaultValue={filters.availableStock}><option value="">Todos</option><option value="positive">Maior que Zero</option><option value="zero">Zerado</option></select></label>
             </div>
           </form>
         </section>
@@ -146,6 +156,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
                 ) : (
                   products.map((product) => {
                     const actions = productActions(product, actionConfiguration);
+                    const requiredAttributesReason = !product.imagesValid ? "Corrigir fotos fora do padrão" : product.requiredAttributesComplete ? undefined : "Preencher atributos obrigatórios";
                     return (
                     <tr key={product.id}>
                       <td>
@@ -164,12 +175,12 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
                       </td>
                       <td>
                         <div className="row-actions">
-                          {actions.showSave && <ExternalProductActionSubmit label="Salvar" form={`product-edit-${product.id}`} />}
-                          {actions.showSend && actions.saveBeforeSend && <ExternalProductActionSubmit label="Enviar" pendingLabel="Salvando e enviando" form={`product-edit-${product.id}`} name="intent" value="send" requireAvailableStock />}
+                          {actions.showSave && <ExternalProductActionSubmit label="Salvar" form={`product-edit-${product.id}`} disabledReason={requiredAttributesReason} />}
+                          {actions.showSend && actions.saveBeforeSend && <ExternalProductActionSubmit label="Enviar" pendingLabel="Salvando e enviando" form={`product-edit-${product.id}`} name="intent" value="send" requireAvailableStock disabledReason={requiredAttributesReason} />}
                           {actions.showSend && !actions.saveBeforeSend && <form action={sendProductAction}>
                             <input type="hidden" name="productId" value={product.id} />
                             <input type="hidden" name="returnTo" value={returnTo} />
-                            <ProductActionSubmit label="Enviar" pendingLabel="Enviando" />
+                            <ProductActionSubmit label="Enviar" pendingLabel="Enviando" disabledReason={requiredAttributesReason} />
                           </form>}
                           <SynchronizeProductButton productId={product.id} returnTo={returnTo} />
                           <CloneProductButton productId={product.id} returnTo={returnTo} />
@@ -215,14 +226,17 @@ async function getProducts(requestedPage: number, filters: ProductFilters) {
     return { products, error: "", total, page, totalPages };
   }
 
-  const [listings, marketplaceLinks, images, inventory] = await Promise.all([
+  const [listings, marketplaceLinks, images, inventory, validationProducts, types, mappings] = await Promise.all([
     supabase
       .from("listings")
       .select("id,product_id,marketplace,marketplace_account_id,external_listing_id,status")
       .in("product_id", ids),
     supabase.from("product_marketplaces").select("id,product_id,marketplace,marketplace_account_id,marketplace_product_id,status_anuncio").in("product_id", ids).eq("existe_no_marketplace", true),
     getProductImages(supabase, ids),
-    supabase.from("estoque").select("product_id,estoque_fisico,estoque_disponivel").in("product_id", ids)
+    supabase.from("estoque").select("product_id,estoque_fisico,estoque_disponivel").in("product_id", ids),
+    supabase.from("products").select("id,sku,title,description,price,type_code,brand_code,model,board_code,width,height,length,weight_net,weight_gross,marketplace_attributes").in("id", ids),
+    supabase.from("config_types").select("code,marketplace_category,marketplace_active_attributes"),
+    supabase.from("marketplace_category_mappings").select("internal_category,attribute_definitions")
   ]);
 
   const listingsByProduct = new Map<string, ProductRow["listings"]>();
@@ -249,18 +263,61 @@ async function getProducts(requestedPage: number, filters: ProductFilters) {
     imagesByProduct.set(productId, current);
   }
   const inventoryByProduct = new Map((inventory.data || []).map(row => [String(row.product_id), row]));
+  const validationByProduct = new Map((validationProducts.data || []).map(row => [String(row.id), row]));
+  const typeByCode = new Map((types.data || []).map(row => [String(row.code), row]));
+  const mappingByCategory = new Map((mappings.data || []).map(row => [String(row.internal_category), row]));
 
   return {
     products: products.map((product) => ({
       ...product,
       estoque_fisico: Number(inventoryByProduct.get(product.id)?.estoque_fisico ?? product.stock ?? 0),
       estoque_disponivel: Number(inventoryByProduct.get(product.id)?.estoque_disponivel ?? product.stock ?? 0),
+      requiredAttributesComplete: hasRequiredProductAttributes(validationByProduct.get(product.id), typeByCode, mappingByCategory, imagesByProduct.get(product.id) || []),
+      imagesValid: (imagesByProduct.get(product.id) || []).length > 0 && (imagesByProduct.get(product.id) || []).every(image => validateMarketplaceImage({ width: Number(image.width_px), height: Number(image.height_px), bytes: Number(image.bytes) }).length === 0),
       listings: listingsByProduct.get(product.id) || [],
       product_images: imagesByProduct.get(product.id) || []
     })),
     error: listings.error?.message || marketplaceLinks.error?.message || countResult.error?.message || "",
     total, page, totalPages
   };
+}
+
+function hasRequiredProductAttributes(
+  product: Record<string, any> | undefined,
+  typeByCode: Map<string, Record<string, any>>,
+  mappingByCategory: Map<string, Record<string, any>>,
+  images: ProductRow["product_images"]
+) {
+  if (!product) return false;
+  const typeCode = String(product.type_code || "");
+  const type = typeByCode.get(typeCode);
+  const mapping = mappingByCategory.get(String(type?.marketplace_category || ""));
+  const definitions = (mapping?.attribute_definitions || {}) as MarketplaceDefinitions;
+  const active = type?.marketplace_active_attributes as Partial<Record<"mercado_livre" | "shopee", string[]>> | null;
+  const activeDefinitions = active == null ? definitions : Object.fromEntries(
+    (["mercado_livre", "shopee"] as const).map(marketplace => [marketplace, definitions[marketplace] ? {
+      ...definitions[marketplace],
+      attributes: active[marketplace] === undefined
+        ? definitions[marketplace]!.attributes
+        : Object.fromEntries(Object.entries(definitions[marketplace]!.attributes || {}).filter(([id]) => active[marketplace]!.includes(id)))
+    } : undefined])
+  ) as MarketplaceDefinitions;
+  const boardCodeRequired = (["mercado_livre", "shopee"] as const).some(marketplace =>
+    Object.values(activeDefinitions[marketplace]?.attributes || {}).some(attribute => attribute.systemSource === "board_code" && attribute.required)
+  );
+  const validNumber = (value: unknown) => Number.isFinite(Number(value)) && Number(value) >= 0;
+  return Boolean(
+    String(product.sku || "").trim()
+    && String(product.title || "").trim().length > 0
+    && String(product.title || "").trim().length <= 60
+    && typeCode && typeCode !== "OT"
+    && String(product.brand_code || "") && String(product.brand_code) !== "NI"
+    && String(product.model || "").trim().length >= 2
+    && (!boardCodeRequired || String(product.board_code || "").trim().length >= 2)
+    && [product.price, product.width, product.height, product.length, product.weight_net, product.weight_gross].every(validNumber)
+    && images.length > 0
+    && validateRequiredAttributes(activeDefinitions, (product.marketplace_attributes || {}) as MarketplaceValues).length === 0
+  );
 }
 
 function queryProductsWithSendFields(supabase: ReturnType<typeof supabaseAdmin>, from: number, to: number, filters: ProductFilters) {
@@ -306,7 +363,7 @@ function queryProductsBaseFields(supabase: ReturnType<typeof supabaseAdmin>, fro
 async function getProductImages(supabase: ReturnType<typeof supabaseAdmin>, productIds: string[]) {
   const withLocal = await supabase
     .from("product_images")
-    .select("product_id,original_name,url,cloudinary_url,local_url,position")
+    .select("product_id,original_name,url,cloudinary_url,local_url,position,bytes,width_px,height_px")
     .in("product_id", productIds);
 
   if (!withLocal.error) {
@@ -315,7 +372,7 @@ async function getProductImages(supabase: ReturnType<typeof supabaseAdmin>, prod
 
   const fallback = await supabase
     .from("product_images")
-    .select("product_id,original_name,url,position")
+    .select("product_id,original_name,url,position,bytes,width_px,height_px")
     .in("product_id", productIds);
 
   return fallback.data ?? [];
@@ -352,13 +409,15 @@ function MarketplaceLogos({ product }: { product: ProductRow }) {
     <div className="marketplace-logos">
       {tinySent && <span className="marketplace-logo olist-tiny" title="Produto enviado ao Olist Tiny">OlistTiny</span>}
       {published.map((listing) => (
-        <span
-          className={`marketplace-logo ${listing.marketplace === "shopee" ? "shopee" : "mercado-livre"}`}
+        <Image
+          className="marketplace-mini-logo"
+          src={listing.marketplace === "shopee" ? "/marketplaces/shopee-mini.webp" : "/marketplaces/mercado-livre-mini.png"}
+          width={25}
+          height={25}
+          alt={listing.marketplace === "shopee" ? "Shopee" : "Mercado Livre"}
           title={`${listing.marketplace}: ${listing.external_listing_id}`}
           key={listing.id}
-        >
-          {listing.marketplace === "shopee" ? "Shopee" : "ML"}
-        </span>
+        />
       ))}
     </div>
   );
@@ -387,13 +446,15 @@ function filterParams(filters: ProductFilters) {
   return Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
 }
 
-function applyProductFilters<T extends { or: Function; eq: Function }>(query: T, filters: ProductFilters): T {
+function applyProductFilters<T extends { or: Function; eq: Function; gt: Function }>(query: T, filters: ProductFilters): T {
   let result: any = query;
   if (filters.q) result = result.or(`sku.ilike.%${escapeSearch(filters.q)}%,title.ilike.%${escapeSearch(filters.q)}%`);
   if (filters.status) result = result.eq("status", filters.status);
   if (filters.brand) result = result.eq("brand_code", filters.brand);
   if (filters.type) result = result.eq("type_code", filters.type);
   if (filters.marketplace) result = result.eq("integration_link_type", filters.marketplace);
+  if (filters.availableStock === "positive") result = result.gt("estoque_disponivel", 0);
+  if (filters.availableStock === "zero") result = result.eq("estoque_disponivel", 0);
   return result as T;
 }
 

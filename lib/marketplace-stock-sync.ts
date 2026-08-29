@@ -175,6 +175,27 @@ async function stepMercadoLivreSync(accountId: string, progress: StockSyncProgre
       throw new Error("Mercado Livre retornou um anuncio sem detalhes.");
     }
 
+    const parentListingId = String(item.id || "");
+    for (const variation of Array.isArray(item.variations) ? item.variations as Array<Record<string, any>> : []) {
+      const variationSku = String(
+        variation.seller_custom_field
+        || (Array.isArray(variation.attributes)
+          ? variation.attributes.find((attribute: Record<string, any>) => attribute.id === "SELLER_SKU")?.value_name
+          : "")
+        || ""
+      ).trim();
+      const variationId = Number(variation.id || 0);
+      if (!variationSku || !variationId || !parentListingId) continue;
+      await upsertMarketplaceVariation({
+        accountId,
+        marketplace: "mercado_livre",
+        parentListingId,
+        variationId: String(variationId),
+        sku: variationSku,
+        rawData: variation
+      });
+    }
+
     const sku = extractSku(item);
     if (!sku) {
       const listingId = String(item.id || "");
@@ -286,6 +307,16 @@ async function syncShopeeAccount(accountId: string, progress: StockSyncProgress)
       db.from("products").select("id").ilike("sku", normalizeSku(item.sku)).maybeSingle().throwOnError()
     ]);
     await upsertMarketplaceItem({ ...item, sku: normalizeSku(item.sku), syncRunId: progress.runId });
+    for (const variation of extractShopeeVariations(item.rawData)) {
+      await upsertMarketplaceVariation({
+        accountId,
+        marketplace: "shopee",
+        parentListingId: item.listingId,
+        variationId: variation.id,
+        sku: variation.sku,
+        rawData: variation.rawData
+      });
+    }
     if (existing.data?.id) updatedListings += 1;
     else includedListings += 1;
     if (systemProduct.data?.id) linkedListings += 1;
@@ -427,4 +458,37 @@ async function deleteListingsNotSeenInRun(accountId: string, runId: string, curr
 
 function normalizeSku(value: unknown) {
   return String(value || "").trim().toUpperCase();
+}
+
+async function upsertMarketplaceVariation(input: {
+  accountId: string;
+  marketplace: "mercado_livre" | "shopee";
+  parentListingId: string;
+  variationId: string;
+  sku: string;
+  rawData: Record<string, unknown>;
+}) {
+  const sku = normalizeSku(input.sku);
+  const db = supabaseAdmin();
+  const product = await db.from("products").select("id").ilike("sku", sku).maybeSingle().throwOnError();
+  await db.from("product_marketplace_variations").upsert({
+    product_id: product.data?.id || null,
+    marketplace_account_id: input.accountId,
+    marketplace: input.marketplace,
+    parent_listing_id: input.parentListingId,
+    variation_id: input.variationId,
+    sku,
+    raw_data: input.rawData,
+    updated_at: new Date().toISOString()
+  }, { onConflict: "marketplace_account_id,parent_listing_id,variation_id" }).throwOnError();
+}
+
+function extractShopeeVariations(rawData: Record<string, unknown>) {
+  const candidates = [rawData.model, rawData.model_list, rawData.models]
+    .find(Array.isArray) as Array<Record<string, unknown>> | undefined;
+  return (candidates || []).map((model) => ({
+    id: String(model.model_id || model.id || "").trim(),
+    sku: String(model.model_sku || model.sku || "").trim(),
+    rawData: model
+  })).filter((model) => model.id && model.sku);
 }

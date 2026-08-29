@@ -1,4 +1,5 @@
 import { createShopeeSignature } from "./signature";
+import { buildShopeeStockPayload } from "../../marketplace-stock-payloads";
 
 const DEFAULT_SHOPEE_BASE_URL = "https://partner.shopeemobile.com";
 
@@ -152,6 +153,37 @@ export class ShopeeClient {
     return this.getProductsByIds(accessToken, shopId, [itemId]);
   }
 
+  async getConversationList(accessToken: string, shopId: string | number, nextTimestampNano = "", pageSize = 50) {
+    const newestMessageAnchor = nextTimestampNano || (BigInt(Date.now()) * 1_000_000n).toString();
+    return this.signedRequest<Record<string, unknown>>("/api/v2/sellerchat/get_conversation_list", {
+      accessToken, shopId,
+      query: {
+        direction: "older",
+        type: "all",
+        page_size: Math.min(Math.max(pageSize, 1), 50),
+        next_timestamp_nano: newestMessageAnchor
+      }
+    });
+  }
+
+  async getConversation(accessToken: string, shopId: string | number, conversationId: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/sellerchat/get_one_conversation", {
+      accessToken, shopId, query: { conversation_id: conversationId }
+    });
+  }
+
+  async getConversationMessages(accessToken: string, shopId: string | number, conversationId: string, offset = 0, pageSize = 50) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/sellerchat/get_message", {
+      accessToken, shopId, query: { conversation_id: conversationId, offset, page_size: Math.min(Math.max(pageSize, 1), 50) }
+    });
+  }
+
+  async sendChatText(accessToken: string, shopId: string | number, toId: string, text: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/sellerchat/send_message", {
+      accessToken, shopId, method: "POST", body: { to_id: Number(toId), message_type: "text", content: { text } }
+    });
+  }
+
   async getProductsByIds(accessToken: string, shopId: string | number, itemIds: Array<string | number>) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/product/get_item_base_info", {
       accessToken,
@@ -166,15 +198,20 @@ export class ShopeeClient {
     return this.getProductById(accessToken, shopId, itemId);
   }
 
-  async updateStock(accessToken: string, shopId: string | number, itemId: string | number, stock: number) {
+  async getModelList(accessToken: string, shopId: string | number, itemId: string | number) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/product/get_model_list", {
+      accessToken,
+      shopId,
+      query: { item_id: String(itemId) }
+    });
+  }
+
+  async updateStock(accessToken: string, shopId: string | number, itemId: string | number, stock: number, modelIds: Array<string | number> = []) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/product/update_stock", {
       accessToken,
       shopId,
       method: "POST",
-      body: {
-        item_id: Number(itemId),
-        stock_list: [{ seller_stock: [{ stock }] }]
-      }
+      body: buildShopeeStockPayload(itemId, modelIds, stock)
     });
   }
 

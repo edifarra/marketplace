@@ -2,12 +2,14 @@ import { supabaseAdmin } from "./supabase-admin";
 import { getMercadoLivreAccountById, getValidMercadoLivreAccessToken } from "./mercado-livre";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
-import { createTinyProduct, deactivateTinyProductById, findTinyProductId, getTinyProductInventory, updateTinyProduct, updateTinyProductStockById } from "./tiny";
+import { createTinyProduct, deactivateTinyProductById, findTinyProductId, getTinyProductInventory, getTinyProductSnapshot, updateTinyProduct, updateTinyProductPriceById, updateTinyProductStockById } from "./tiny";
 import { htmlToPlainText } from "./html-to-plain-text";
+import { buildMercadoLivreVariationStockPayload } from "./marketplace-stock-payloads";
+import { executeConversationReply, markConversationReplyError } from "./marketplace-conversations";
 
 export type OutgoingActivityInput = {
   destination: "mercado_livre" | "shopee" | "tiny";
-  activityType: "stock_update" | "listing_create" | "listing_update" | "listing_delete";
+  activityType: "stock_update" | "listing_create" | "listing_update" | "listing_delete" | "answer_send" | "question_answer";
   productId?: string | null; sku: string; productName?: string | null;
   accountId?: string | null; listingId?: string | null;
   previousData?: Record<string, unknown>; requestedData: Record<string, unknown>;
@@ -108,10 +110,48 @@ export async function processOutgoingActivities(limit = 10) {
             .eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", activity.listing_id)
         ]);
       }
+      if (activity.activity_type === "listing_update" && ["mercado_livre", "shopee"].includes(String(activity.destination))) {
+        const confirmedPrice = Number(confirmed.price);
+        const confirmedStock = Number(confirmed.stock);
+        const now = new Date().toISOString();
+        await Promise.all([
+          db.from("listings").update({
+            ...(Number.isFinite(confirmedPrice) ? { price: confirmedPrice } : {}),
+            ...(Number.isFinite(confirmedStock) ? { stock: confirmedStock } : {}),
+            last_sync_at: now, error_message: null
+          }).eq("marketplace_account_id", activity.marketplace_account_id).eq("external_listing_id", activity.listing_id),
+          db.from("product_marketplaces").update({
+            ...(Number.isFinite(confirmedPrice) ? { valor_marketplace: confirmedPrice } : {}),
+            ...(Number.isFinite(confirmedStock) ? { estoque_marketplace: confirmedStock } : {}),
+            status_anuncio: String(confirmed.status || ""), updated_at: now
+          }).eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", activity.listing_id)
+        ]);
+      }
       await history(String(activity.id), Number(activity.attempt_count), "confirmation", "completed", confirmed);
       results.push({ id: activity.id, ok: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (["answer_send", "question_answer"].includes(String(activity.activity_type))) {
+        await markConversationReplyError(activity, message);
+      }
+      try {
+        if (await recoverMercadoLivreImmutableCondition(activity, message)) {
+          await history(String(activity.id), Number(activity.attempt_count), "immutable_condition_recovery", "completed", {
+            reason: "Mercado Livre nao permite reenviar condition neste anuncio.",
+            action: "Campo condition removido do payload da segunda tentativa."
+          });
+        }
+        if (await recoverMercadoLivreManagedTitle(activity, message)) {
+          await history(String(activity.id), Number(activity.attempt_count), "managed_title_recovery", "completed", {
+            reason: "Mercado Livre gerencia o titulo deste anuncio.",
+            action: "Familia consultada e title removido do payload da proxima tentativa."
+          });
+        }
+      } catch (recoveryError) {
+        await history(String(activity.id), Number(activity.attempt_count), "managed_title_recovery", "error", {
+          error: recoveryError instanceof Error ? recoveryError.message : String(recoveryError)
+        });
+      }
       await db.rpc("requeue_outgoing_marketplace_activity", { p_id: activity.id, p_error: message }).throwOnError();
       await history(String(activity.id), Number(activity.attempt_count), "confirmation", Number(activity.attempt_count) >= 5 ? "error" : "retry", { error: message });
       results.push({ id: activity.id, ok: false, error: message });
@@ -152,6 +192,7 @@ async function markProductSentWhenAllMarketplacesAreLinked(productId: string) {
 }
 
 async function executeAndConfirm(activity: Record<string, any>) {
+  if (["answer_send", "question_answer"].includes(String(activity.activity_type))) return executeConversationReply(activity);
   if (activity.destination === "tiny" && activity.activity_type === "listing_create") return createAndConfirmTiny(activity);
   if (activity.destination === "mercado_livre" && activity.activity_type === "listing_create") return createAndConfirmMercadoLivre(activity);
   if (activity.destination === "shopee" && activity.activity_type === "listing_create") return createAndConfirmShopee(activity);
@@ -199,10 +240,24 @@ async function deleteAndConfirm(activity: Record<string, any>) {
     const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
     const token = await getValidMercadoLivreAccessToken(account);
     const current = await mlApi(`/items/${listingId}`, token, "GET");
-    if (!['closed','inactive'].includes(String(current.status))) await mlApi(`/items/${listingId}`, token, "PUT", { status: "closed" });
-    try { await mlApi(`/items/${listingId}`, token, "PUT", { deleted: "true" }); } catch { /* Fechado ja confirma a indisponibilidade. */ }
+    const currentStatus = String(current.status || "").toLowerCase();
+    const currentSubStatuses = mercadoLivreSubStatuses(current);
+    const isForbiddenReview = currentStatus === "under_review" && currentSubStatuses.includes("forbidden");
+
+    // O Mercado Livre bloqueia alteracoes de status durante a revisao. Para
+    // under_review + forbidden, a documentacao orienta pular o fechamento e
+    // enviar diretamente o marcador de exclusao permanente.
+    if (!isForbiddenReview && !["closed", "inactive"].includes(currentStatus)) {
+      await mlApi(`/items/${listingId}`, token, "PUT", { status: "closed" });
+    }
+    if (!currentSubStatuses.includes("deleted")) {
+      await mlApi(`/items/${listingId}`, token, "PUT", { deleted: "true" });
+    }
     const confirmed = await mlApi(`/items/${listingId}`, token, "GET");
-    if (!['closed','inactive'].includes(String(confirmed.status))) throw new Error(`Mercado Livre confirmou status ${confirmed.status}.`);
+    const confirmedSubStatuses = mercadoLivreSubStatuses(confirmed);
+    if (!confirmedSubStatuses.includes("deleted")) {
+      throw new Error(`Mercado Livre nao confirmou a exclusao do anuncio ${listingId}. Status ${confirmed.status || "desconhecido"}; sub_status ${confirmedSubStatuses.join(", ") || "ausente"}.`);
+    }
     return { listingId, status: confirmed.status, deleted: true };
   }
   if (activity.destination === "shopee") {
@@ -219,13 +274,44 @@ async function deleteAndConfirm(activity: Record<string, any>) {
   throw new Error(`Destino nao suportado: ${activity.destination}.`);
 }
 
+function mercadoLivreSubStatuses(item: Record<string, any>) {
+  return (Array.isArray(item.sub_status) ? item.sub_status : [])
+    .map((value: unknown) => String(value).toLowerCase());
+}
+
 async function updateAndConfirmListing(activity: Record<string, any>) {
   const listingId = String(activity.listing_id || "");
   if (activity.destination === "tiny") {
     if (!activity.product_id) throw new Error("Produto interno ausente para atualizar no Tiny.");
-    const result = await updateTinyProduct(String(activity.product_id), listingId);
+    let result;
+    try {
+      result = await updateTinyProduct(String(activity.product_id), listingId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Registro em duplicidade\s*-\s*nome do produto/i.test(message)) throw error;
+      const currentTinyProduct = await getTinyProductSnapshot(listingId) as Record<string, any>;
+      if (String(currentTinyProduct.id || listingId) !== listingId) throw error;
+      result = { idProduto: listingId, status: "OK", statusProcessamento: "fallback", http: 200,
+        raw: "", json: {}, erros: "", existingProductFallback: true };
+    }
     if (String(result.idProduto || "") !== listingId) throw new Error(`Tiny confirmou o produto ${result.idProduto}, esperado ${listingId}.`);
-    return { listingId, status: "updated", tinyResult: result };
+    const db = supabaseAdmin();
+    const [product, inventory] = await Promise.all([
+      db.from("products").select("price").eq("id", activity.product_id).single().throwOnError(),
+      db.from("estoque").select("estoque_disponivel").eq("product_id", activity.product_id).maybeSingle().throwOnError()
+    ]);
+    const expectedPrice = Number(product.data.price || 0);
+    const expectedStock = Math.max(0, Number(inventory.data?.estoque_disponivel || 0));
+    await Promise.all([
+      updateTinyProductPriceById(listingId, expectedPrice),
+      updateTinyProductStockById(listingId, expectedStock)
+    ]);
+    const remote = await getTinyProductSnapshot(listingId) as Record<string, any>;
+    const confirmedPrice = Number(remote.preco ?? remote.preco_promocional ?? -1);
+    const confirmedStock = Number(remote.saldo ?? -1);
+    if (Math.abs(confirmedPrice - expectedPrice) >= 0.005) throw new Error(`Tiny confirmou preco ${confirmedPrice}, esperado ${expectedPrice}.`);
+    if (confirmedStock !== expectedStock) throw new Error(`Tiny confirmou estoque ${confirmedStock}, esperado ${expectedStock}.`);
+    return { listingId, status: "updated", price: confirmedPrice, stock: confirmedStock, tinyResult: result };
   }
   if (activity.destination === "mercado_livre") {
     const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
@@ -233,17 +319,116 @@ async function updateAndConfirmListing(activity: Record<string, any>) {
     if (activity.requested_data?.payload) await mlApi(`/items/${listingId}`, token, "PUT", activity.requested_data.payload);
     if (activity.requested_data?.description !== undefined) await mlApi(`/items/${listingId}/description`, token, "PUT", { plain_text: htmlToPlainText(String(activity.requested_data.description || "")) });
     const remote = await mlApi(`/items/${listingId}`, token, "GET");
+    await synchronizeMercadoLivreManagedProduct(activity, remote);
     return { listingId, status: remote.status, title: remote.title, price: remote.price };
   }
   if (activity.destination === "shopee") {
     const { client, token, shopId } = await shopeeContext(activity);
-    await client.updateProduct(token, shopId, { item_id: Number(listingId), ...(activity.requested_data?.payload || {}) });
+    const imageUrls = Array.isArray(activity.requested_data?.imageUrls) ? activity.requested_data.imageUrls : [];
+    const imageIds = [];
+    for (const url of imageUrls) imageIds.push(await client.uploadImageFromUrl(token, shopId, String(url)));
+    const updatePayload = structuredClone(activity.requested_data?.payload || {});
+    const requestedPrice = Number(updatePayload.original_price);
+    delete updatePayload.original_price;
+    delete updatePayload.seller_stock;
+    await client.updateProduct(token, shopId, {
+      item_id: Number(listingId),
+      ...updatePayload,
+      ...(imageUrls.length ? { image: { image_id_list: imageIds } } : {})
+    });
+    if (Number.isFinite(requestedPrice)) await client.updatePrice(token, shopId, listingId, requestedPrice);
     if (activity.requested_data?.stock !== undefined) await client.updateStock(token, shopId, listingId, Number(activity.requested_data.stock));
-    const remote = await client.getProductById(token, shopId, listingId);
-    const item = ((remote.response as any)?.item_list || [])[0] || {};
-    return { listingId, status: item.item_status, title: item.item_name, description: item.description };
+    const requestedStock = activity.requested_data?.stock === undefined ? undefined : Number(activity.requested_data.stock);
+    let item: Record<string, any> = {};
+    let confirmedPrice = -1;
+    let confirmedStock = -1;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+      const remote = await client.getProductById(token, shopId, listingId);
+      item = ((remote.response as any)?.item_list || [])[0] || {};
+      confirmedPrice = Number(item.price_info?.[0]?.current_price ?? item.price_info?.[0]?.original_price ?? item.original_price ?? item.price ?? -1);
+      confirmedStock = Number(item.stock_info_v2?.seller_stock?.[0]?.stock ?? item.stock_info_v2?.summary_info?.total_available_stock ?? item.stock_info?.[0]?.current_stock ?? item.stock ?? -1);
+      const priceMatches = !Number.isFinite(requestedPrice) || Math.abs(confirmedPrice - requestedPrice) < 0.005;
+      const stockMatches = requestedStock === undefined || confirmedStock === requestedStock;
+      if (priceMatches && stockMatches) break;
+    }
+    if (Number.isFinite(requestedPrice) && Math.abs(confirmedPrice - requestedPrice) >= 0.005) throw new Error(`Shopee confirmou preco ${confirmedPrice}, esperado ${requestedPrice}.`);
+    if (requestedStock !== undefined && confirmedStock !== requestedStock) throw new Error(`Shopee confirmou estoque ${confirmedStock}, esperado ${requestedStock}.`);
+    return { listingId, status: item.item_status, title: item.item_name, description: item.description,
+      ...(Number.isFinite(requestedPrice) ? { price: confirmedPrice } : {}), ...(requestedStock !== undefined ? { stock: confirmedStock } : {}) };
   }
   throw new Error(`Atualizacao ainda nao suportada para ${activity.destination}.`);
+}
+
+async function recoverMercadoLivreImmutableCondition(activity: Record<string, any>, message: string) {
+  if (activity.destination !== "mercado_livre" || activity.activity_type !== "listing_update" || Number(activity.attempt_count) !== 1) return false;
+  if (!/condition is not modifiable|field_not_updatable[^\n]*condition/i.test(message)) return false;
+  const requestedData = structuredClone(activity.requested_data || {});
+  if (!requestedData.payload || typeof requestedData.payload !== "object" || !("condition" in requestedData.payload)) return false;
+  delete requestedData.payload.condition;
+  await supabaseAdmin().from("outgoing_marketplace_activities").update({ requested_data: requestedData, updated_at: new Date().toISOString() })
+    .eq("id", activity.id).throwOnError();
+  activity.requested_data = requestedData;
+  return true;
+}
+
+function isMercadoLivreManagedTitleError(activity: Record<string, any>, message: string) {
+  return activity.destination === "mercado_livre"
+    && activity.activity_type === "listing_update"
+    && /cannot modify the title if the item has a family_name|BODY_INVALID_FIELDS/i.test(message)
+    && /family_name|cause["'\\:_ ]*374/i.test(message);
+}
+
+async function recoverMercadoLivreManagedTitle(activity: Record<string, any>, message: string) {
+  if (!isMercadoLivreManagedTitleError(activity, message)) return false;
+  const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
+  const token = await getValidMercadoLivreAccessToken(account);
+  const listingId = String(activity.listing_id || "");
+  const remote = await mlApi(`/items/${listingId}`, token, "GET");
+  let familyId = String(remote.family_id || "");
+  if (!familyId && remote.user_product_id) {
+    const userProduct = await mlApi(`/user-products/${remote.user_product_id}`, token, "GET");
+    familyId = String(userProduct.family_id || "");
+  }
+  if (!remote.family_name && !familyId) return false;
+
+  const db = supabaseAdmin();
+  const requestedData = structuredClone(activity.requested_data || {});
+  if (requestedData.payload && typeof requestedData.payload === "object") delete requestedData.payload.title;
+  const now = new Date().toISOString();
+  await Promise.all([
+    db.from("outgoing_marketplace_activities").update({ requested_data: requestedData, updated_at: now }).eq("id", activity.id).throwOnError(),
+    db.from("product_marketplaces").update({
+      family_id: familyId || null,
+      family_name: String(remote.family_name || "") || null,
+      user_product_id: String(remote.user_product_id || "") || null,
+      titulo_marketplace: String(remote.title || "") || null,
+      raw_data: remote,
+      updated_at: now
+    }).eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", listingId).throwOnError()
+  ]);
+  activity.requested_data = requestedData;
+  return true;
+}
+
+async function synchronizeMercadoLivreManagedProduct(activity: Record<string, any>, remote: Record<string, any>) {
+  if (!activity.product_id || (!remote.family_name && !remote.family_id)) return;
+  const db = supabaseAdmin();
+  const title = String(remote.title || "").trim();
+  const now = new Date().toISOString();
+  await Promise.all([
+    title ? db.from("products").update({ title, updated_at: now }).eq("id", activity.product_id).throwOnError() : Promise.resolve(),
+    db.from("product_marketplaces").update({
+      family_id: String(remote.family_id || "") || null,
+      family_name: String(remote.family_name || "") || null,
+      user_product_id: String(remote.user_product_id || "") || null,
+      titulo_marketplace: title || null,
+      valor_marketplace: Number(remote.price || 0),
+      status_anuncio: String(remote.status || ""),
+      raw_data: remote,
+      updated_at: now
+    }).eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", activity.listing_id).throwOnError()
+  ]);
 }
 
 async function shopeeContext(activity: Record<string, any>) {
@@ -310,7 +495,15 @@ async function createAndConfirmMercadoLivre(activity: Record<string, any>) {
   const token = await getValidMercadoLivreAccessToken(account);
   let listingId = String(activity.listing_id || "");
   if (!listingId) {
-    const created = await mlApi("/items", token, "POST", activity.requested_data?.payload || {});
+    const payload = structuredClone(activity.requested_data?.payload || {});
+    if (activity.product_id) {
+      const product = await supabaseAdmin().from("products").select("model,board_code").eq("id", activity.product_id).maybeSingle().throwOnError();
+      const attributes = Array.isArray(payload.attributes) ? payload.attributes : [];
+      upsertMercadoLivreTextAttribute(attributes, "MODEL", product.data?.model);
+      upsertMercadoLivreTextAttribute(attributes, "BOARD_CODE", product.data?.board_code);
+      payload.attributes = attributes;
+    }
+    const created = await mlApi("/items", token, "POST", payload);
     listingId = String(created.id || "");
     if (!listingId) throw new Error("Mercado Livre nao retornou o ID do anuncio.");
     await supabaseAdmin().from("outgoing_marketplace_activities")
@@ -345,6 +538,17 @@ async function createAndConfirmMercadoLivre(activity: Record<string, any>) {
     listingType: remote.listing_type_id, warranty: remote.warranty };
 }
 
+function upsertMercadoLivreTextAttribute(attributes: Array<Record<string, any>>, id: string, rawValue: unknown) {
+  const value = String(rawValue || "").trim();
+  if (!value) return;
+  const existing = attributes.find(attribute => String(attribute.id) === id);
+  if (existing) {
+    if (!existing.value_id && !String(existing.value_name || "").trim() && !existing.values?.length) existing.value_name = value;
+    return;
+  }
+  attributes.push({ id, value_name: value });
+}
+
 async function updateAndConfirmTiny(activity: Record<string, any>, stock: number) {
   const tinyProductId = String(activity.listing_id || "");
   if (!tinyProductId) throw new Error("Identificador do produto Tiny ausente.");
@@ -360,12 +564,31 @@ async function updateAndConfirmMercadoLivre(activity: Record<string, any>, stock
   const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
   const token = await getValidMercadoLivreAccessToken(account);
   const listingId = String(activity.listing_id);
+  const variationIds = [...new Set([
+    ...(Array.isArray(activity.requested_data?.variationIds) ? activity.requested_data.variationIds : []),
+    activity.requested_data?.variationId
+  ].map(Number).filter((id) => id > 0))];
+  if (variationIds.length > 0) {
+    await mlRequest(listingId, token, "PUT", buildMercadoLivreVariationStockPayload(variationIds, stock));
+    const remote = await mlRequest(listingId, token, "GET");
+    const remoteVariations = Array.isArray(remote.variations) ? remote.variations : [];
+    for (const variationId of variationIds) {
+      const variation = remoteVariations.find((entry: Record<string, any>) => Number(entry.id) === variationId);
+      if (!variation) throw new Error(`Mercado Livre nao retornou a variacao ${variationId} do anuncio ${listingId}.`);
+      if (Number(variation.available_quantity) !== stock) {
+        throw new Error(`Mercado Livre confirmou estoque ${variation.available_quantity} na variacao ${variationId}, esperado ${stock}.`);
+      }
+    }
+    return { stock, status: remote.status, listingId, variationIds };
+  }
   const body = stock <= 0 ? { status: "paused" } : { status: "active", available_quantity: stock };
   await mlRequest(listingId, token, "PUT", body);
   const remote = await mlRequest(listingId, token, "GET");
   if (stock <= 0 && !["paused", "closed", "inactive"].includes(String(remote.status))) throw new Error(`Mercado Livre confirmou status ${remote.status}, esperado indisponivel.`);
   if (stock > 0 && Number(remote.available_quantity) !== stock) throw new Error(`Mercado Livre confirmou estoque ${remote.available_quantity}, esperado ${stock}.`);
-  return { stock: Number(remote.available_quantity || 0), status: remote.status };
+  // O Mercado Livre preserva available_quantity ao pausar um anuncio. Para o
+  // sistema, a confirmacao de indisponibilidade representa saldo publicavel 0.
+  return { stock: stock <= 0 ? 0 : Number(remote.available_quantity || 0), status: remote.status };
 }
 
 async function updateAndConfirmShopee(activity: Record<string, any>, stock: number) {
@@ -377,7 +600,20 @@ async function updateAndConfirmShopee(activity: Record<string, any>, stock: numb
   if (!shopId) throw new Error(`Shop ID ausente para ${account.name}.`);
   const token = await getValidShopeeAccessToken(account);
   const client = createShopeeClient(await getShopeeOAuthConfig(account.id));
-  await client.updateStock(token, shopId, activity.listing_id, stock);
+  const requestedModelIds: unknown[] = Array.isArray(activity.requested_data?.modelIds) ? activity.requested_data.modelIds : [];
+  const modelIds: number[] = [...new Set(requestedModelIds.map(Number).filter((id: number) => id > 0))];
+  await client.updateStock(token, shopId, activity.listing_id, stock, modelIds);
+  if (modelIds.length) {
+    const remote = await client.getModelList(token, shopId, activity.listing_id) as Record<string, any>;
+    const models = remote.response?.model || remote.response?.model_list || [];
+    for (const modelId of modelIds) {
+      const model = models.find((entry: Record<string, any>) => Number(entry.model_id) === modelId);
+      const confirmed = Number(model?.stock_info_v2?.seller_stock?.[0]?.stock
+        ?? model?.stock_info?.[0]?.current_stock ?? model?.stock ?? -1);
+      if (confirmed !== stock) throw new Error(`Shopee confirmou estoque ${confirmed} no modelo ${modelId}, esperado ${stock}.`);
+    }
+    return { stock, status: "linked", listingId: String(activity.listing_id), modelIds };
+  }
   let item: Record<string, any> = {};
   let confirmed = -1;
   for (let attempt = 0; attempt < 5; attempt += 1) {

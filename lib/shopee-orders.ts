@@ -80,7 +80,9 @@ export async function processShopeeOrder(
       sku: String(item.model_sku || item.item_sku || item.sku || ""),
       title: String(item.item_name || item.model_name || ""),
       quantity: Number(item.model_quantity_purchased || item.quantity_purchased || item.quantity || 1),
-      unitPrice: Number(item.model_discounted_price || item.discounted_price || item.model_original_price || 0)
+      unitPrice: Number(item.model_discounted_price || item.discounted_price || item.model_original_price || 0),
+      listingId: String(item.item_id || order.item_id || ""),
+      variationId: String(item.model_id || "")
     })),
     value: Number(order.total_amount || 0),
     shipping: Number(order.actual_shipping_fee_confirmed ?? order.actual_shipping_fee ?? 0),

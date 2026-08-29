@@ -7,11 +7,13 @@ import {
 } from "@/lib/marketplace-stock-sync";
 import { getTinyStockSyncProgress, startTinyStockSync, stepTinyStockSync } from "@/lib/tiny-stock-sync";
 import { runTinyStockSyncWorker } from "@/lib/tiny-stock-sync-worker";
+import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
+  if (!await isAuthorized(request)) return NextResponse.json({ error: "Acesso nao autorizado." }, { status: 401 });
   const accountId = request.nextUrl.searchParams.get("accountId") || "";
   if (!accountId) {
     return NextResponse.json({ error: "Conta nao informada." }, { status: 400 });
@@ -21,6 +23,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await isAuthorized(request)) return NextResponse.json({ error: "Acesso nao autorizado." }, { status: 401 });
   const accountId = request.nextUrl.searchParams.get("accountId") || "";
   const action = request.nextUrl.searchParams.get("action") || "step";
 
@@ -43,4 +46,10 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ progress });
+}
+
+async function isAuthorized(request: NextRequest) {
+  const technicalSecret = process.env.AUTH_SESSION_SECRET || process.env.CRON_SECRET;
+  if (technicalSecret && request.headers.get("authorization") === `Bearer ${technicalSecret}`) return true;
+  return Boolean(await getCurrentUser());
 }

@@ -2,34 +2,49 @@
 
 import { useEffect, useRef, useState } from "react";
 import { updateProductDetailsAction } from "../actions";
+import { ExternalProductActionSubmit } from "../product-action-submit";
+import { SynchronizeProductButton } from "../synchronize-product-button";
 import { PriceInput } from "../price-input";
 
-type Option = { code: string; label: string; marketplaceCategory?: string };
-type ImageItem = { id: string; name: string; url: string; position: number };
+type Option = { code: string; label: string; marketplaceCategory?: string; boardCodeRequired?: boolean };
+type ImageItem = { id: string; name: string; url: string; position: number; bytes: number; width: number; height: number };
+type TemporaryImageSet = { images: Array<{ key: string; name: string; url: string; position: number; bytes: number; width: number; height: number }>; marketplace: Marketplace; accountId: string; listingId: string; totalRemoteImages: number } | null;
+type EditorImage = (ImageItem & { kind: "existing" })
+  | { kind: "new"; key: string; name: string; url: string; bytes: number; width: number; height: number; file: File; uploadStatus: "uploading" | "ready" | "error"; uploadError?: string; publicId?: string; cloudName?: string; uploadedPosition?: number }
+  | { kind: "remote"; key: string; name: string; url: string; bytes: number; width: number; height: number };
 type CategoryMapping = { internal_category:string; mercado_livre_code?:string; mercado_livre_description?:string; shopee_code?:string; shopee_description?:string; attribute_definitions?:Record<string,any> };
 type Marketplace = "mercado_livre" | "shopee";
 type CategoryNode = { id: string; name: string; hasChildren: boolean };
 type MarketplaceSelection = { code: string; description: string };
 const marketplaceLabels: Record<Marketplace, string> = { mercado_livre: "Mercado Livre", shopee: "Shopee" };
 
-export function ProductEditor({ product, types, brands, specials, images, categoryMappings, marketplaceLinks, returnTo }: {
+export function ProductEditor({ product, types, brands, specials, images, temporaryImages, categoryMappings, marketplaceLinks, returnTo, actionReturnTo, showSend }: {
   product: Record<string, string | number | null>;
   types: Option[]; brands: Option[]; specials: Option[]; images: ImageItem[]; categoryMappings: CategoryMapping[];
+  temporaryImages: TemporaryImageSet;
   marketplaceLinks: Record<Marketplace, boolean>;
   returnTo: string;
+  actionReturnTo: string;
+  showSend: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const newImageUrlsRef = useRef(new Set<string>());
   const [preview, setPreview] = useState("");
-  const [newImagePreviews, setNewImagePreviews] = useState<Array<{ name: string; url: string }>>([]);
   const [validationAttempted, setValidationAttempted] = useState(false);
+  const [titleCopied, setTitleCopied] = useState(false);
   const [title, setTitle] = useState(String(product.title || ""));
+  const mercadoLivreManagedTitle = Boolean(product.mercado_livre_managed_title);
   const [brandCode, setBrandCode] = useState(String(product.brand_code || ""));
+  const [model, setModel] = useState(String(product.model || ""));
+  const [boardCode, setBoardCode] = useState(String(product.board_code || ""));
   const [physicalStock, setPhysicalStock] = useState(Number(product.estoque_fisico || 0));
   const availableStock = Number(product.estoque_disponivel || 0);
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(Boolean(temporaryImages));
   const [pendingHref, setPendingHref] = useState("");
-  const [ordered, setOrdered] = useState([...images].sort((a, b) => a.position - b.position));
+  const [ordered, setOrdered] = useState<EditorImage[]>(temporaryImages
+    ? temporaryImages.images.map(image => ({ ...image, kind: "remote" as const }))
+    : [...images].sort((a, b) => a.position - b.position).map(image => ({ ...image, kind: "existing" as const })));
   const storedCategories = (product.marketplace_categories || {}) as unknown as Record<string,any>;
   const storedAttributes = (product.marketplace_attributes || {}) as unknown as Record<string,any>;
   const [typeCode, setTypeCode] = useState(String(product.type_code || ""));
@@ -50,9 +65,15 @@ export function ProductEditor({ product, types, brands, specials, images, catego
     title: title.trim().length > 0 && title.trim().length <= 60,
     type: Boolean(typeCode) && typeCode !== "OT",
     brand: Boolean(brandCode) && brandCode !== "NI",
-    cover: ordered.length + newImagePreviews.length > 0
+    model: model.trim().length >= 2,
+    boardCode: !types.find(item => item.code === typeCode)?.boardCodeRequired || boardCode.trim().length >= 2,
+    cover: ordered.length > 0
   };
   const hasRequiredErrors = Object.values(validation).some(valid => !valid);
+  const imageErrors = ordered.map(image => ({ image, errors: image.kind === "new" ? validateNewImageSource(image) : [] })).filter(item => item.errors.length > 0);
+  const imagesPreparing = ordered.some(image => image.kind === "new" && image.uploadStatus === "uploading");
+  const imageUploadFailed = ordered.some(image => image.kind === "new" && image.uploadStatus === "error");
+  const hasImageErrors = ordered.length === 0 || imageErrors.length > 0 || imagesPreparing || imageUploadFailed;
 
   async function loadCategories(marketplace: Marketplace, parent?: string, nextTrail: Array<{ id: string; name: string }> = []) {
     setCategoryLoading(true); setCategoryError(""); setPicker(marketplace); setCategoryQuery("");
@@ -88,7 +109,11 @@ export function ProductEditor({ product, types, brands, specials, images, catego
     [next[index], next[target]] = [next[target], next[index]];
     setDirty(true); return next;
   });
-  const remove = (id: string) => { setDirty(true); setOrdered((current) => current.filter((image) => image.id !== id)); };
+  const imageKey = (image: EditorImage) => image.kind === "existing" ? `existing:${image.id}` : `${image.kind}:${image.key}`;
+  const remove = (key: string) => { setDirty(true); setOrdered((current) => { const removed = current.find(image => imageKey(image) === key); if (removed?.kind === "new") {
+    if (removed.publicId) void fetch("/api/products/images/prepare", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicId: removed.publicId }) });
+    URL.revokeObjectURL(removed.url); newImageUrlsRef.current.delete(removed.url);
+  } return current.filter(image => imageKey(image) !== key); }); };
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
@@ -103,36 +128,65 @@ export function ProductEditor({ product, types, brands, specials, images, catego
     return () => { window.removeEventListener("beforeunload", beforeUnload); document.removeEventListener("click", linkClick, true); };
   }, [dirty]);
 
+  async function prepareImage(key: string, file: File, position: number) {
+    const body = new FormData();
+    body.set("file", file); body.set("sku", String(product.sku || "")); body.set("typeCode", typeCode); body.set("brandCode", brandCode);
+    body.set("model", model); body.set("boardCode", boardCode); body.set("position", String(position));
+    try {
+      const response = await fetch("/api/products/images/prepare", { method: "POST", body });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Não foi possível tratar a imagem.");
+      setOrdered(current => current.map(image => image.kind === "new" && image.key === key ? { ...image, url: result.image.url,
+        bytes: result.image.bytes, width: result.image.width, height: result.image.height, publicId: result.image.publicId, cloudName: result.image.cloudName,
+        uploadedPosition: result.image.position, uploadStatus: "ready" } : image));
+    } catch (error) {
+      setOrdered(current => current.map(image => image.kind === "new" && image.key === key ? { ...image, uploadStatus: "error",
+        uploadError: error instanceof Error ? error.message : String(error) } : image));
+    }
+  }
+
   useEffect(() => () => {
-    for (const image of newImagePreviews) URL.revokeObjectURL(image.url);
-  }, [newImagePreviews]);
+    for (const url of newImageUrlsRef.current) URL.revokeObjectURL(url);
+  }, []);
 
   return <>
-    <div className="topbar">
-      <div><h1>{String(product.sku || "")}</h1><div className="subtitle">{String(product.title || "")}</div></div>
+    <div className="topbar product-detail-topbar">
+      <div className="product-detail-heading"><h1>{String(product.sku || "")} <span aria-hidden="true">-</span> {String(product.title || "")}</h1><button type="button" className="secondary product-title-copy" aria-label="Copiar SKU e título" title={titleCopied ? "Copiado" : "Copiar SKU e título"} onClick={async () => { await navigator.clipboard.writeText(`${String(product.sku || "")} - ${String(product.title || "")}`); setTitleCopied(true); window.setTimeout(() => setTitleCopied(false), 1800); }}><span aria-hidden="true">{titleCopied ? "✓" : "⧉"}</span></button>{titleCopied && <small className="product-title-copy-feedback" role="status">Copiado</small>}</div>
       <div className="row-actions">
-        <a className="secondary" href={`/historico-estoque?produto=${product.id}`}>Histórico de Estoque</a>
-        <button className="primary" form="product-detail-form" type="submit" disabled={!dirty}>Atualizar</button>
+        <a className="secondary" href={`/historico-estoque?produto=${product.id}`}>Estoque</a>
+        <button className="primary" form="product-detail-form" type="submit" disabled={!dirty || hasImageErrors} title={hasImageErrors ? "Corrigir fotos fora do padrão" : undefined}>Salvar</button>
+        {showSend && <ExternalProductActionSubmit label="Enviar" pendingLabel="Salvando e enviando" form="product-detail-form" name="intent" value="send" disabledReason={hasImageErrors ? "Corrigir fotos fora do padrão" : undefined} />}
+        <SynchronizeProductButton productId={String(product.id)} returnTo={actionReturnTo} disabledReason={dirty ? "Salve as alterações antes de sincronizar" : undefined} />
         <a className="secondary" href={returnTo}>Voltar</a>
       </div>
     </div>
   <form ref={formRef} id="product-detail-form" action={updateProductDetailsAction} className={`product-detail-edit-form${validationAttempted ? " validation-attempted" : ""}`} onInvalid={() => setValidationAttempted(true)} onChange={() => setDirty(true)} onSubmit={(event) => {
     setValidationAttempted(true);
-    if (hasRequiredErrors) { event.preventDefault(); requestAnimationFrame(() => document.querySelector(".required-field-error")?.scrollIntoView({ behavior: "smooth", block: "center" })); return; }
+    if (hasRequiredErrors || hasImageErrors) { event.preventDefault(); requestAnimationFrame(() => document.querySelector(".required-field-error,.invalid-product-image")?.scrollIntoView({ behavior: "smooth", block: "center" })); return; }
     setDirty(false);
   }}>
     <input type="hidden" name="productId" value={String(product.id)} />
     <input type="hidden" name="returnTo" value={returnTo} />
-    <input type="hidden" name="imageOrder" value={ordered.map((image) => image.id).join(",")} />
+    <input type="hidden" name="intent" value="" />
+    <input type="hidden" name="imageOrder" value={ordered.map(imageKey).join(",")} />
+    <input type="hidden" name="preparedImages" value={JSON.stringify(ordered.filter((image): image is Extract<EditorImage, { kind: "new" }> => image.kind === "new" && image.uploadStatus === "ready").map(image => ({ key: image.key, name: image.name, url: image.url, publicId: image.publicId, cloudName: image.cloudName, bytes: image.bytes, width: image.width, height: image.height, position: image.uploadedPosition })))} />
+    {temporaryImages && <>
+      <input type="hidden" name="recoveryMarketplace" value={temporaryImages.marketplace} />
+      <input type="hidden" name="recoveryAccountId" value={temporaryImages.accountId} />
+      <input type="hidden" name="recoveryListingId" value={temporaryImages.listingId} />
+    </>}
     <input type="hidden" name="redirectTo" value={pendingHref} />
     <section className="grid detail-grid">
       <div className="card detail-edit-card"><h2>Produto</h2>
         <label>SKU<input name="sku" required defaultValue={String(product.sku || "")} /></label>
-        <label className={validationAttempted && !validation.title ? "required-field-error" : ""}>Título<span className="detail-title-field"><input name="title" required maxLength={60} value={title} onChange={event => setTitle(event.target.value)} /><span className={`title-character-count${title.length > 60 ? " over-limit" : ""}`}>{title.length}</span></span>{validationAttempted && !validation.title && <small className="required-field-message">Preencha o título com até 60 caracteres.</small>}</label>
-        <label className={validationAttempted && !validation.type ? "required-field-error" : ""}>Tipo de Placa<select name="typeCode" value={typeCode} onChange={event => applyType(event.target.value)}>{types.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}</select>{validationAttempted && !validation.type && <small className="required-field-message">Preencha o campo obrigatório. “OT - Outros” não é permitido.</small>}</label>
-        <label className={validationAttempted && !validation.brand ? "required-field-error" : ""}>Marca<select name="brandCode" value={brandCode} onChange={event => { setBrandCode(event.target.value); setDirty(true); }}>{brands.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}</select>{validationAttempted && !validation.brand && <small className="required-field-message">Preencha o campo obrigatório. “NI - Não informada” não é permitido.</small>}</label>
+        <label className={!validation.title ? "required-field-error" : ""}>Título<span className="detail-title-field"><input name="title" required maxLength={60} value={title} readOnly={mercadoLivreManagedTitle} onChange={event => setTitle(event.target.value)} /><span className={`title-character-count${title.length > 60 ? " over-limit" : ""}`}>{title.length}</span></span>{mercadoLivreManagedTitle && <small>Gerenciado pelo ML</small>}{validationAttempted && !validation.title && <small className="required-field-message">Preencha o título com até 60 caracteres.</small>}</label>
+        <label className={!validation.type ? "required-field-error" : ""}>Tipo de Placa<select name="typeCode" value={typeCode} onChange={event => applyType(event.target.value)}>{types.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}</select>{validationAttempted && !validation.type && <small className="required-field-message">Preencha o campo obrigatório. “OT - Outros” não é permitido.</small>}</label>
+        <label className={!validation.brand ? "required-field-error" : ""}>Marca<select name="brandCode" value={brandCode} onChange={event => { setBrandCode(event.target.value); setDirty(true); }}>{brands.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}</select>{validationAttempted && !validation.brand && <small className="required-field-message">Preencha o campo obrigatório. “NI - Não informada” não é permitido.</small>}</label>
         <label>Especial<select name="specialCode" defaultValue={String(product.special_code || "")}><option value="">Sem especial</option>{specials.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}</select></label>
         <label>Condição<select name="productCondition" defaultValue={String(product.product_condition || "used")}><option value="used">Usado</option><option value="new">Novo</option></select></label>
+        <label className={!validation.model ? "required-field-error" : ""}>Modelo<input name="model" minLength={2} required value={model} onChange={event => setModel(event.target.value)} />{validationAttempted && !validation.model && <small className="required-field-message">Preencha o campo obrigatório com no mínimo 2 caracteres.</small>}</label>
+        <label>Versão<input name="version" defaultValue={String(product.version || "")} /></label>
+        <label className={!validation.boardCode ? "required-field-error" : ""}>Código da placa<input name="boardCode" minLength={types.find(item => item.code === typeCode)?.boardCodeRequired ? 2 : undefined} required={types.find(item => item.code === typeCode)?.boardCodeRequired} value={boardCode} onChange={event => setBoardCode(event.target.value)} />{validationAttempted && !validation.boardCode && <small className="required-field-message">Obrigatório para esta integração; informe no mínimo 2 caracteres.</small>}</label>
       </div>
       <div className="detail-right-column">
       <div className="card detail-edit-card product-value-stock-card"><h2>Valor e estoque</h2>
@@ -173,31 +227,39 @@ export function ProductEditor({ product, types, brands, specials, images, catego
     </section>
     {picker && <div className="modal-backdrop"><section className="card category-modal"><div className="topbar"><div><h2>Categoria — {marketplaceLabels[picker]}</h2><div className="muted">{trail.map(item => item.name).join(" > ") || "Raiz"}</div></div><button className="secondary" type="button" onClick={() => setPicker(null)}>Fechar</button></div><input placeholder="Pesquisar por código ou descrição" value={categoryQuery} onChange={event => setCategoryQuery(event.target.value)}/>{categoryError && <div className="form-error">{categoryError}</div>}{categoryLoading ? <p>Carregando categorias atuais...</p> : <div className="category-tree">{trail.length > 0 && <button className="secondary compact" type="button" onClick={() => { const parent = trail.slice(0, -1); loadCategories(picker, parent.at(-1)?.id, parent); }}>Voltar</button>}{visibleNodes.map(node => <div className="category-node" key={node.id}><span><strong>{node.name}</strong><small>{node.id}</small></span><div>{node.hasChildren && <button type="button" className="secondary compact" onClick={() => loadCategories(picker, node.id, [...trail, { id: node.id, name: node.name }])}>Abrir</button>}<button type="button" className="primary compact" onClick={() => chooseMarketplaceCategory(node)}>Selecionar</button></div></div>)}{!visibleNodes.length && <p className="muted">Nenhuma categoria encontrada neste nível.</p>}</div>}</section></div>}
 
-    <section className={`section card${validationAttempted && !validation.cover ? " required-field-error" : ""}`}><div className="editor-images-heading"><div><h2>Imagens</h2><span>A primeira imagem sempre será enviada como Foto 01.</span>{validationAttempted && !validation.cover && <small className="required-field-message">Preencha o campo obrigatório: adicione pelo menos a Foto 1.</small>}</div><button className="secondary" type="button" onClick={() => inputRef.current?.click()}>Adicionar imagens</button></div>
-    <input ref={inputRef} className="visually-hidden" type="file" name="newImages" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => {
-      for (const image of newImagePreviews) URL.revokeObjectURL(image.url);
-      const selected = Array.from(event.currentTarget.files || []).map(file => ({ name: file.name, url: URL.createObjectURL(file) }));
-      setNewImagePreviews(selected);
+    <section className={`section card${!validation.cover ? " required-field-error" : ""}`}><div className="editor-images-heading"><div><h2>Imagens</h2><span>A primeira imagem sempre será enviada como Foto 01. Ao salvar, as fotos são tratadas no Cloudinary para o padrão dos marketplaces.</span>{validationAttempted && !validation.cover && <small className="required-field-message">Preencha o campo obrigatório: adicione pelo menos a Foto 1.</small>}{validationAttempted && imageErrors.length > 0 && <small className="required-field-message">Há um arquivo que não pode ser enviado. Use JPG, PNG ou WebP com até 8 MB.</small>}</div><button className="secondary" type="button" onClick={() => inputRef.current?.click()}>Adicionar imagens</button></div>
+    <input ref={inputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={async (event) => {
+      const input = event.currentTarget;
+      const files = Array.from(input.files || []);
+      input.value = "";
+      const selected = await Promise.all(files.map(async file => {
+        const url = URL.createObjectURL(file);
+        newImageUrlsRef.current.add(url);
+        const dimensions = await loadImageDimensions(url);
+        return { kind: "new" as const, key: crypto.randomUUID(), name: file.name, url, bytes: file.size, file, ...dimensions, uploadStatus: "uploading" as const };
+      }));
+      const startPosition = ordered.length;
+      setOrdered(current => [...current, ...selected]);
+      selected.forEach((image, index) => void prepareImage(image.key, image.file, startPosition + index + 1));
       if (selected.length) setDirty(true);
     }} />
-    {newImagePreviews.length > 0 && <div className="form-success">{newImagePreviews.length} nova(s) foto(s) selecionada(s). Clique em Atualizar para concluir a inclusão.</div>}
+    {temporaryImages && <div className="form-success">As fotos foram recuperadas temporariamente do {temporaryImages.marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee"} porque uma ou mais fotos do Cloudinary não estavam disponíveis. Somente as fotos exibidas serão gravadas ao salvar.{temporaryImages.totalRemoteImages > 6 ? ` O anúncio possui ${temporaryImages.totalRemoteImages} fotos; as excedentes ao limite de 6 serão removidas dos marketplaces.` : ""}</div>}
+    {ordered.some(image => image.kind === "new") && <div className="form-success">As novas fotos podem ser ordenadas ou excluídas antes de salvar. Somente a sequência exibida abaixo será gravada.</div>}
     <div className="editable-image-grid">
-      {ordered.map((image, index) => <figure className="editable-product-image" key={image.id}>
+      {ordered.map((image, index) => { const errors = image.kind === "new" ? validateNewImageSource(image) : []; const key = imageKey(image); return <figure className={`editable-product-image${errors.length ? " invalid-product-image" : ""}`} key={key}>
         <button type="button" className="image-preview-button" onClick={() => setPreview(image.url)}><img src={image.url} alt={image.name} /></button>
         {index === 0 && <strong className="cover-badge">Foto da Capa</strong>}
-        <button type="button" className="image-trash" aria-label={`Excluir ${image.name}`} onClick={() => remove(image.id)}>🗑</button>
+        {image.kind === "new" && <strong className="cover-badge">{image.uploadStatus === "uploading" ? "Processando…" : image.uploadStatus === "error" ? "Falha no processamento" : "Pronta para salvar"}</strong>}
+        <button type="button" className="image-trash" aria-label={`Excluir ${image.name}`} onClick={() => remove(key)}>🗑</button>
+        {image.kind === "new" && image.uploadError && <div className="product-image-errors"><span>{image.uploadError}</span><button type="button" className="secondary compact" onClick={() => { setOrdered(current => current.map(item => item.kind === "new" && item.key === image.key ? { ...item, uploadStatus: "uploading", uploadError: undefined } : item)); void prepareImage(image.key, image.file, index + 1); }}>Tentar novamente</button></div>}
+        {validationAttempted && errors.length > 0 && <div className="product-image-errors">{errors.map(error => <span key={error}>{error}</span>)}<span>Atual: {image.width || "?"} × {image.height || "?"} px · {formatImageBytes(image.bytes)}</span></div>}
         <figcaption><button type="button" disabled={index === 0} onClick={() => move(index, -1)}>←</button><span>{String(index + 1).padStart(2, "0")}</span><button type="button" disabled={index === ordered.length - 1} onClick={() => move(index, 1)}>→</button></figcaption>
-      </figure>)}
-      {newImagePreviews.map((image, index) => <figure className="editable-product-image" key={image.url}>
-        <button type="button" className="image-preview-button" onClick={() => setPreview(image.url)}><img src={image.url} alt={image.name} /></button>
-        <strong className="cover-badge">Aguardando salvar</strong>
-        <figcaption><span>{String(ordered.length + index + 1).padStart(2, "0")}</span></figcaption>
-      </figure>)}
+      </figure>})}
     </div></section>
     {preview && <button type="button" className="image-preview-modal" onClick={() => setPreview("")}><img src={preview} alt="Visualização ampliada" /></button>}
     <div className="product-detail-footer-actions row-actions">
-      <a className="secondary" href={`/historico-estoque?produto=${product.id}`}>Histórico de Estoque</a>
-      <button className="primary" type="submit" disabled={!dirty}>Atualizar</button>
+      <a className="secondary" href={`/historico-estoque?produto=${product.id}`}>Estoque</a>
+      <button className="primary" type="submit" disabled={!dirty || hasImageErrors} title={hasImageErrors ? "Corrigir fotos fora do padrão" : undefined}>Salvar</button>
       <a className="secondary" href={returnTo}>Voltar</a>
     </div>
   </form>
@@ -210,6 +272,15 @@ function QuantityControl({ label, name, value, setValue, onDirty }: { label:stri
   const change = (delta:number) => update(value + delta);
   return <label>{label}<span className="quantity-control"><button type="button" className="secondary compact" onClick={() => change(-1)} aria-label={`Diminuir ${label}`}>−</button><input name={name} type="number" min="0" step="1" required value={value} onChange={event => update(Math.trunc(Number(event.target.value) || 0))}/><button type="button" className="secondary compact" onClick={() => change(1)} aria-label={`Aumentar ${label}`}>+</button></span></label>;
 }
+
+function formatImageBytes(bytes:number) { return bytes ? `${(bytes / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} MB` : "tamanho desconhecido"; }
+function validateNewImageSource(image: Extract<EditorImage, { kind: "new" }>) {
+  const errors: string[] = [];
+  if (!image.file.type.startsWith("image/")) errors.push("O arquivo deve ser uma imagem JPG, PNG ou WebP.");
+  if (image.bytes > 8 * 1024 * 1024) errors.push("O arquivo original deve ter no máximo 8 MB.");
+  return errors;
+}
+function loadImageDimensions(url:string) { return new Promise<{width:number;height:number}>(resolve => { const image = new Image(); image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight }); image.onerror = () => resolve({ width: 0, height: 0 }); image.src = url; }); }
 
 function ProductMarketplaceAttributes({ marketplace, definitions, values, product, activeAttributes }: { marketplace:string;definitions:Record<string,any>;values:Record<string,any>;product:Record<string,any>;activeAttributes?:Record<string,string[]>|null }) {
   const configured = activeAttributes?.[marketplace];

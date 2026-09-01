@@ -970,6 +970,10 @@ th {
 .product-edit-card label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .product-edit-card input, .product-edit-card select, .product-edit-card textarea { width: 100%; color: var(--text); font: inherit; font-weight: 400; }
 .product-detail-edit-form { display: contents; }
+.detail-right-column { display:grid; align-content:start; gap:18px; }
+.quantity-control { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; }
+.quantity-control input { text-align:center; }
+.available-stock-value { display:block; padding:8px 14px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; color:#334155; text-align:center; font-size:20px; font-weight:700; }
 .detail-edit-card { display: grid; align-content: start; gap: 10px; }
 .detail-edit-card label { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .detail-edit-card input, .detail-edit-card select, .detail-description-input { width: 100%; color: var(--text); font: inherit; font-weight: 400; }

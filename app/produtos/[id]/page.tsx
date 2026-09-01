@@ -94,7 +94,7 @@ export default async function ProductDetailPage({
   const requestedReturn = String(searchParams?.returnTo || "/produtos");
   const returnTo = requestedReturn.startsWith("/produtos") && !requestedReturn.startsWith("//") ? requestedReturn : "/produtos";
   const integrations = buildIntegrationRows(typed);
-  const [{ data: type }, { data: brand }, { data: special }, types, brands, specials, categoryMappings] = await Promise.all([
+  const [{ data: type }, { data: brand }, { data: special }, types, brands, specials, categoryMappings, inventory] = await Promise.all([
     supabase.from("config_types").select("*").eq("code", typed.type_code).maybeSingle(),
     supabase.from("config_brands").select("*").eq("code", typed.brand_code).maybeSingle(),
     typed.special_code
@@ -103,7 +103,8 @@ export default async function ProductDetailPage({
     supabase.from("config_types").select("code,description,marketplace_category").order("description"),
     supabase.from("config_brands").select("code,name").order("name"),
     supabase.from("config_specials").select("code,notes,include_description").order("code"),
-    supabase.from("marketplace_category_mappings").select("*").order("internal_category")
+    supabase.from("marketplace_category_mappings").select("*").order("internal_category"),
+    supabase.from("estoque").select("estoque_fisico,estoque_disponivel").eq("product_id", typed.id).maybeSingle()
   ]);
   const description = removeSpecialFragments(
     buildProductDescription(typed, type, brand, special),
@@ -117,6 +118,8 @@ export default async function ProductDetailPage({
     : { ...storedCategories, internal_category: String(type?.marketplace_category || "") };
   const editable = { ...typed, description, marketplace_categories: correctedCategories, marketplace_active_attributes: type?.marketplace_active_attributes ?? null,
     brand_name: String(brand?.name || ""),
+    estoque_fisico: Number(inventory.data?.estoque_fisico ?? typed.stock ?? 0),
+    estoque_disponivel: Number(inventory.data?.estoque_disponivel ?? typed.stock ?? 0),
     width: Number(row.width ?? type?.width ?? 0), height: Number(row.height ?? type?.height ?? 0), length: Number(row.length ?? type?.length ?? 0),
     weight_net: Number(row.weight_net ?? type?.weight_net ?? 0), weight_gross: Number(row.weight_gross ?? type?.weight_gross ?? 0) };
 

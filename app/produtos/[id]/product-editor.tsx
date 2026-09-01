@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { updateProductDetailsAction } from "../actions";
+import { PriceInput } from "../price-input";
 
 type Option = { code: string; label: string; marketplaceCategory?: string };
 type ImageItem = { id: string; name: string; url: string; position: number };
@@ -24,6 +25,8 @@ export function ProductEditor({ product, types, brands, specials, images, catego
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [title, setTitle] = useState(String(product.title || ""));
   const [brandCode, setBrandCode] = useState(String(product.brand_code || ""));
+  const [physicalStock, setPhysicalStock] = useState(Number(product.estoque_fisico || 0));
+  const availableStock = Number(product.estoque_disponivel || 0);
   const [dirty, setDirty] = useState(false);
   const [pendingHref, setPendingHref] = useState("");
   const [ordered, setOrdered] = useState([...images].sort((a, b) => a.position - b.position));
@@ -131,12 +134,19 @@ export function ProductEditor({ product, types, brands, specials, images, catego
         <label>Especial<select name="specialCode" defaultValue={String(product.special_code || "")}><option value="">Sem especial</option>{specials.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}</select></label>
         <label>Condição<select name="productCondition" defaultValue={String(product.product_condition || "used")}><option value="used">Usado</option><option value="new">Novo</option></select></label>
       </div>
+      <div className="detail-right-column">
+      <div className="card detail-edit-card product-value-stock-card"><h2>Valor e estoque</h2>
+        <label>Valor do Produto (R$)<PriceInput initialValue={Number(product.price || 0)} required /></label>
+        <QuantityControl label="Estoque físico" name="physicalStock" value={physicalStock} setValue={setPhysicalStock} onDirty={() => setDirty(true)} />
+        <label>Estoque disponível<span className="available-stock-value" title="Calculado automaticamente pelo estoque físico menos as vendas consolidadas">{availableStock}</span></label>
+      </div>
       <div className="card detail-edit-card"><h2>Referências</h2>
         <label>Largura (cm)<input name="width" type="number" min="0" step="0.01" required defaultValue={String(product.width ?? "")} /></label>
         <label>Altura (cm)<input name="height" type="number" min="0" step="0.01" required defaultValue={String(product.height ?? "")} /></label>
         <label>Comprimento (cm)<input name="length" type="number" min="0" step="0.01" required defaultValue={String(product.length ?? "")} /></label>
         <label>Peso líquido (kg)<input name="weightNet" type="number" min="0" step="0.001" required defaultValue={String(product.weight_net ?? "")} /></label>
         <label>Peso bruto (kg)<input name="weightGross" type="number" min="0" step="0.001" required defaultValue={String(product.weight_gross ?? "")} /></label>
+      </div>
       </div>
     </section>
     <section className="section card"><h2>Descrição</h2><textarea className="detail-description-input" name="description" rows={9} required defaultValue={String(product.description || "")} /></section>
@@ -193,6 +203,12 @@ export function ProductEditor({ product, types, brands, specials, images, catego
   </form>
   {pendingHref && <div className="modal-backdrop"><div className="confirm-modal"><h3>Atualizações não salvas no produto.</h3><p>Deseja salvar antes de sair?</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => { const href = pendingHref; setDirty(false); setPendingHref(""); window.location.href = href; }}>Não</button><button type="button" className="primary" onClick={() => { setDirty(false); formRef.current?.requestSubmit(); }}>Sim</button></div></div></div>}
   </>;
+}
+
+function QuantityControl({ label, name, value, setValue, onDirty }: { label:string; name:string; value:number; setValue:(value:number)=>void; onDirty:()=>void }) {
+  const update = (next:number) => { setValue(Math.max(0, next)); onDirty(); };
+  const change = (delta:number) => update(value + delta);
+  return <label>{label}<span className="quantity-control"><button type="button" className="secondary compact" onClick={() => change(-1)} aria-label={`Diminuir ${label}`}>−</button><input name={name} type="number" min="0" step="1" required value={value} onChange={event => update(Math.trunc(Number(event.target.value) || 0))}/><button type="button" className="secondary compact" onClick={() => change(1)} aria-label={`Aumentar ${label}`}>+</button></span></label>;
 }
 
 function ProductMarketplaceAttributes({ marketplace, definitions, values, product, activeAttributes }: { marketplace:string;definitions:Record<string,any>;values:Record<string,any>;product:Record<string,any>;activeAttributes?:Record<string,string[]>|null }) {

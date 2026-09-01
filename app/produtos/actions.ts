@@ -231,14 +231,16 @@ export async function updateProductDetailsAction(formData: FormData) {
   const productId = String(formData.get("productId") || "");
   const text = (key: string) => String(formData.get(key) || "").trim();
   const number = (key: string) => Number(text(key).replace(",", "."));
+  const currency = (key: string) => Number(text(key));
   const sku = text("sku"); const title = text("title"); const description = text("description");
   const redirectTo = text("redirectTo");
   const returnTo = safeProductsReturn(text("returnTo") || "/produtos");
   const detailError = (message: string) => `/produtos/${productId}?returnTo=${encodeURIComponent(returnTo)}&editar=1&erro=${encodeURIComponent(message)}`;
   const typeCode = text("typeCode"); const brandCode = text("brandCode"); const specialCode = text("specialCode") || null;
+  const price = currency("price"); const physicalStock = Math.trunc(number("physicalStock"));
   const productCondition = text("productCondition") === "new" ? "new" : "used";
   const measures = { height: number("height"), width: number("width"), length: number("length"), weight_net: number("weightNet"), weight_gross: number("weightGross") };
-  if (!productId || !sku || !title || title.length > 60 || !description || !typeCode || typeCode === "OT" || !brandCode || brandCode === "NI" || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {
+  if (!productId || !sku || !title || title.length > 60 || !description || !typeCode || typeCode === "OT" || !brandCode || brandCode === "NI" || !Number.isFinite(price) || price < 0 || !Number.isInteger(physicalStock) || physicalStock < 0 || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {
     redirect(detailError("Preencha os campos obrigatórios com valores válidos."));
   }
   const db = supabaseAdmin();
@@ -305,10 +307,16 @@ export async function updateProductDetailsAction(formData: FormData) {
   const removed = existingImages.filter(image => !keptIds.includes(image.id));
 
   try {
-    await db.from("products").update({ sku, title, description, type_code: typeCode, brand_code: brandCode, special_code: specialCode, product_condition: productCondition, marketplace_categories: marketplaceCategories, marketplace_attributes: marketplaceAttributes, ...measures, updated_at: new Date().toISOString() }).eq("id", productId).throwOnError();
+    await db.from("products").update({ sku, title, description, price, type_code: typeCode, brand_code: brandCode, special_code: specialCode, product_condition: productCondition, marketplace_categories: marketplaceCategories, marketplace_attributes: marketplaceAttributes, ...measures, updated_at: new Date().toISOString() }).eq("id", productId).throwOnError();
     await db.from("listings").update({ external_sku: sku }).eq("product_id", productId).throwOnError();
     await db.from("product_marketplaces").update({ sku, updated_at: new Date().toISOString() }).eq("product_id", productId).throwOnError();
     await db.from("estoque").update({ sku }).eq("product_id", productId).throwOnError();
+    const currentInventory = await db.from("estoque").select("estoque_fisico").eq("product_id", productId).single().throwOnError();
+    if (Number(currentInventory.data.estoque_fisico) !== physicalStock) {
+      const user = await getCurrentUser();
+      if (!user) redirect("/login");
+      await db.rpc("set_physical_inventory_manual", { p_product_id: productId, p_quantity: physicalStock, p_actor_user_id: user.id, p_actor_name: user.name }).throwOnError();
+    }
 
     for (const image of existingImages) await db.from("product_images").update({ position: 1000 + image.position }).eq("id", image.id).throwOnError();
     for (const [index, id] of keptIds.entries()) await db.from("product_images").update({ position: index + 1 }).eq("id", id).eq("product_id", productId).throwOnError();

@@ -152,6 +152,15 @@ async function processMercadoLivreItemActivity(activity: Record<string, any>, pa
   });
 }
 
+export function shouldFetchMercadoLivreModeration(item: Record<string, any>) {
+  const status = String(item.status || "").toLowerCase();
+  if (status === "under_review") return true;
+  const subStatuses = Array.isArray(item.sub_status) ? item.sub_status : [];
+  if (subStatuses.some((value: unknown) => MERCADO_LIVRE_MODERATION_SUB_STATUSES.has(String(value).toLowerCase()))) return true;
+  const tags = Array.isArray(item.tags) ? item.tags : [];
+  return tags.some((value: unknown) => MERCADO_LIVRE_MODERATION_TAGS.has(String(value).toLowerCase()));
+}
+
 async function deleteMarketplaceListingBeforeFinalization(input: {
   activityId: string;
   accountId: string;

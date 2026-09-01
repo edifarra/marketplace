@@ -167,6 +167,14 @@ export function mercadoLivrePackageAttributes(product: Pick<EffectiveProduct, "h
   ];
 }
 
+export function normalizeMercadoLivrePackageAttributes(
+  attributes: Array<Record<string, any>>,
+  product: Pick<EffectiveProduct, "height" | "width" | "length" | "weight_gross">
+) {
+  const normalized = new Map(mercadoLivrePackageAttributes(product).map(attribute => [attribute.id, attribute]));
+  return attributes.map(attribute => normalized.get(String(attribute.id)) || attribute);
+}
+
 function positiveIntegerCentimeters(value: unknown, label: string) {
   const result = Math.ceil(Number(value));
   if (!Number.isFinite(result) || result <= 0) throw new Error(`${label[0].toUpperCase()}${label.slice(1)} do pacote deve ser maior que zero.`);

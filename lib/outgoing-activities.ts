@@ -6,6 +6,7 @@ import { createTinyProduct, deactivateTinyProductById, findTinyProductId, getTin
 import { htmlToPlainText } from "./html-to-plain-text";
 import { buildMercadoLivreVariationStockPayload } from "./marketplace-stock-payloads";
 import { executeConversationReply, markConversationReplyError } from "./marketplace-conversations";
+import { normalizeMercadoLivrePackageAttributes } from "./effective-product";
 
 export type OutgoingActivityInput = {
   destination: "mercado_livre" | "shopee" | "tiny";
@@ -316,7 +317,19 @@ async function updateAndConfirmListing(activity: Record<string, any>) {
   if (activity.destination === "mercado_livre") {
     const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
     const token = await getValidMercadoLivreAccessToken(account);
-    if (activity.requested_data?.payload) await mlApi(`/items/${listingId}`, token, "PUT", activity.requested_data.payload);
+    if (activity.requested_data?.payload) {
+      const payload = structuredClone(activity.requested_data.payload);
+      if (Array.isArray(payload.attributes) && activity.product_id) {
+        const product = await supabaseAdmin().from("products").select("height,width,length,weight_gross")
+          .eq("id", activity.product_id).single().throwOnError();
+        payload.attributes = normalizeMercadoLivrePackageAttributes(payload.attributes, product.data as any);
+        activity.requested_data = { ...activity.requested_data, payload };
+        await supabaseAdmin().from("outgoing_marketplace_activities")
+          .update({ requested_data: activity.requested_data, updated_at: new Date().toISOString() })
+          .eq("id", activity.id).throwOnError();
+      }
+      await mlApi(`/items/${listingId}`, token, "PUT", payload);
+    }
     if (activity.requested_data?.description !== undefined) await mlApi(`/items/${listingId}/description`, token, "PUT", { plain_text: htmlToPlainText(String(activity.requested_data.description || "")) });
     const remote = await mlApi(`/items/${listingId}`, token, "GET");
     await synchronizeMercadoLivreManagedProduct(activity, remote);

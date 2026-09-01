@@ -12,6 +12,11 @@ import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-act
 
 const SHOPEE_ORDER_PUSH_CODES = new Set([3, 4, 15, 29, 30, 37, 47]);
 const SHOPEE_ACCOUNT_PUSH_CODES = new Set([1, 2, 12]);
+const MERCADO_LIVRE_MODERATION_SUB_STATUSES = new Set([
+  "warning", "waiting_for_patch", "held", "pending_documentation", "forbidden",
+  "suspended", "suspended_for_prevention", "picture_download_pending", "picture_downloading_pending"
+]);
+const MERCADO_LIVRE_MODERATION_TAGS = new Set(["moderation_penalty", "poor_quality_thumbnail"]);
 
 export async function processMarketplaceQueue(limit = 10) {
   const claim = await supabaseAdmin().rpc("claim_marketplace_activity_queue", {
@@ -82,7 +87,7 @@ async function processMercadoLivreItemActivity(activity: Record<string, any>, pa
   if (!itemId) throw new Error("ID do anuncio nao encontrado na notificacao.");
   const account = await getMercadoLivreAccountForNotification(payload.user_id);
   const item = await getMercadoLivreItem(itemId, account);
-  const moderation = String(item.status) === "under_review" || (item.sub_status || []).length
+  const moderation = shouldFetchMercadoLivreModeration(item)
     ? await getMercadoLivreLastModeration(itemId, account)
     : [];
   const reason = moderation.flatMap(entry => entry.wordings || [])
@@ -146,6 +151,15 @@ export function isIncorrectCategoryFinalization(reason: unknown) {
     .replace(/^[\s"'“”‘’]+|[\s"'“”‘’.!?]+$/g, "")
     .replace(/\s+/g, " ");
   return normalized === "estava em uma categoria incorreta";
+}
+
+export function shouldFetchMercadoLivreModeration(item: Record<string, any>) {
+  const status = String(item.status || "").toLowerCase();
+  if (status === "under_review") return true;
+  const subStatuses = Array.isArray(item.sub_status) ? item.sub_status : [];
+  if (subStatuses.some((value: unknown) => MERCADO_LIVRE_MODERATION_SUB_STATUSES.has(String(value).toLowerCase()))) return true;
+  const tags = Array.isArray(item.tags) ? item.tags : [];
+  return tags.some((value: unknown) => MERCADO_LIVRE_MODERATION_TAGS.has(String(value).toLowerCase()));
 }
 
 async function deleteIncorrectCategoryListingBeforeFinalization(input: {

@@ -70,8 +70,35 @@ export async function getMercadoLivreItem(itemId: string, account: MarketplaceAc
 
 export async function getMercadoLivreLastModeration(itemId: string, account: MarketplaceAccountConfig) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
-  const response = await mlGet(`/moderations/last_moderation/${encodeURIComponent(itemId)}-ITM`, accessToken);
-  return Array.isArray(response) ? response as Array<Record<string, any>> : [];
+  return fetchMercadoLivreLastModeration(itemId, accessToken);
+}
+
+export async function fetchMercadoLivreLastModeration(
+  itemId: string,
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch
+) {
+  const path = `/moderations/last_moderation/${encodeURIComponent(itemId)}-ITM`;
+  let response: Response;
+  try {
+    response = await fetchImpl(`${ML_API}${path}`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      cache: "no-store"
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Mercado Livre GET ${path}: erro de rede: ${message}`);
+  }
+
+  const json = await response.json().catch(() => ({}));
+  if (response.status === 404) {
+    console.info(`[mercado_livre_moderation] GET ${path} retornou 404; nenhuma moderacao disponivel para o item.`);
+    return [];
+  }
+  if (!response.ok) {
+    throw new Error(`Mercado Livre GET ${path} (${response.status}): ${JSON.stringify(json)}`);
+  }
+  return Array.isArray(json) ? json as Array<Record<string, any>> : [];
 }
 
 export async function getMercadoLivreShipment(shipmentId: string, account: MarketplaceAccountConfig) {

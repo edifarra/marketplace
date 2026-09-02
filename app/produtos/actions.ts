@@ -242,7 +242,6 @@ export async function updateProductDetailsAction(formData: FormData) {
   const productId = String(formData.get("productId") || "");
   const text = (key: string) => String(formData.get(key) || "").trim();
   const number = (key: string) => Number(text(key).replace(",", "."));
-  const currency = (key: string) => Number(text(key).replace(/\./g, "").replace(",", "."));
   const sku = text("sku"); const title = text("title"); const description = text("description");
   const redirectTo = text("redirectTo");
   const sendAfterSave = text("intent") === "send";
@@ -250,7 +249,7 @@ export async function updateProductDetailsAction(formData: FormData) {
   const detailError = (message: string) => `/produtos/${productId}?returnTo=${encodeURIComponent(returnTo)}&editar=1&erro=${encodeURIComponent(message)}`;
   const typeCode = text("typeCode"); const brandCode = text("brandCode"); const specialCode = text("specialCode") || null;
   const model = text("model"); const version = text("version") || null; const boardCode = text("boardCode");
-  const price = currency("price"); const physicalStock = Math.trunc(number("physicalStock"));
+  const price = Number(text("price")); const physicalStock = Math.trunc(number("physicalStock"));
   const productCondition = text("productCondition") === "new" ? "new" : "used";
   const measures = { height: number("height"), width: number("width"), length: number("length"), weight_net: number("weightNet"), weight_gross: number("weightGross") };
   if (!productId || !sku || !title || title.length > 60 || !description || model.length < 2 || !typeCode || typeCode === "OT" || !brandCode || brandCode === "NI" || !Number.isFinite(price) || price < 0 || !Number.isInteger(physicalStock) || physicalStock < 0 || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {

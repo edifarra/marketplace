@@ -114,9 +114,22 @@ export async function executeConversationReply(activity: Record<string, any>) {
   let remote: Record<string, any>;
   if (conversation.marketplace === "mercado_livre") {
     const account = await getMercadoLivreAccountById(conversation.marketplace_account_id);
-    remote = conversation.conversation_type === "question"
-      ? await answerMercadoLivreQuestion(conversation.external_conversation_id, text, account)
-      : await sendMercadoLivrePostSaleMessage(String(conversation.raw_data?.reply_resource || conversation.raw_data?.resource || ""), text, account);
+    if (conversation.conversation_type === "question") {
+      const alreadyAnswered = await reconcileAnsweredMercadoLivreQuestion(conversation, account, requested.draftId);
+      if (alreadyAnswered) return alreadyAnswered;
+      try {
+        remote = await answerMercadoLivreQuestion(conversation.external_conversation_id, text, account);
+      } catch (error) {
+        // A notificacao de resposta pode chegar entre a leitura local e o POST.
+        // Nesse caso, a segunda tentativa e recusada pelo PolicyAgent, mas o
+        // atendimento deve continuar como respondido, e nao como erro.
+        const reconciled = await reconcileAnsweredMercadoLivreQuestion(conversation, account, requested.draftId);
+        if (reconciled) return reconciled;
+        throw error;
+      }
+    } else {
+      remote = await sendMercadoLivrePostSaleMessage(String(conversation.raw_data?.reply_resource || conversation.raw_data?.resource || ""), text, account);
+    }
   } else {
     const accounts = await getActiveShopeeAccounts();
     const account = accounts.find(item => item.id === conversation.marketplace_account_id);
@@ -141,10 +154,39 @@ export async function markConversationReplyError(activity: Record<string, any>, 
   const conversationId = String(activity.requested_data?.conversationId || activity.source_id || "");
   if (!conversationId) return;
   const db = supabaseAdmin();
+  const current = await db.from("marketplace_conversations").select("external_status,raw_data")
+    .eq("id", conversationId).maybeSingle().throwOnError();
+  if (String(current.data?.external_status || "").toUpperCase() === "ANSWERED" || current.data?.raw_data?.answer) {
+    await db.from("marketplace_conversations").update({ status: "answered", requires_response: false, unread: false, last_error: null, updated_at: new Date().toISOString() })
+      .eq("id", conversationId).throwOnError();
+    return;
+  }
   await Promise.all([
     db.from("marketplace_conversations").update({ status: "error", requires_response: true, unread: true, last_error: message, updated_at: new Date().toISOString() }).eq("id", conversationId),
     db.from("marketplace_conversation_messages").update({ status: "error" }).eq("conversation_id", conversationId).eq("external_message_id", activity.requested_data?.draftId || "")
   ]);
+}
+
+async function reconcileAnsweredMercadoLivreQuestion(conversation: Record<string, any>, account: Account, draftId: unknown) {
+  let question: Record<string, any>;
+  try {
+    question = await getMercadoLivreResource(`/questions/${encodeURIComponent(String(conversation.external_conversation_id))}?api_version=4`, account as any);
+  } catch {
+    return null;
+  }
+  if (!question.answer) return null;
+  const reconciled = await persistMercadoLivreQuestion(question, account);
+  if (draftId) {
+    await supabaseAdmin().from("marketplace_conversation_messages").delete()
+      .eq("conversation_id", conversation.id).eq("external_message_id", String(draftId)).throwOnError();
+  }
+  return {
+    conversationId: reconciled.id,
+    messageId: `answer:${question.id}`,
+    status: "sent",
+    marketplace: "mercado_livre",
+    reconciled: true
+  };
 }
 
 async function persistMercadoLivreQuestion(question: Record<string, any>, account: Account) {

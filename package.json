@@ -9,6 +9,7 @@
     "start": "next start",
     "worker:marketplace": "tsx --require ./scripts/register-server-only.cjs scripts/marketplace-worker.ts",
     "test:ml-item-moderation": "tsx --require ./scripts/register-server-only.cjs scripts/test-mercado-livre-item-moderation.ts",
+    "test:ml-managed-title": "tsx scripts/regression-mercado-livre-managed-title.ts",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

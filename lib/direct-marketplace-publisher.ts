@@ -5,6 +5,7 @@ import { buildProductDescription } from "./dynamic-product-description";
 import { mercadoLivrePackageAttributes, resolveEffectiveProduct } from "./effective-product";
 import { fetchMarketplaceCategoryDefinition, type MarketplaceCode, type MarketplaceDefinitions } from "./marketplace-attributes";
 import { getMarketplaceCategoryPath } from "./marketplace-categories";
+import { hasMercadoLivreFamily, pendingManagedTitleRecovery } from "./mercado-livre-managed-title";
 
 export async function publishProductDirectly(productId: string, processImmediately = true) {
   const db = supabaseAdmin();
@@ -151,9 +152,17 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
     && (!target?.marketplace || link.marketplace === target.marketplace)
   )) {
     const destination = link.marketplace as "mercado_livre" | "shopee";
+    const managedTitleRecovery = destination === "mercado_livre" && Boolean(changes?.title) && hasMercadoLivreFamily(link)
+      ? pendingManagedTitleRecovery(product.title, {
+        familyId: link.family_id || link.raw_data?.family_id,
+        familyName: link.family_name || link.raw_data?.family_name,
+        userProductId: link.user_product_id || link.raw_data?.user_product_id
+      })
+      : undefined;
     const payload = changes && !changes.attributes
       ? destination === "mercado_livre"
-        ? { ...(changes.price ? { price: Number(product.price) } : {}), ...(imageUrls ? { pictures: imageUrls.map(source => ({ source })) } : {}) }
+        ? { ...(changes.title && !managedTitleRecovery ? { title: String(product.title).slice(0, 60) } : {}),
+          ...(changes.price ? { price: Number(product.price) } : {}), ...(imageUrls ? { pictures: imageUrls.map(source => ({ source })) } : {}) }
         : { ...(changes.title ? { item_name: String(product.title).slice(0, 120) } : {}), ...(changes.price ? { original_price: Number(product.price) } : {}) }
       : destination === "mercado_livre"
         ? { ...(!link.family_id && !link.family_name && !link.raw_data?.family_id && !link.raw_data?.family_name
@@ -174,6 +183,7 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
     ids.push(await enqueueOutgoingActivity({ destination, activityType: "listing_update", productId, sku: product.sku,
       productName: product.title, accountId: link.marketplace_account_id, listingId: link.marketplace_product_id,
       previousData: { title: link.titulo_marketplace, price: link.valor_marketplace }, requestedData: { payload,
+        ...(managedTitleRecovery ? { managedTitleRecovery } : {}),
         ...(fullAttributeUpdate && destination === "mercado_livre" ? { description: htmlToPlainText(String(product.description || "")) } : {}),
         ...(imageUrls && destination === "shopee" ? { imageUrls } : {}),
         ...(fullAttributeUpdate ? { stock } : {}) },

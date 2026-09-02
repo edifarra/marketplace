@@ -7,6 +7,7 @@ import { htmlToPlainText } from "./html-to-plain-text";
 import { buildMercadoLivreVariationStockPayload } from "./marketplace-stock-payloads";
 import { executeConversationReply, markConversationReplyError } from "./marketplace-conversations";
 import { normalizeMercadoLivrePackageAttributes } from "./effective-product";
+import { prepareManagedTitleRetry } from "./mercado-livre-managed-title";
 
 export type OutgoingActivityInput = {
   destination: "mercado_livre" | "shopee" | "tiny";
@@ -317,7 +318,8 @@ async function updateAndConfirmListing(activity: Record<string, any>) {
   if (activity.destination === "mercado_livre") {
     const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
     const token = await getValidMercadoLivreAccessToken(account);
-    if (activity.requested_data?.payload) {
+    await executePendingMercadoLivreManagedTitle(activity, token);
+    if (activity.requested_data?.payload && Object.keys(activity.requested_data.payload).length > 0) {
       const payload = structuredClone(activity.requested_data.payload);
       if (Array.isArray(payload.attributes) && activity.product_id) {
         const product = await supabaseAdmin().from("products").select("height,width,length,weight_gross")
@@ -394,6 +396,7 @@ function isMercadoLivreManagedTitleError(activity: Record<string, any>, message:
 
 async function recoverMercadoLivreManagedTitle(activity: Record<string, any>, message: string) {
   if (!isMercadoLivreManagedTitleError(activity, message)) return false;
+  if (activity.requested_data?.managedTitleRecovery) return false;
   const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
   const token = await getValidMercadoLivreAccessToken(account);
   const listingId = String(activity.listing_id || "");
@@ -406,8 +409,12 @@ async function recoverMercadoLivreManagedTitle(activity: Record<string, any>, me
   if (!remote.family_name && !familyId) return false;
 
   const db = supabaseAdmin();
-  const requestedData = structuredClone(activity.requested_data || {});
-  if (requestedData.payload && typeof requestedData.payload === "object") delete requestedData.payload.title;
+  const requestedData = prepareManagedTitleRetry(activity.requested_data || {}, {
+    familyId,
+    familyName: remote.family_name,
+    userProductId: remote.user_product_id
+  });
+  if (!requestedData) return false;
   const now = new Date().toISOString();
   await Promise.all([
     db.from("outgoing_marketplace_activities").update({ requested_data: requestedData, updated_at: now }).eq("id", activity.id).throwOnError(),
@@ -422,6 +429,67 @@ async function recoverMercadoLivreManagedTitle(activity: Record<string, any>, me
   ]);
   activity.requested_data = requestedData;
   return true;
+}
+
+async function executePendingMercadoLivreManagedTitle(activity: Record<string, any>, token: string) {
+  const recovery = activity.requested_data?.managedTitleRecovery;
+  if (!recovery || recovery.status !== "pending") return;
+  const requestedTitle = String(recovery.requestedTitle || "").trim();
+  if (!requestedTitle) throw new Error("Titulo solicitado ausente em managedTitleRecovery.requestedTitle.");
+  const listingId = String(activity.listing_id || "");
+  if (!listingId) throw new Error("Anuncio ausente para atualizar family_name no Mercado Livre.");
+
+  let remote = await mlApi(`/items/${listingId}`, token, "GET");
+  let userProduct: Record<string, any> = {};
+  const userProductId = String(remote.user_product_id || recovery.userProductId || "");
+  if (userProductId && (!remote.family_id || !remote.family_name)) {
+    userProduct = await mlApi(`/user-products/${userProductId}`, token, "GET");
+  }
+  const currentFamilyName = String(remote.family_name || userProduct.family_name || "").trim();
+  if (currentFamilyName !== requestedTitle) {
+    await history(String(activity.id), Number(activity.attempt_count), "managed_title_update", "processing", {
+      listingId, requestedTitle, action: "PUT /items/{item_id}/family_name"
+    });
+    try {
+      await mlApi(`/items/${listingId}/family_name`, token, "PUT", { family_name: requestedTitle });
+    } catch (error) {
+      await history(String(activity.id), Number(activity.attempt_count), "managed_title_update", "error", {
+        listingId, requestedTitle, error: error instanceof Error ? error.message : String(error)
+      }).catch(() => undefined);
+      throw error;
+    }
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+      remote = await mlApi(`/items/${listingId}`, token, "GET");
+      if (String(remote.family_name || "").trim() === requestedTitle) break;
+    }
+    if (String(remote.family_name || "").trim() !== requestedTitle) {
+      throw new Error(`Mercado Livre nao confirmou family_name "${requestedTitle}" para o anuncio ${listingId}.`);
+    }
+  } else {
+    await history(String(activity.id), Number(activity.attempt_count), "managed_title_update", "completed", {
+      listingId, requestedTitle, action: "already_confirmed"
+    });
+  }
+
+  const completedRecovery = {
+    ...recovery,
+    status: "completed",
+    familyId: String(remote.family_id || userProduct.family_id || recovery.familyId || "") || null,
+    familyName: String(remote.family_name || requestedTitle),
+    userProductId: String(remote.user_product_id || userProduct.id || recovery.userProductId || "") || null,
+    confirmedTitle: String(remote.title || "") || null
+  };
+  activity.requested_data = { ...activity.requested_data, managedTitleRecovery: completedRecovery };
+  await supabaseAdmin().from("outgoing_marketplace_activities")
+    .update({ requested_data: activity.requested_data, updated_at: new Date().toISOString() })
+    .eq("id", activity.id).throwOnError();
+  if (currentFamilyName !== requestedTitle) {
+    await history(String(activity.id), Number(activity.attempt_count), "managed_title_update", "completed", {
+      listingId, requestedTitle, confirmedTitle: completedRecovery.confirmedTitle
+    });
+  }
+  await synchronizeMercadoLivreManagedProduct(activity, remote);
 }
 
 async function synchronizeMercadoLivreManagedProduct(activity: Record<string, any>, remote: Record<string, any>) {

@@ -27,7 +27,7 @@ export async function retryConversationReply(formData: FormData) {
   const conversationId = String(formData.get("conversationId") || "");
   const db = supabaseAdmin();
   const activity = await db.from("outgoing_marketplace_activities").select("id")
-    .eq("source_type", "marketplace_conversation").eq("source_id", conversationId).eq("status", "error")
+    .eq("source_type", "marketplace_conversation").eq("source_id", conversationId).in("status", ["error", "retry"])
     .order("created_at", { ascending: false }).limit(1).maybeSingle().throwOnError();
   if (!activity.data) return { ok: false, error: "Envio com erro não encontrado." };
   await db.from("outgoing_marketplace_activities").update({ status: "retry", attempt_count: 0, next_attempt_at: new Date().toISOString(), processing_error: null, processed_at: null, updated_at: new Date().toISOString() }).eq("id", activity.data.id).throwOnError();

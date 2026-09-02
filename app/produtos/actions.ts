@@ -258,6 +258,7 @@ export async function updateProductDetailsAction(formData: FormData) {
   }
   const db = supabaseAdmin();
   const current = await db.from("products").select("*,product_images(id,original_name,url,cloudinary_url,cloudinary_public_id,position,bytes,width_px,height_px)").eq("id", productId).single().throwOnError();
+  const titleChanged = String(current.data.title || "") !== title;
   const requestedInternalCategory = text("marketplaceCategory");
   const typeConfiguration = await db.from("config_types").select("marketplace_category,marketplace_active_attributes").eq("code", typeCode).maybeSingle().throwOnError();
   const marketplaceCategory = typeCode === "OT" ? requestedInternalCategory : String(typeConfiguration.data?.marketplace_category || "").trim();
@@ -446,7 +447,7 @@ export async function updateProductDetailsAction(formData: FormData) {
         listingId: String(current.data.tiny_product_id), requestedData: { reason: "product_saved", imagesChanged } });
     }
     if (availableStock > 0) {
-      await enqueueDirectListingUpdates(productId, undefined, false, { title: true, price: true, attributes: true, images: imagesChanged, stock: availableStock });
+      await enqueueDirectListingUpdates(productId, undefined, false, { title: titleChanged, price: true, attributes: true, images: imagesChanged, stock: availableStock });
       await db.from("products").update({ marketplace_update_pending: false }).eq("id", productId).throwOnError();
     } else {
       // O Mercado Livre rejeita atualizacoes completas de anuncios sem saldo.

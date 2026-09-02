@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { waitUntil } from "@vercel/functions";
 import { enqueueMarketplaceActivity, marketplaceEventId } from "@/lib/marketplace-queue";
-import { processMarketplaceQueue } from "@/lib/marketplace-queue-worker";
 
 export const maxDuration = 300;
 
@@ -25,9 +23,6 @@ export async function POST(request: NextRequest) {
       orderId,
       description: `Evento enfileirado: ${topic}${resource ? ` (${resource})` : ""}`
     });
-    waitUntil(processMarketplaceQueue(5).catch((error) => {
-      console.error("[mercado_livre_queue_worker]", error);
-    }));
     return NextResponse.json({ accepted: true, queued: true, id: queued.id }, { status: 202 });
   } catch (error) {
     return NextResponse.json({

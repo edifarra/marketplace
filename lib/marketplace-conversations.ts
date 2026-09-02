@@ -121,15 +121,9 @@ export async function executeConversationReply(activity: Record<string, any>) {
         remote = await answerMercadoLivreQuestion(conversation.external_conversation_id, text, account);
       } catch (error) {
         // A notificacao de resposta pode chegar entre a leitura local e o POST.
-        // Nesse caso, a segunda tentativa e recusada pelo PolicyAgent. A API de
-        // consulta pode levar alguns segundos para refletir a resposta, portanto
-        // repetimos a reconciliacao antes de registrar uma falha falsa.
-        const reconciled = await reconcileAnsweredMercadoLivreQuestionWithRetry(
-          conversation,
-          account,
-          requested.draftId,
-          isMercadoLivrePolicyAgentUnauthorized(error) ? [0, 500, 1_000, 2_000, 4_000] : [0]
-        );
+        // Se outra execucao respondeu primeiro, a consulta remota permite
+        // reconciliar o estado. Erros de permissao continuam sendo reportados.
+        const reconciled = await reconcileAnsweredMercadoLivreQuestion(conversation, account, requested.draftId);
         if (reconciled) return reconciled;
         throw error;
       }
@@ -193,25 +187,6 @@ async function reconcileAnsweredMercadoLivreQuestion(conversation: Record<string
     marketplace: "mercado_livre",
     reconciled: true
   };
-}
-
-async function reconcileAnsweredMercadoLivreQuestionWithRetry(
-  conversation: Record<string, any>,
-  account: Account,
-  draftId: unknown,
-  delays: number[]
-) {
-  for (const delay of delays) {
-    if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
-    const reconciled = await reconcileAnsweredMercadoLivreQuestion(conversation, account, draftId);
-    if (reconciled) return reconciled;
-  }
-  return null;
-}
-
-function isMercadoLivrePolicyAgentUnauthorized(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /PA_UNAUTHORIZED_RESULT_FROM_POLICIES|blocked_by["']?\s*:\s*["']?PolicyAgent/i.test(message);
 }
 
 async function persistMercadoLivreQuestion(question: Record<string, any>, account: Account) {

@@ -76,7 +76,18 @@ export async function getMercadoLivreResource(resource: string, account: Marketp
 
 export async function answerMercadoLivreQuestion(questionId: string, text: string, account: MarketplaceAccountConfig) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
-  return mlRequest("/answers", accessToken, "POST", { question_id: Number(questionId), text }) as Promise<Record<string, any>>;
+  try {
+    return await mlRequest("/answers", accessToken, "POST", { question_id: Number(questionId), text }) as Record<string, any>;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/PA_UNAUTHORIZED_RESULT_FROM_POLICIES|blocked_by["']?\s*:\s*["']?PolicyAgent/i.test(message)) {
+      throw new Error(
+        "O Mercado Livre recusou o envio porque esta aplicação não possui permissão funcional de escrita em Perguntas e Respostas. " +
+        "Habilite essa permissão nas configurações da aplicação do Mercado Livre e autorize novamente a conta."
+      );
+    }
+    throw error;
+  }
 }
 
 export async function sendMercadoLivrePostSaleMessage(resource: string, text: string, account: MarketplaceAccountConfig) {

@@ -17,7 +17,7 @@ export default async function ChatsQuestionsPage({ searchParams }: { searchParam
     to: String(searchParams?.to || ""), unread: String(searchParams?.unread || "")
   };
   const [conversations, accounts, settings] = await Promise.all([
-    db.from("marketplace_conversations").select("*,config_marketplace_accounts(name,nickname),marketplace_conversation_messages(*)").order("last_message_at", { ascending: false, nullsFirst: false }).limit(5000),
+    db.from("marketplace_conversations").select("*,config_marketplace_accounts(name,nickname,shop_id),marketplace_conversation_messages(*)").order("last_message_at", { ascending: false, nullsFirst: false }).limit(5000),
     db.from("config_marketplace_accounts").select("id,name,nickname,marketplace").eq("active", true).order("name"),
     db.from("settings").select("key,value").in("key", ["CHAT_SLA_WITH_PRODUCT_HOURS", "CHAT_SLA_WITHOUT_PRODUCT_HOURS"])
   ]);

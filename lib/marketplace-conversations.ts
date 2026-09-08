@@ -141,13 +141,19 @@ export async function executeConversationReply(activity: Record<string, any>) {
   }
   const now = new Date().toISOString();
   const remoteId = String(remote.message_id || remote.response?.message_id || remote.id || requested.draftId);
-  await db.from("marketplace_conversation_messages").update({ external_message_id: remoteId, status: "sent", raw_data: remote })
-    .eq("conversation_id", conversationId).eq("external_message_id", requested.draftId).throwOnError();
-  await db.from("marketplace_conversations").update({
-    status: "answered", requires_response: false, unread: false, last_outgoing_at: now, last_message_at: now,
-    last_message_preview: text.slice(0, 240), last_error: null, updated_at: now
-  }).eq("id", conversationId).throwOnError();
-  return { conversationId, messageId: remoteId, status: "sent", marketplace: conversation.marketplace };
+  try {
+    const finalized = await finalizeConversationReply({ conversationId, draftId: requested.draftId, remoteId, text, sentAt: now, remote });
+    return { conversationId, messageId: remoteId, status: "sent", marketplace: conversation.marketplace, reconciled: finalized.reconciled };
+  } catch (error) {
+    // O POST ja terminou. Antes de permitir retry, confirme o estado remoto para
+    // impedir que uma falha apenas local provoque um segundo envio ao marketplace.
+    if (conversation.marketplace === "mercado_livre" && conversation.conversation_type === "question") {
+      const account = await getMercadoLivreAccountById(conversation.marketplace_account_id);
+      const reconciled = await reconcileAnsweredMercadoLivreQuestion(conversation, account, requested.draftId);
+      if (reconciled) return reconciled;
+    }
+    throw error;
+  }
 }
 
 export async function markConversationReplyError(activity: Record<string, any>, message: string) {
@@ -176,10 +182,14 @@ async function reconcileAnsweredMercadoLivreQuestion(conversation: Record<string
   }
   if (!question.answer) return null;
   const reconciled = await persistMercadoLivreQuestion(question, account);
-  if (draftId) {
-    await supabaseAdmin().from("marketplace_conversation_messages").delete()
-      .eq("conversation_id", conversation.id).eq("external_message_id", String(draftId)).throwOnError();
-  }
+  await finalizeConversationReply({
+    conversationId: conversation.id,
+    draftId,
+    remoteId: `answer:${question.id}`,
+    text: String(question.answer.text || ""),
+    sentAt: isoDate(question.answer.date_created) || new Date().toISOString(),
+    remote: question.answer
+  });
   return {
     conversationId: reconciled.id,
     messageId: `answer:${question.id}`,
@@ -187,6 +197,20 @@ async function reconcileAnsweredMercadoLivreQuestion(conversation: Record<string
     marketplace: "mercado_livre",
     reconciled: true
   };
+}
+
+async function finalizeConversationReply(input: {
+  conversationId: string; draftId: unknown; remoteId: string; text: string; sentAt: string; remote: Record<string, any>;
+}) {
+  const result = await supabaseAdmin().rpc("finalize_marketplace_conversation_reply", {
+    p_conversation_id: input.conversationId,
+    p_draft_id: String(input.draftId || ""),
+    p_external_message_id: input.remoteId,
+    p_text: input.text,
+    p_sent_at: input.sentAt,
+    p_raw_data: input.remote
+  }).throwOnError();
+  return (result.data || { reconciled: false }) as { reconciled: boolean };
 }
 
 async function persistMercadoLivreQuestion(question: Record<string, any>, account: Account) {

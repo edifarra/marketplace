@@ -10,7 +10,7 @@ type Option = { code: string; label: string; marketplaceCategory?: string; board
 type ImageItem = { id: string; name: string; url: string; position: number; bytes: number; width: number; height: number };
 type TemporaryImageSet = { images: Array<{ key: string; name: string; url: string; position: number; bytes: number; width: number; height: number }>; marketplace: Marketplace; accountId: string; listingId: string; totalRemoteImages: number } | null;
 type EditorImage = (ImageItem & { kind: "existing" })
-  | { kind: "new"; key: string; name: string; url: string; bytes: number; width: number; height: number; file: File; uploadStatus: "uploading" | "ready" | "error"; uploadError?: string; publicId?: string; cloudName?: string; uploadedPosition?: number }
+  | { kind: "new"; key: string; name: string; url: string; bytes: number; width: number; height: number; file: File; uploadStatus: "uploading" | "ready" | "error"; uploadError?: string; publicId?: string; assetId?: string | null; cloudName?: string; uploadedPosition?: number }
   | { kind: "remote"; key: string; name: string; url: string; bytes: number; width: number; height: number };
 type CategoryMapping = { internal_category:string; mercado_livre_code?:string; mercado_livre_description?:string; shopee_code?:string; shopee_description?:string; attribute_definitions?:Record<string,any> };
 type Marketplace = "mercado_livre" | "shopee";
@@ -30,6 +30,10 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const newImageUrlsRef = useRef(new Set<string>());
+  const preparedPublicIdsRef = useRef(new Set<string>());
+  const activeNewImageKeysRef = useRef(new Set<string>());
+  const pendingUploadsRef = useRef(new Set<Promise<void>>());
+  const abandoningRef = useRef(false);
   const [preview, setPreview] = useState("");
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [titleCopied, setTitleCopied] = useState(false);
@@ -111,7 +115,8 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
   });
   const imageKey = (image: EditorImage) => image.kind === "existing" ? `existing:${image.id}` : `${image.kind}:${image.key}`;
   const remove = (key: string) => { setDirty(true); setOrdered((current) => { const removed = current.find(image => imageKey(image) === key); if (removed?.kind === "new") {
-    if (removed.publicId) void fetch("/api/products/images/prepare", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicId: removed.publicId }) });
+    activeNewImageKeysRef.current.delete(removed.key);
+    if (removed.publicId) { preparedPublicIdsRef.current.delete(removed.publicId); void deletePreparedImage(removed.publicId); }
     URL.revokeObjectURL(removed.url); newImageUrlsRef.current.delete(removed.url);
   } return current.filter(image => imageKey(image) !== key); }); };
 
@@ -136,13 +141,32 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
       const response = await fetch("/api/products/images/prepare", { method: "POST", body });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Não foi possível tratar a imagem.");
+      if (abandoningRef.current || !activeNewImageKeysRef.current.has(key)) {
+        await deletePreparedImage(result.image.publicId);
+        return;
+      }
+      preparedPublicIdsRef.current.add(result.image.publicId);
       setOrdered(current => current.map(image => image.kind === "new" && image.key === key ? { ...image, url: result.image.url,
-        bytes: result.image.bytes, width: result.image.width, height: result.image.height, publicId: result.image.publicId, cloudName: result.image.cloudName,
+        bytes: result.image.bytes, width: result.image.width, height: result.image.height, publicId: result.image.publicId, assetId: result.image.assetId, cloudName: result.image.cloudName,
         uploadedPosition: result.image.position, uploadStatus: "ready" } : image));
     } catch (error) {
       setOrdered(current => current.map(image => image.kind === "new" && image.key === key ? { ...image, uploadStatus: "error",
         uploadError: error instanceof Error ? error.message : String(error) } : image));
     }
+  }
+
+  function queuePrepareImage(key: string, file: File, position: number) {
+    const task = prepareImage(key, file, position).finally(() => pendingUploadsRef.current.delete(task));
+    pendingUploadsRef.current.add(task);
+  }
+
+  async function discardPreparedAndNavigate(href: string) {
+    abandoningRef.current = true;
+    await Promise.allSettled([...pendingUploadsRef.current]);
+    const ids = [...preparedPublicIdsRef.current];
+    preparedPublicIdsRef.current.clear();
+    await Promise.allSettled(ids.map(deletePreparedImage));
+    setDirty(false); setPendingHref(""); window.location.href = href;
   }
 
   useEffect(() => () => {
@@ -169,7 +193,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     <input type="hidden" name="returnTo" value={returnTo} />
     <input type="hidden" name="intent" value="" />
     <input type="hidden" name="imageOrder" value={ordered.map(imageKey).join(",")} />
-    <input type="hidden" name="preparedImages" value={JSON.stringify(ordered.filter((image): image is Extract<EditorImage, { kind: "new" }> => image.kind === "new" && image.uploadStatus === "ready").map(image => ({ key: image.key, name: image.name, url: image.url, publicId: image.publicId, cloudName: image.cloudName, bytes: image.bytes, width: image.width, height: image.height, position: image.uploadedPosition })))} />
+    <input type="hidden" name="preparedImages" value={JSON.stringify(ordered.filter((image): image is Extract<EditorImage, { kind: "new" }> => image.kind === "new" && image.uploadStatus === "ready").map(image => ({ key: image.key, name: image.name, url: image.url, publicId: image.publicId, assetId: image.assetId, cloudName: image.cloudName, bytes: image.bytes, width: image.width, height: image.height, position: image.uploadedPosition })))} />
     {temporaryImages && <>
       <input type="hidden" name="recoveryMarketplace" value={temporaryImages.marketplace} />
       <input type="hidden" name="recoveryAccountId" value={temporaryImages.accountId} />
@@ -238,9 +262,10 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
         const dimensions = await loadImageDimensions(url);
         return { kind: "new" as const, key: crypto.randomUUID(), name: file.name, url, bytes: file.size, file, ...dimensions, uploadStatus: "uploading" as const };
       }));
+      selected.forEach(image => activeNewImageKeysRef.current.add(image.key));
       const startPosition = ordered.length;
       setOrdered(current => [...current, ...selected]);
-      selected.forEach((image, index) => void prepareImage(image.key, image.file, startPosition + index + 1));
+      selected.forEach((image, index) => queuePrepareImage(image.key, image.file, startPosition + index + 1));
       if (selected.length) setDirty(true);
     }} />
     {temporaryImages && <div className="form-success">As fotos foram recuperadas temporariamente do {temporaryImages.marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee"} porque uma ou mais fotos do Cloudinary não estavam disponíveis. Somente as fotos exibidas serão gravadas ao salvar.{temporaryImages.totalRemoteImages > 6 ? ` O anúncio possui ${temporaryImages.totalRemoteImages} fotos; as excedentes ao limite de 6 serão removidas dos marketplaces.` : ""}</div>}
@@ -251,7 +276,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
         {index === 0 && <strong className="cover-badge">Foto da Capa</strong>}
         {image.kind === "new" && <strong className="cover-badge">{image.uploadStatus === "uploading" ? "Processando…" : image.uploadStatus === "error" ? "Falha no processamento" : "Pronta para salvar"}</strong>}
         <button type="button" className="image-trash" aria-label={`Excluir ${image.name}`} onClick={() => remove(key)}>🗑</button>
-        {image.kind === "new" && image.uploadError && <div className="product-image-errors"><span>{image.uploadError}</span><button type="button" className="secondary compact" onClick={() => { setOrdered(current => current.map(item => item.kind === "new" && item.key === image.key ? { ...item, uploadStatus: "uploading", uploadError: undefined } : item)); void prepareImage(image.key, image.file, index + 1); }}>Tentar novamente</button></div>}
+        {image.kind === "new" && image.uploadError && <div className="product-image-errors"><span>{image.uploadError}</span><button type="button" className="secondary compact" onClick={() => { setOrdered(current => current.map(item => item.kind === "new" && item.key === image.key ? { ...item, uploadStatus: "uploading", uploadError: undefined } : item)); queuePrepareImage(image.key, image.file, index + 1); }}>Tentar novamente</button></div>}
         {validationAttempted && errors.length > 0 && <div className="product-image-errors">{errors.map(error => <span key={error}>{error}</span>)}<span>Atual: {image.width || "?"} × {image.height || "?"} px · {formatImageBytes(image.bytes)}</span></div>}
         <figcaption><button type="button" disabled={index === 0} onClick={() => move(index, -1)}>←</button><span>{String(index + 1).padStart(2, "0")}</span><button type="button" disabled={index === ordered.length - 1} onClick={() => move(index, 1)}>→</button></figcaption>
       </figure>})}
@@ -263,7 +288,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
       <a className="secondary" href={returnTo}>Voltar</a>
     </div>
   </form>
-  {pendingHref && <div className="modal-backdrop"><div className="confirm-modal"><h3>Atualizações não salvas no produto.</h3><p>Deseja salvar antes de sair?</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => { const href = pendingHref; setDirty(false); setPendingHref(""); window.location.href = href; }}>Não</button><button type="button" className="primary" onClick={() => { setDirty(false); formRef.current?.requestSubmit(); }}>Sim</button></div></div></div>}
+  {pendingHref && <div className="modal-backdrop"><div className="confirm-modal"><h3>Atualizações não salvas no produto.</h3><p>Deseja salvar antes de sair?</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => void discardPreparedAndNavigate(pendingHref)}>Não</button><button type="button" className="primary" onClick={() => { setDirty(false); formRef.current?.requestSubmit(); }}>Sim</button></div></div></div>}
   </>;
 }
 
@@ -274,6 +299,9 @@ function QuantityControl({ label, name, value, setValue, onDirty }: { label:stri
 }
 
 function formatImageBytes(bytes:number) { return bytes ? `${(bytes / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} MB` : "tamanho desconhecido"; }
+function deletePreparedImage(publicId: string) {
+  return fetch("/api/products/images/prepare", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicId }) });
+}
 function validateNewImageSource(image: Extract<EditorImage, { kind: "new" }>) {
   const errors: string[] = [];
   if (!image.file.type.startsWith("image/")) errors.push("O arquivo deve ser uma imagem JPG, PNG ou WebP.");

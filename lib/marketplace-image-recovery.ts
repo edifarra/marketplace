@@ -37,7 +37,8 @@ export async function recoverProductImagesFromMarketplaceListing(
       brandCode: String(product.brand_code || ""),
       model: String(product.model || "PRODUTO"),
       boardCode: String(product.board_code || ""),
-      position
+      position,
+      source: "marketplace"
     });
     await db.from("product_images").insert({
       product_id: productId,
@@ -45,6 +46,7 @@ export async function recoverProductImagesFromMarketplaceListing(
       url: upload.cloudinaryUrl,
       cloudinary_url: upload.cloudinaryUrl,
       cloudinary_public_id: upload.publicId,
+      cloudinary_asset_id: upload.assetId,
       cloudinary_cloud_name: upload.cloudName,
       bytes: upload.bytes,
       width_px: upload.width,

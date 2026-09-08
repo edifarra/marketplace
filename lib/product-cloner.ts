@@ -61,7 +61,8 @@ export async function cloneProduct(productId: string): Promise<ClonedProduct> {
         brandCode: String(source.brand_code || ""),
         model: String(source.model || "PRODUTO"),
         boardCode: String(source.board_code || ""),
-        position: Number(image.position || 1)
+        position: Number(image.position || 1),
+        source: "stored_master"
       });
       createdCloudinaryIds.push(upload.publicId);
       await db.from("product_images").insert({
@@ -70,6 +71,7 @@ export async function cloneProduct(productId: string): Promise<ClonedProduct> {
         url: upload.cloudinaryUrl,
         cloudinary_url: upload.cloudinaryUrl,
         cloudinary_public_id: upload.publicId,
+        cloudinary_asset_id: upload.assetId,
         cloudinary_cloud_name: upload.cloudName,
         bytes: upload.bytes,
         width_px: upload.width,

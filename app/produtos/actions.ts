@@ -256,7 +256,7 @@ export async function updateProductDetailsAction(formData: FormData) {
     redirect(detailError("Preencha os campos obrigatórios com valores válidos."));
   }
   const db = supabaseAdmin();
-  const current = await db.from("products").select("*,product_images(id,original_name,url,cloudinary_url,cloudinary_public_id,position,bytes,width_px,height_px)").eq("id", productId).single().throwOnError();
+  const current = await db.from("products").select("*,product_images(id,original_name,url,cloudinary_url,cloudinary_public_id,cloudinary_asset_id,position,bytes,width_px,height_px)").eq("id", productId).single().throwOnError();
   const titleChanged = String(current.data.title || "") !== title;
   const requestedInternalCategory = text("marketplaceCategory");
   const typeConfiguration = await db.from("config_types").select("marketplace_category,marketplace_active_attributes").eq("code", typeCode).maybeSingle().throwOnError();
@@ -332,8 +332,8 @@ export async function updateProductDetailsAction(formData: FormData) {
   const keptIds = imageSequence.filter(token => token.startsWith("existing:")).map(token => token.slice("existing:".length));
   const newKeys = imageSequence.filter(token => token.startsWith("new:")).map(token => token.slice("new:".length));
   const remoteKeys = imageSequence.filter(token => token.startsWith("remote:")).map(token => token.slice("remote:".length));
-  const existingImages = (current.data.product_images || []) as Array<{ id: string; original_name: string; url?: string | null; cloudinary_url?: string | null; cloudinary_public_id?: string | null; position: number; bytes?: number | null; width_px?: number | null; height_px?: number | null }>;
-  type PreparedImage = { key: string; name: string; url: string; publicId: string; cloudName: string; bytes: number; width: number; height: number; position: number };
+  const existingImages = (current.data.product_images || []) as Array<{ id: string; original_name: string; url?: string | null; cloudinary_url?: string | null; cloudinary_public_id?: string | null; cloudinary_asset_id?: string | null; position: number; bytes?: number | null; width_px?: number | null; height_px?: number | null }>;
+  type PreparedImage = { key: string; name: string; url: string; publicId: string; assetId?: string | null; cloudName: string; bytes: number; width: number; height: number; position: number };
   let preparedImages: PreparedImage[] = [];
   try { preparedImages = JSON.parse(text("preparedImages") || "[]") as PreparedImage[]; } catch { redirect(detailError("Os dados das fotos processadas ficaram inconsistentes. Envie as fotos novamente.")); }
   if (imageSequence.length === 0) redirect(detailError("Preencha os campos obrigatórios: adicione pelo menos a Foto 1."));
@@ -398,47 +398,24 @@ export async function updateProductDetailsAction(formData: FormData) {
       if (token.startsWith("new:")) {
         const entry = newImagesByKey.get(token.slice("new:".length));
         if (!entry) throw new Error("Nova foto não localizada na sequência final.");
-        let finalImage = entry;
-        if (entry.position !== position) {
-          const source = await fetch(entry.url, { cache: "no-store" });
-          if (!source.ok) throw new Error(`Não foi possível ajustar a posição da foto ${entry.name}.`);
-          const upload = await uploadProductImageToCloudinary({ buffer: Buffer.from(await source.arrayBuffer()), fileName: entry.name,
-            sku, typeCode, brandCode, model, boardCode, position });
-          finalImage = { ...entry, url: upload.cloudinaryUrl, publicId: upload.publicId, cloudName: upload.cloudName, bytes: upload.bytes, width: upload.width, height: upload.height, position };
-          await deleteCloudinaryResource(entry.publicId).catch(() => undefined);
-        }
+        const finalImage = entry;
         const errors = validateMarketplaceImage(finalImage);
         if (errors.length) throw new Error(`A foto ${entry.name} não ficou compatível após o tratamento: ${errors.join(" ")}`);
         await db.from("product_images").insert({ product_id: productId, original_name: entry.name, url: finalImage.url, cloudinary_url: finalImage.url,
-          cloudinary_public_id: finalImage.publicId, cloudinary_cloud_name: finalImage.cloudName, bytes: finalImage.bytes, width_px: finalImage.width, height_px: finalImage.height, position, status: "uploaded" }).throwOnError();
+          cloudinary_public_id: finalImage.publicId, cloudinary_asset_id: finalImage.assetId || null, cloudinary_cloud_name: finalImage.cloudName, bytes: finalImage.bytes, width_px: finalImage.width, height_px: finalImage.height, position, status: "uploaded" }).throwOnError();
         continue;
       }
       if (token.startsWith("remote:")) {
         const recovered = remoteImagesByKey.get(token.slice("remote:".length));
         if (!recovered) throw new Error("Foto recuperada não localizada na sequência final.");
-        const upload = await uploadProductImageToCloudinary({ buffer: recovered.buffer, fileName: recovered.name, sku, typeCode, brandCode, model, boardCode, position });
-        await db.from("product_images").insert({ product_id: productId, original_name: recovered.name, url: upload.cloudinaryUrl, cloudinary_url: upload.cloudinaryUrl, cloudinary_public_id: upload.publicId, cloudinary_cloud_name: upload.cloudName, bytes: upload.bytes, width_px: upload.width, height_px: upload.height, position, status: "uploaded" }).throwOnError();
+        const upload = await uploadProductImageToCloudinary({ buffer: recovered.buffer, fileName: recovered.name, sku, typeCode, brandCode, model, boardCode, position, source: "marketplace" });
+        await db.from("product_images").insert({ product_id: productId, original_name: recovered.name, url: upload.cloudinaryUrl, cloudinary_url: upload.cloudinaryUrl, cloudinary_public_id: upload.publicId, cloudinary_asset_id: upload.assetId, cloudinary_cloud_name: upload.cloudName, bytes: upload.bytes, width_px: upload.width, height_px: upload.height, position, status: "uploaded" }).throwOnError();
         continue;
       }
       const id = token.slice("existing:".length);
       const image = existingById.get(id);
       if (!image) throw new Error("Foto existente não localizada na sequência final.");
-      const hasEffectiveCloudinaryLink = Boolean(image.cloudinary_public_id && image.cloudinary_url);
-      const needsReprocessing = image.position !== position || !hasEffectiveCloudinaryLink
-        || validateMarketplaceImage({ width: Number(image.width_px), height: Number(image.height_px), bytes: Number(image.bytes) }).length > 0;
-      if (!needsReprocessing) {
-        await db.from("product_images").update({ position }).eq("id", id).eq("product_id", productId).throwOnError();
-        continue;
-      }
-      const sourceUrl = image.cloudinary_url || image.url;
-      if (!sourceUrl) throw new Error(`A foto ${image.original_name} não possui um arquivo acessível para reprocessamento.`);
-      const source = await fetch(sourceUrl, { cache: "no-store" });
-      if (!source.ok) throw new Error(`Não foi possível baixar a foto ${image.original_name} para reprocessamento (${source.status}).`);
-      const buffer = Buffer.from(await source.arrayBuffer());
-      if (buffer.byteLength > 8 * 1024 * 1024) throw new Error(`A imagem ${image.original_name} excede 8 MB antes do processamento.`);
-      const upload = await uploadProductImageToCloudinary({ buffer, fileName: image.original_name, sku, typeCode, brandCode, model, boardCode, position });
-      await db.from("product_images").update({ url: upload.cloudinaryUrl, cloudinary_url: upload.cloudinaryUrl, cloudinary_public_id: upload.publicId, cloudinary_cloud_name: upload.cloudName, bytes: upload.bytes, width_px: upload.width, height_px: upload.height, position, status: "uploaded" }).eq("id", id).eq("product_id", productId).throwOnError();
-      if (image.cloudinary_public_id && image.cloudinary_public_id !== upload.publicId) await deleteCloudinaryResource(image.cloudinary_public_id);
+      await db.from("product_images").update({ position }).eq("id", id).eq("product_id", productId).throwOnError();
     }
 
     if (current.data.tiny_product_id) {

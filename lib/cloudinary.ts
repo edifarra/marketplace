@@ -1,16 +1,39 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { supabaseAdmin } from "./supabase-admin";
 import { readImageDimensions, validateMarketplaceImage } from "./marketplace-image-validation";
 
 type CloudinaryUploadResult = {
+  asset_id: string;
   secure_url: string;
   public_id: string;
   resource_type: string;
   version?: number;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  format?: string;
 };
 
-type CloudinaryCredentials = { cloudName: string; apiKey: string; apiSecret: string; reserve: boolean };
+export type CloudinaryCredentials = { cloudName: string; apiKey: string; apiSecret: string; reserve: boolean };
 const CLOUDINARY_REQUEST_TIMEOUT_MS = 30_000;
+export const CLOUDINARY_MASTER_MAX_PX = 1200;
+export type CloudinaryImageSource = "owned" | "marketplace" | "stored_master";
+
+export function cloudinaryIncomingTransformation(source: CloudinaryImageSource, position: number) {
+  if (source === "marketplace" && position > 1) return "";
+  if (source === "stored_master") return "";
+  if (source === "marketplace") return "a_auto/e_background_removal,b_white/f_jpg";
+  const cover = position === 1 ? "e_background_removal,b_white/" : "";
+  return `a_auto/${cover}c_limit,w_${CLOUDINARY_MASTER_MAX_PX},h_${CLOUDINARY_MASTER_MAX_PX}/q_auto:good,f_jpg`;
+}
+
+export function cloudinaryDirectDeliveryUrl(upload: Pick<CloudinaryUploadResult, "secure_url">) {
+  return upload.secure_url;
+}
+
+export class CloudinaryRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string | number) { super(message); }
+}
 
 type CloudinaryResource = {
   public_id: string;
@@ -61,33 +84,44 @@ export async function uploadProductImageToCloudinary(input: {
   model: string;
   boardCode?: string;
   position: number;
+  source?: CloudinaryImageSource;
 }) {
+  if (input.source === "marketplace") validateMarketplaceSourceBuffer(input.buffer);
   const accounts = await getCloudinaryAccounts();
+  return withCloudinaryUploadFallback(accounts, account => uploadProductImageWithAccount(input, account));
+}
+
+export async function withCloudinaryUploadFallback<T>(
+  accounts: { primary: CloudinaryCredentials; reserve: CloudinaryCredentials | null },
+  operation: (account: CloudinaryCredentials) => Promise<T>
+) {
   try {
-    return await uploadProductImageWithAccount(input, accounts.primary);
+    return await operation(accounts.primary);
   } catch (error) {
     if (!isCloudinaryQuotaOrBillingError(error)) throw error;
     if (!accounts.reserve) throw new Error(`${error instanceof Error ? error.message : String(error)} Conta Cloudinary reserva não configurada.`);
     console.warn("Cloudinary principal atingiu limite de uso ou cobrança; acionando a conta reserva.");
-    return uploadProductImageWithAccount(input, accounts.reserve);
+    return operation(accounts.reserve);
   }
 }
 
-async function uploadProductImageWithAccount(input: {
+export async function uploadProductImageWithAccount(input: {
   buffer: Buffer; fileName: string; sku: string; typeCode: string; brandCode: string;
-  model: string; boardCode?: string; position: number;
+  model: string; boardCode?: string; position: number; source?: CloudinaryImageSource;
 }, account: CloudinaryCredentials) {
   const { cloudName, apiKey, apiSecret } = account;
   const timestamp = Math.floor(Date.now() / 1000);
   const folder = `produtos/${safeCloudinaryPart(input.brandCode)}`;
   const cloudinaryFileName = buildCloudinaryImageName(input);
   const contentHash = createHash("sha1").update(input.buffer).digest("hex").slice(0, 10);
-  const uniquePublicName = `${cloudinaryFileName}_${contentHash}`;
+  const uniquePublicName = `${cloudinaryFileName}_${contentHash}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const transformation = cloudinaryIncomingTransformation(input.source || "owned", input.position);
   const paramsToSign = {
     folder,
     invalidate: "true",
     overwrite: "true",
     public_id: uniquePublicName,
+    ...(transformation ? { transformation } : {}),
     timestamp: String(timestamp)
   };
   const signature = signCloudinaryParams(paramsToSign, apiSecret);
@@ -99,17 +133,24 @@ async function uploadProductImageWithAccount(input: {
   formData.set("invalidate", "true");
   formData.set("overwrite", "true");
   formData.set("public_id", uniquePublicName);
+  if (transformation) formData.set("transformation", transformation);
   formData.set("signature", signature);
 
   const response = await fetchWithTimeout(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: formData }, CLOUDINARY_REQUEST_TIMEOUT_MS, "upload");
   const json = await response.json().catch(() => ({})) as Partial<CloudinaryUploadResult> & { error?: { message?: string } };
-  if (!response.ok || !json.secure_url) {
-    throw new Error(`Falha no upload Cloudinary: ${json.error?.message || JSON.stringify(json)}`);
+  if (!response.ok || !json.secure_url || !json.public_id) {
+    const error = json.error as { message?: string; http_code?: number; code?: string | number } | undefined;
+    throw new CloudinaryRequestError(`Falha no upload Cloudinary: ${error?.message || JSON.stringify(json)}`, response.status || Number(error?.http_code || 0), error?.code);
   }
 
-  const publicId = json.public_id || `${folder}/${uniquePublicName}`;
-  const delivery = await ensureCloudinaryImageWithinMarketplaceLimit(publicId, input.position, cloudName, json.version);
-  const cloudinaryUrl = delivery.url;
+  const publicId = json.public_id;
+  const metadata = { bytes: Number(json.bytes || 0), width: Number(json.width || 0), height: Number(json.height || 0) };
+  const validationErrors = validateUploadedCloudinaryImage(metadata, input.source || "owned");
+  if (validationErrors.length) {
+    await deleteCloudinaryResourceWithAccount(publicId, account).catch(() => undefined);
+    throw new Error(`A imagem armazenada não atende à política definida: ${validationErrors.join(" ")}`);
+  }
+  const cloudinaryUrl = cloudinaryDirectDeliveryUrl({ secure_url: json.secure_url });
   if (input.position === 1) {
     console.log("Imagem arquivo " + cloudinaryFileName + " link: " + cloudinaryUrl);
   }
@@ -117,15 +158,34 @@ async function uploadProductImageWithAccount(input: {
   return {
     cloudName,
     publicId: encodeCloudinaryPublicId(cloudName, publicId),
+    assetId: json.asset_id || null,
     cloudinaryFileName,
-    originalUrl: json.secure_url,
     cloudinaryUrl,
-    bytes: delivery.bytes,
-    width: delivery.width,
-    height: delivery.height
+    bytes: metadata.bytes,
+    width: metadata.width,
+    height: metadata.height
   };
 }
 
+function validateMarketplaceSourceBuffer(buffer: Buffer) {
+  if (buffer.byteLength > 8 * 1024 * 1024) throw new Error("A foto do marketplace excede o limite absoluto de 8 MB.");
+  const dimensions = readImageDimensions(buffer);
+  if (!dimensions.width || !dimensions.height) throw new Error("O arquivo recuperado do marketplace não é uma imagem JPG, PNG, GIF ou WebP válida.");
+  if (dimensions.width * dimensions.height > 25_000_000) throw new Error("A foto do marketplace excede o limite absoluto de 25 megapixels.");
+}
+
+function validateUploadedCloudinaryImage(metadata: { bytes: number; width: number; height: number }, source: CloudinaryImageSource) {
+  if (!metadata.width || !metadata.height || !metadata.bytes) return ["O Cloudinary não retornou metadados válidos da imagem."];
+  if (source === "marketplace") {
+    const errors: string[] = [];
+    if (metadata.bytes > 8 * 1024 * 1024) errors.push("Tamanho máximo: 8 MB.");
+    if (metadata.width * metadata.height > 25_000_000) errors.push("Resolução máxima absoluta: 25 megapixels.");
+    return errors;
+  }
+  return validateMarketplaceImage(metadata);
+}
+
+/** Compatibilidade legada. Novos uploads não chamam esta função nem criam derivados por URL. */
 export async function ensureCloudinaryImageWithinMarketplaceLimit(publicId: string, position: number, knownCloudName?: string, version?: number) {
   const cloudName = knownCloudName || (await getCloudinarySettings()).cloudName;
   const normalizedPublicId = publicId.replace(/\.(jpg|jpeg|png|webp|heic|heif)$/i, "");
@@ -207,14 +267,13 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function buildCloudinaryImageName(input: {
+export function buildCloudinaryImageName(input: {
   sku: string;
   typeCode: string;
   model: string;
   boardCode?: string;
-  position: number;
+  position?: number;
 }) {
-  const sequence = String(input.position).padStart(2, "0");
   const baseParts = [
     `${safeCloudinaryPart(input.sku)}${safeCloudinaryPart(input.typeCode)}`,
     safeCloudinaryPart(input.model)
@@ -225,7 +284,7 @@ function buildCloudinaryImageName(input: {
     baseParts.push(boardCode);
   }
 
-  return `${baseParts.join("_")}_${sequence}`;
+  return baseParts.join("_");
 }
 
 function safeCloudinaryPart(value: string) {
@@ -288,15 +347,19 @@ export async function deleteCloudinaryResource(publicId: string | null | undefin
   const accounts = await getCloudinaryAccounts();
   const decoded = decodeCloudinaryPublicId(publicId);
   const account = [accounts.primary, accounts.reserve].find(item => item?.cloudName === decoded.cloudName) || accounts.primary;
+  await deleteCloudinaryResourceWithAccount(decoded.publicId, account);
+}
+
+async function deleteCloudinaryResourceWithAccount(publicId: string, account: CloudinaryCredentials) {
   const { cloudName, apiKey, apiSecret } = account;
   const timestamp = Math.floor(Date.now() / 1000);
   const paramsToSign = {
-    public_id: decoded.publicId,
+    public_id: publicId,
     timestamp: String(timestamp)
   };
   const signature = signCloudinaryParams(paramsToSign, apiSecret);
   const formData = new FormData();
-  formData.set("public_id", decoded.publicId);
+  formData.set("public_id", publicId);
   formData.set("api_key", apiKey);
   formData.set("timestamp", String(timestamp));
   formData.set("signature", signature);
@@ -318,7 +381,9 @@ function decodeCloudinaryPublicId(value: string) {
   return separator > 0 ? { cloudName: value.slice(0, separator), publicId: value.slice(separator + 2) } : { cloudName: "", publicId: value };
 }
 
-function isCloudinaryQuotaOrBillingError(error: unknown) {
+export function isCloudinaryQuotaOrBillingError(error: unknown) {
+  if (error instanceof CloudinaryRequestError && [420, 429].includes(error.status)) return true;
+  if (error instanceof CloudinaryRequestError && /quota|rate|limit|billing|payment|credit/i.test(String(error.code || ""))) return true;
   const message = error instanceof Error ? error.message : String(error);
   return /quota|usage limit|rate limit|too many requests|credits?|billing|payment|required|upgrade|plan limit|monthly limit|over limit|limite|tarifa|cota/i.test(message);
 }

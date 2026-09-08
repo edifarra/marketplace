@@ -339,7 +339,8 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           brandCode: photoParse.brandCode,
           model: photoParse.model,
           boardCode: photoParse.boardCode,
-          position: index + 1
+          position: index + 1,
+          source: "owned"
         });
         console.log("Upload: ", upload)
         processedFiles++;
@@ -680,6 +681,7 @@ async function insertProductImages(
     driveFile: DriveFile;
     upload: {
       publicId: string;
+      assetId: string | null;
       cloudName: string;
       cloudinaryFileName: string;
       cloudinaryUrl: string;
@@ -700,6 +702,7 @@ async function insertProductImages(
     url: image.upload.cloudinaryUrl,
     cloudinary_url: image.upload.cloudinaryUrl,
     cloudinary_public_id: image.upload.publicId,
+    cloudinary_asset_id: image.upload.assetId,
     cloudinary_cloud_name: image.upload.cloudName,
     local_path: image.upload.localPath,
     local_url: image.upload.localUrl,

@@ -14,9 +14,9 @@ export async function POST(request: Request) {
     const position = Number(text("position"));
     if (!text("sku") || !text("typeCode") || !text("brandCode") || !text("model") || !Number.isInteger(position) || position < 1 || position > 6) throw new Error("Preencha os dados do produto antes de enviar a foto.");
     const upload = await uploadProductImageToCloudinary({ buffer: Buffer.from(await file.arrayBuffer()), fileName: file.name,
-      sku: text("sku"), typeCode: text("typeCode"), brandCode: text("brandCode"), model: text("model"), boardCode: text("boardCode"), position });
+      sku: text("sku"), typeCode: text("typeCode"), brandCode: text("brandCode"), model: text("model"), boardCode: text("boardCode"), position, source: "owned" });
     return NextResponse.json({ ok: true, image: { name: file.name, position, url: upload.cloudinaryUrl, cloudinaryUrl: upload.cloudinaryUrl,
-      publicId: upload.publicId, cloudName: upload.cloudName, bytes: upload.bytes, width: upload.width, height: upload.height } });
+      publicId: upload.publicId, assetId: upload.assetId, cloudName: upload.cloudName, bytes: upload.bytes, width: upload.width, height: upload.height } });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 400 });
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { parsePriceValue } from "@/lib/price-value";
 
 export function PriceInput({
   name = "price",
@@ -17,10 +18,10 @@ export function PriceInput({
 }) {
   const initialPrice = finitePrice(initialValue) ?? 0;
   const [displayValue, setDisplayValue] = useState(() => formatPrice(initialPrice));
-  const [submittedValue, setSubmittedValue] = useState(() => initialPrice.toFixed(2));
 
-  return <>
-    <input
+  return <input
+      form={form}
+      name={name}
       className={className}
       type="text"
       inputMode="decimal"
@@ -28,38 +29,20 @@ export function PriceInput({
       required={required}
       value={displayValue}
       onChange={(event) => {
-        const next = event.target.value;
-        setDisplayValue(next);
-        const parsed = parsePrice(next);
-        setSubmittedValue(parsed === null ? "" : parsed.toFixed(2));
+        setDisplayValue(event.target.value);
       }}
       onBlur={() => {
-        const parsed = parsePrice(displayValue);
+        const parsed = parsePriceValue(displayValue);
         if (parsed === null) {
           setDisplayValue("");
-          setSubmittedValue("");
           return;
         }
         setDisplayValue(formatPrice(parsed));
-        setSubmittedValue(parsed.toFixed(2));
       }}
-    />
-    <input form={form} type="hidden" name={name} value={submittedValue} />
-  </>;
+    />;
 }
 
-export function parsePrice(value: string): number | null {
-  const cleaned = value.trim().replace(/R\$/gi, "").replace(/\s/g, "");
-  if (!cleaned) return null;
-  const lastComma = cleaned.lastIndexOf(",");
-  const lastDot = cleaned.lastIndexOf(".");
-  const decimalIndex = Math.max(lastComma, lastDot);
-  const integerPart = decimalIndex >= 0 ? cleaned.slice(0, decimalIndex) : cleaned;
-  const decimalPart = decimalIndex >= 0 ? cleaned.slice(decimalIndex + 1) : "";
-  const normalized = `${integerPart.replace(/\D/g, "")}${decimalIndex >= 0 ? `.${decimalPart.replace(/\D/g, "")}` : ""}`;
-  const parsed = Number(normalized);
-  return finitePrice(parsed);
-}
+export const parsePrice = parsePriceValue;
 
 function finitePrice(value: number): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;

@@ -17,6 +17,7 @@ import { fetchMarketplaceCategoryDefinition, validateRequiredAttributes, type Ma
 import { getMarketplaceCategoryPath } from "@/lib/marketplace-categories";
 import { validateMarketplaceImage } from "@/lib/marketplace-image-validation";
 import { resolveMarketplaceRecoveryImageUrls } from "@/lib/marketplace-temporary-images";
+import { parsePriceValue } from "@/lib/price-value";
 
 export async function cloneProductAction(formData: FormData) {
   const productId = String(formData.get("productId") || "");
@@ -173,9 +174,9 @@ export async function updateProductInlineAction(formData: FormData) {
   const returnTo = safeProductsReturn(String(formData.get("returnTo") || "/produtos"));
   const sendAfterSave = String(formData.get("intent") || "") === "send";
   const title = String(formData.get("title") || "").trim();
-  const price = Number(String(formData.get("price") || "0").replace(",", "."));
+  const price = parsePriceValue(formData.get("price"));
   const stock = Math.max(0, Math.trunc(Number(formData.get("stock") || 0)));
-  if (!productId || !title || !Number.isFinite(price) || price < 0) redirect(`/produtos?erro=${encodeURIComponent("Dados do produto invalidos.")}`);
+  if (!productId || !title || price === null) redirect(`/produtos?erro=${encodeURIComponent("Dados do produto invalidos.")}`);
   const db = supabaseAdmin();
   const [product, currentInventory] = await Promise.all([
     db.from("products").select("id,sku,title,price,status,sent_target,tiny_product_id,listings(external_listing_id)").eq("id", productId).single().throwOnError(),
@@ -249,10 +250,10 @@ export async function updateProductDetailsAction(formData: FormData) {
   const detailError = (message: string) => `/produtos/${productId}?returnTo=${encodeURIComponent(returnTo)}&editar=1&erro=${encodeURIComponent(message)}`;
   const typeCode = text("typeCode"); const brandCode = text("brandCode"); const specialCode = text("specialCode") || null;
   const model = text("model"); const version = text("version") || null; const boardCode = text("boardCode");
-  const price = Number(text("price")); const physicalStock = Math.trunc(number("physicalStock"));
+  const price = parsePriceValue(formData.get("price")); const physicalStock = Math.trunc(number("physicalStock"));
   const productCondition = text("productCondition") === "new" ? "new" : "used";
   const measures = { height: number("height"), width: number("width"), length: number("length"), weight_net: number("weightNet"), weight_gross: number("weightGross") };
-  if (!productId || !sku || !title || title.length > 60 || !description || model.length < 2 || !typeCode || typeCode === "OT" || !brandCode || brandCode === "NI" || !Number.isFinite(price) || price < 0 || !Number.isInteger(physicalStock) || physicalStock < 0 || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {
+  if (!productId || !sku || !title || title.length > 60 || !description || model.length < 2 || !typeCode || typeCode === "OT" || !brandCode || brandCode === "NI" || price === null || !Number.isInteger(physicalStock) || physicalStock < 0 || Object.values(measures).some(value => !Number.isFinite(value) || value < 0)) {
     redirect(detailError("Preencha os campos obrigatórios com valores válidos."));
   }
   const db = supabaseAdmin();

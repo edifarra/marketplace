@@ -135,6 +135,14 @@ export async function processOutgoingActivities(limit = 10) {
       const message = error instanceof Error ? error.message : String(error);
       if (["answer_send", "question_answer"].includes(String(activity.activity_type))) {
         await markConversationReplyError(activity, message);
+        if (isNonRetryableConversationError(message)) {
+          await db.from("outgoing_marketplace_activities").update({ status: "error", processing_error: message,
+            processed_at: new Date().toISOString(), processing_started_at: null, updated_at: new Date().toISOString() })
+            .eq("id", activity.id).throwOnError();
+          await history(String(activity.id), Number(activity.attempt_count), "confirmation", "error", { error: message, retryable: false });
+          results.push({ id: activity.id, ok: false, error: message });
+          continue;
+        }
       }
       try {
         if (await recoverMercadoLivreImmutableCondition(activity, message)) {
@@ -429,6 +437,10 @@ async function recoverMercadoLivreManagedTitle(activity: Record<string, any>, me
   ]);
   activity.requested_data = requestedData;
   return true;
+}
+
+function isNonRetryableConversationError(message: string) {
+  return /\b400\b|\b403\b|forbidden|blocked_conversation|rejected|moderation|sem pack, seller ou destinatário|não está mais disponível|máximo de \d+/i.test(message);
 }
 
 async function executePendingMercadoLivreManagedTitle(activity: Record<string, any>, token: string) {

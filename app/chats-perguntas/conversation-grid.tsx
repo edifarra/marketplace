@@ -28,6 +28,7 @@ export function ConversationGrid({ rows }: { rows: Row[] }) {
       const isOpen = open.has(row.id);
       const draft = drafts[row.id] ?? row.messages.find(message => message.status === "error" && message.direction === "outgoing")?.text ?? "";
       const validation = validate(draft);
+      const maximumLength = row.marketplace === "mercado_livre" && row.conversation_type === "post_sale" ? 350 : 2000;
       const canReply = row.marketplace === "shopee" || row.requires_response && !["closed", "review", "blocked"].includes(row.status);
       const listingUrl = productListingUrl(row);
       return <article key={row.id} className={`conversation-card ${row.requires_response ? "pending" : ""}`}>
@@ -48,9 +49,9 @@ export function ConversationGrid({ rows }: { rows: Row[] }) {
           <Timeline row={row}/>
           {row.last_error && <div className="form-error"><strong>Falha no envio:</strong> {row.last_error}</div>}
           {canReply && <div className="reply-box">
-            <textarea maxLength={2000} value={draft} onChange={event => setDrafts(current => ({ ...current, [row.id]: event.target.value }))} placeholder="Digite sua resposta" rows={4}/>
+            <textarea maxLength={maximumLength} value={draft} onChange={event => setDrafts(current => ({ ...current, [row.id]: event.target.value }))} placeholder="Digite sua resposta" rows={4}/>
             {row.marketplace === "shopee" && <div className="emoji-shortcuts" aria-label="Emojis rápidos">{["😀","😊","👍","🙏","✅","📦","🚚","❤️"].map(emoji => <button key={emoji} type="button" title={`Inserir ${emoji}`} onClick={() => setDrafts(current => ({ ...current, [row.id]: `${current[row.id] ?? draft}${emoji}` }))}>{emoji}</button>)}</div>}
-            <div className="reply-meta"><span className={draft.length >= 1800 ? "character-warning" : "muted"}>{draft.length}/2.000 caracteres</span>{validation && <span className="validation-warning">{validation}</span>}</div>
+            <div className="reply-meta"><span className={draft.length >= maximumLength * .9 ? "character-warning" : "muted"}>{draft.length}/{maximumLength.toLocaleString("pt-BR")} caracteres</span>{validation && <span className="validation-warning">{validation}</span>}</div>
             {notices[row.id] && <div className={notices[row.id].startsWith("Erro") ? "form-error" : "form-success"}>{notices[row.id]}</div>}
             <div className="form-actions">
               {row.last_error && <button className="secondary" disabled={sending.has(row.id)} onClick={async () => { const fd = new FormData(); fd.set("conversationId", row.id); const result = await retryConversationReply(fd); setNotices(current => ({ ...current, [row.id]: result.ok ? "Nova tentativa iniciada." : `Erro: ${result.error}` })); router.refresh(); }}>Tentar novamente</button>}

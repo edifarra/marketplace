@@ -5,12 +5,18 @@ import {
   answerMercadoLivreQuestion,
   getActiveMercadoLivreAccounts,
   getMercadoLivreAccountById,
+  getMercadoLivreOrder,
+  getMercadoLivrePack,
+  getMercadoLivrePostSaleConversation,
+  getMercadoLivrePostSaleMessage,
   getMercadoLivreResource,
+  getMercadoLivreUnreadPostSaleMessages,
   sendMercadoLivrePostSaleMessage
 } from "./mercado-livre";
+import { canonicalMercadoLivreConversationId, MLB_MESSAGING_AGENT_ID, normalizeMercadoLivrePostSale, parseMercadoLivreConversationPath } from "./mercado-livre-post-sale";
 import { getActiveShopeeAccounts, getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
-import { enqueueOutgoingActivity, processOutgoingActivities } from "./outgoing-activities";
+import { enqueueOutgoingActivity } from "./outgoing-activities";
 import { supabaseAdmin } from "./supabase-admin";
 
 type Account = { id: string; name: string; marketplace: string; seller_id?: string | null; account_id?: string | null; shop_id?: string | null };
@@ -23,7 +29,8 @@ export async function syncAllMarketplaceConversations() {
       if (!sellerId) continue;
       const payload = await getMercadoLivreResource(`/questions/search?seller_id=${encodeURIComponent(sellerId)}&api_version=4&limit=50&sort_fields=date_created&sort_types=DESC`, account);
       for (const question of payload.questions || []) await persistMercadoLivreQuestion(question, account);
-      results.push({ account: account.name, marketplace: "mercado_livre", count: (payload.questions || []).length, ok: true });
+      const messages = await syncMercadoLivreUnreadPostSale(account);
+      results.push({ account: account.name, marketplace: "mercado_livre", questions: (payload.questions || []).length, messages, ok: true });
     } catch (error) {
       results.push({ account: account.name, marketplace: "mercado_livre", ok: false, error: safeError(error) });
     }
@@ -39,17 +46,29 @@ export async function syncAllMarketplaceConversations() {
   return results;
 }
 
+export async function syncMercadoLivreUnreadPostSaleConversations() {
+  const results = [];
+  for (const account of await getActiveMercadoLivreAccounts()) {
+    try { results.push({ account: account.name, count: await syncMercadoLivreUnreadPostSale(account), ok: true }); }
+    catch (error) { results.push({ account: account.name, ok: false, error: safeError(error) }); }
+  }
+  return results;
+}
+
 export async function processMercadoLivreConversationNotification(activity: Record<string, any>, payload: Record<string, any>) {
-  const account = await findMercadoLivreAccount(payload.user_id);
   const resource = String(payload.resource || "");
+  if (String(payload.topic) === "messages" && Array.isArray(payload.actions) && !payload.actions.includes("created")) {
+    return { description: "Leitura de mensagem reconhecida." };
+  }
+  const account = await findMercadoLivreAccount(payload.user_id);
   if (String(payload.topic) === "questions") {
     const question = await getMercadoLivreResource(`${resource}${resource.includes("?") ? "&" : "?"}api_version=4`, account as any);
     const conversation = await persistMercadoLivreQuestion(question, account);
     return { description: question.answer ? "Pergunta respondida." : isClosedQuestion(question.status) ? "Pergunta encerrada." : "Nova pergunta.", conversationId: conversation.id };
   }
   if (String(payload.topic) === "messages") {
-    const remote = resource ? await getMercadoLivreResource(resource, account as any) : payload;
-    const conversation = await persistMercadoLivrePostSale(remote, account, resource);
+    const remote = resource ? await getMercadoLivrePostSaleMessage(resource, account as any) : payload;
+    const conversation = await resolveAndPersistMercadoLivrePostSale(remote, account);
     return { description: "Nova mensagem.", conversationId: conversation.id };
   }
   return null;
@@ -73,11 +92,11 @@ export async function queueConversationReply(conversationId: string, text: strin
   const user = await getCurrentUser();
   if (!user) throw new Error("Sessão expirada.");
   const cleanText = text.trim();
-  const validation = validateMarketplaceReply(cleanText);
-  if (validation.blocked.length) throw new Error(validation.blocked.join(" "));
   const db = supabaseAdmin();
   const conversationResult = await db.from("marketplace_conversations").select("*").eq("id", conversationId).single().throwOnError();
   const conversation = conversationResult.data;
+  const validation = validateMarketplaceReply(cleanText, conversation);
+  if (validation.blocked.length) throw new Error(validation.blocked.join(" "));
   if (!conversation.requires_response && conversation.conversation_type === "question") throw new Error("Esta pergunta não está mais disponível para resposta.");
   const activityType = conversation.conversation_type === "question" ? "question_answer" : "answer_send";
   const draftId = `draft:${createHash("sha256").update(`${conversationId}:${cleanText}`).digest("hex")}`;
@@ -93,12 +112,11 @@ export async function queueConversationReply(conversationId: string, text: strin
     productName: conversation.product_title || (conversation.conversation_type === "question" ? "Pergunta" : "Conversa"),
     accountId: conversation.marketplace_account_id,
     listingId: conversation.listing_id,
-    requestedData: { conversationId, text: cleanText, draftId, operatorId: user.id, operatorName: user.name },
+    requestedData: { conversationId, text: cleanText, draftId, requestedAt: new Date().toISOString(), operatorId: user.id, operatorName: user.name },
     sourceType: "marketplace_conversation",
     sourceId: conversationId
   });
   await db.from("marketplace_conversations").update({ last_error: null, updated_at: new Date().toISOString() }).eq("id", conversationId).throwOnError();
-  await processOutgoingActivities(10);
   revalidatePath("/chats-perguntas");
   revalidatePath("/atividades-marketplace/enviadas");
   return activityId;
@@ -128,7 +146,13 @@ export async function executeConversationReply(activity: Record<string, any>) {
         throw error;
       }
     } else {
-      remote = await sendMercadoLivrePostSaleMessage(String(conversation.raw_data?.reply_resource || conversation.raw_data?.resource || ""), text, account);
+      const packId = String(conversation.pack_id || conversation.order_id || "");
+      const sellerId = String(conversation.seller_id || account.seller_id || account.account_id || "");
+      const recipientId = resolveReplyRecipient(conversation, sellerId);
+      if (!packId || !sellerId || !recipientId) throw new Error("Conversa pós-compra sem pack, seller ou destinatário inequívoco para resposta.");
+      const reconciled = await reconcileMercadoLivrePostSaleReply(conversation, account, text, requested.draftId, requested.requestedAt);
+      if (reconciled) return reconciled;
+      remote = await sendMercadoLivrePostSaleMessage({ packId, sellerId, recipientId, text }, account);
     }
   } else {
     const accounts = await getActiveShopeeAccounts();
@@ -150,6 +174,11 @@ export async function executeConversationReply(activity: Record<string, any>) {
     if (conversation.marketplace === "mercado_livre" && conversation.conversation_type === "question") {
       const account = await getMercadoLivreAccountById(conversation.marketplace_account_id);
       const reconciled = await reconcileAnsweredMercadoLivreQuestion(conversation, account, requested.draftId);
+      if (reconciled) return reconciled;
+    }
+    if (conversation.marketplace === "mercado_livre" && conversation.conversation_type === "post_sale") {
+      const account = await getMercadoLivreAccountById(conversation.marketplace_account_id);
+      const reconciled = await reconcileMercadoLivrePostSaleReply(conversation, account, text, requested.draftId, requested.requestedAt);
       if (reconciled) return reconciled;
     }
     throw error;
@@ -250,29 +279,110 @@ async function persistMercadoLivreQuestion(question: Record<string, any>, accoun
   return conversation;
 }
 
-async function persistMercadoLivrePostSale(remote: Record<string, any>, account: Account, resource: string) {
+async function persistMercadoLivrePostSale(remote: Record<string, any>, account: Account, context: Record<string, any> = {}) {
   const db = supabaseAdmin();
-  const messages = Array.isArray(remote.messages) ? remote.messages : Array.isArray(remote) ? remote : [remote];
-  const packId = String(remote.pack_id || remote.order_id || resource.match(/packs\/(\d+)/)?.[1] || "");
-  const buyerId = String(remote.buyer_id || remote.from?.user_id || messages[0]?.from?.user_id || "");
-  const externalId = String(remote.conversation_id || packId || resource || remote.id);
-  const order = packId ? await findOrder("mercado_livre", packId) : null;
-  const latest = messages[messages.length - 1] || remote;
-  const incoming = String(latest.from?.user_id || latest.sender_id || "") !== String(account.seller_id || account.account_id || "");
-  const sentAt = isoDate(latest.message_date?.created || latest.date_created || latest.created_at) || new Date().toISOString();
+  const sellerId = String(context.sellerId || account.seller_id || account.account_id || "");
+  const messages = normalizeMercadoLivrePostSale(remote, sellerId, account.id).sort((a, b) => a.sentAt.localeCompare(b.sentAt));
+  if (!messages.length) throw new Error("Mercado Livre não retornou mensagens pós-compra válidas.");
+  const latest = messages[messages.length - 1];
+  const packId = String(context.packId || latest.packId || "");
+  const orderId = String(context.orderId || latest.orderId || "");
+  const conversationPath = String(context.conversationPath || latest.conversationPath || "") || null;
+  const conversationType = String(latest.conversationType || "post_sale");
+  const externalId = canonicalMercadoLivreConversationId({ conversationPath, packId, orderId, conversationType });
+  const order = orderId ? await findOrder("mercado_livre", orderId) : null;
+  const incoming = latest.direction === "incoming";
+  const status = String(remote.conversation_status?.status || remote.status || "active");
+  const blocked = status.toLowerCase() === "blocked";
+  const rejected = latest.status === "rejected" || String(latest.moderation?.status || "").toLowerCase() === "rejected";
+  const counterpartyId = String(latest.counterpartyId || context.counterpartyId || "") || null;
   const conversation = await upsertConversation({
     marketplace: "mercado_livre", marketplace_account_id: account.id, external_conversation_id: externalId, conversation_type: "post_sale",
-    external_status: String(remote.status || "active"), status: incoming ? "pending" : "answered", requires_response: incoming, unread: incoming,
-    buyer_id: buyerId || null, buyer_name: String(remote.buyer_name || remote.buyer?.nickname || "") || null, order_id: packId || null,
-    last_incoming_at: incoming ? sentAt : null, last_outgoing_at: incoming ? null : sentAt, last_message_at: sentAt,
-    last_message_preview: messageText(latest).slice(0, 240), raw_data: { ...remote, resource, reply_resource: resource }, ...(order || {})
+    external_status: rejected ? "rejected" : status, status: blocked || rejected ? "blocked" : incoming ? "pending" : "answered", requires_response: incoming && !blocked && !rejected, unread: incoming && !rejected,
+    buyer_id: latest.isMessagingAgent ? null : counterpartyId, buyer_name: null, order_id: orderId || null,
+    pack_id: packId || null, seller_id: sellerId || null, conversation_path: conversationPath,
+    counterparty_id: counterpartyId, messaging_agent: messages.some(message => message.isMessagingAgent),
+    last_incoming_at: messages.filter(message => message.direction === "incoming").at(-1)?.sentAt || null,
+    last_outgoing_at: messages.filter(message => message.direction === "outgoing").at(-1)?.sentAt || null,
+    last_message_at: latest.sentAt, last_message_preview: latest.text.slice(0, 240), raw_data: remote, ...(order || {})
   });
   for (const item of messages) {
-    const senderId = String(item.from?.user_id || item.sender_id || "");
-    const direction = senderId === String(account.seller_id || account.account_id || "") ? "outgoing" : "incoming";
-    await upsertMessage(conversation.id, String(item.id || hash(item)), direction, messageText(item), senderId, String(item.from?.nickname || ""), isoDate(item.message_date?.created || item.date_created || item.created_at) || sentAt, item);
+    await upsertMessage(conversation.id, item.messageId, item.direction, item.text, item.senderId || "", "", item.sentAt, item.raw, {
+      accountId: account.id, externalKey: `ml-message:${item.messageId}`
+    });
   }
   return conversation;
+}
+
+async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>, account: Account) {
+  const sellerId = String(account.seller_id || account.account_id || "");
+  let normalized = normalizeMercadoLivrePostSale(remote, sellerId, account.id);
+  if (!normalized.length) throw new Error("Detalhe da mensagem pós-compra não retornou message_id.");
+  const seed = normalized[0];
+  let orderId = seed.orderId;
+  let packId = seed.packId;
+  let conversationPath = seed.conversationPath;
+  if (orderId && !packId) {
+    const order = await getMercadoLivreOrder(orderId, account as any);
+    packId = String(order.pack_id || orderId);
+  }
+  if (packId && !orderId) {
+    const pack: Record<string, any> = await getMercadoLivrePack(packId, account as any).catch(() => ({}));
+    const orderIds = (Array.isArray(pack.orders) ? pack.orders : []).map((item: any) => String(item.id || item.order_id || "")).filter(Boolean);
+    orderId = await firstLocalMercadoLivreOrder(orderIds) || orderIds[0] || null;
+  }
+  const resolvedSeller = seed.sellerId || sellerId;
+  if (!conversationPath && packId && resolvedSeller) conversationPath = `/packs/${packId}/sellers/${resolvedSeller}`;
+  if (conversationPath) {
+    const conversation = await getMercadoLivrePostSaleConversation(conversationPath, account as any);
+    const detailed = normalizeMercadoLivrePostSale(conversation, sellerId, account.id);
+    if (detailed.length) { remote = conversation; normalized = detailed; }
+  }
+  return persistMercadoLivrePostSale(remote, account, { orderId, packId, sellerId: resolvedSeller, conversationPath });
+}
+
+async function syncMercadoLivreUnreadPostSale(account: Account) {
+  const unread = await getMercadoLivreUnreadPostSaleMessages(account as any);
+  const results = Array.isArray(unread.results) ? unread.results : [];
+  let count = 0;
+  for (const item of results) {
+    const path = String(item.resource || item.path || "");
+    if (!path) continue;
+    const remote = await getMercadoLivrePostSaleConversation(path, account as any);
+    await resolveAndPersistMercadoLivrePostSale(remote, account);
+    count += 1;
+  }
+  return count;
+}
+
+async function firstLocalMercadoLivreOrder(orderIds: string[]) {
+  if (!orderIds.length) return null;
+  const result = await supabaseAdmin().from("venda").select("order_id").eq("marketplace", "mercado_livre").in("order_id", orderIds).limit(1).maybeSingle();
+  return result.data?.order_id ? String(result.data.order_id) : null;
+}
+
+function resolveReplyRecipient(conversation: Record<string, any>, sellerId: string) {
+  const explicit = String(conversation.counterparty_id || "");
+  if (explicit && explicit !== sellerId) return explicit;
+  const pathType = parseMercadoLivreConversationPath(String(conversation.conversation_path || "")).conversationType;
+  if (conversation.messaging_agent || pathType) return MLB_MESSAGING_AGENT_ID;
+  const buyer = String(conversation.buyer_id || "");
+  return buyer && buyer !== sellerId ? buyer : "";
+}
+
+async function reconcileMercadoLivrePostSaleReply(conversation: Record<string, any>, account: Account, text: string, draftId: unknown, requestedAt: unknown) {
+  const path = String(conversation.conversation_path || (conversation.pack_id && conversation.seller_id ? `/packs/${conversation.pack_id}/sellers/${conversation.seller_id}` : ""));
+  if (!path) return null;
+  try {
+    const remote = await getMercadoLivrePostSaleConversation(path, account as any);
+    const since = new Date(String(requestedAt || 0)).getTime() - 60_000;
+    const match = normalizeMercadoLivrePostSale(remote, String(conversation.seller_id || account.seller_id || account.account_id || ""), account.id)
+      .find(message => message.direction === "outgoing" && message.text === text && new Date(message.sentAt).getTime() >= since);
+    if (!match) return null;
+    await persistMercadoLivrePostSale(remote, account, conversation);
+    await finalizeConversationReply({ conversationId: conversation.id, draftId, remoteId: match.messageId, text: match.text, sentAt: match.sentAt, remote: match.raw });
+    return { conversationId: conversation.id, messageId: match.messageId, status: "sent", marketplace: "mercado_livre", reconciled: true };
+  } catch { return null; }
 }
 
 async function syncShopeeConversationList(account: ShopeeAccountConfig) {
@@ -356,10 +466,22 @@ async function upsertConversation(input: Record<string, any>) {
   return result.data;
 }
 
-async function upsertMessage(conversationId: string, externalId: string, direction: string, text: string, senderId: string, senderName: string, sentAt: string, raw: Record<string, any>) {
-  await supabaseAdmin().from("marketplace_conversation_messages").upsert({
+async function upsertMessage(conversationId: string, externalId: string, direction: string, text: string, senderId: string, senderName: string, sentAt: string, raw: Record<string, any>, identity?: { accountId: string; externalKey: string }) {
+  const db = supabaseAdmin();
+  if (identity) {
+    const existing = await db.from("marketplace_conversation_messages").select("id,conversation_id")
+      .eq("marketplace_account_id", identity.accountId).eq("external_message_key", identity.externalKey).maybeSingle().throwOnError();
+    if (existing.data) {
+      await db.from("marketplace_conversation_messages").update({ conversation_id: conversationId, direction, text, sender_id: senderId || null,
+        sender_name: senderName || null, sent_at: sentAt, status: direction === "incoming" ? "received" : "sent", raw_data: raw })
+        .eq("id", existing.data.id).throwOnError();
+      return;
+    }
+  }
+  await db.from("marketplace_conversation_messages").upsert({
     conversation_id: conversationId, external_message_id: externalId, direction, message_type: String(raw.message_type || raw.type || "text"),
-    text, sender_id: senderId || null, sender_name: senderName || null, sent_at: sentAt, status: direction === "incoming" ? "received" : "sent", raw_data: raw
+    text, sender_id: senderId || null, sender_name: senderName || null, sent_at: sentAt, status: direction === "incoming" ? "received" : "sent", raw_data: raw,
+    marketplace_account_id: identity?.accountId || null, external_message_key: identity?.externalKey || null
   }, { onConflict: "conversation_id,external_message_id", ignoreDuplicates: true }).throwOnError();
 }
 
@@ -373,11 +495,12 @@ async function findProduct(accountId: string, listingId: string) {
 }
 
 async function findOrder(marketplace: string, orderId: string) {
-  const sale = await supabaseAdmin().from("venda").select("order_id,data_venda,venda_item(sku,valor_unitario,raw_data)").eq("marketplace", marketplace).eq("order_id", orderId).maybeSingle();
+  const sale = await supabaseAdmin().from("venda").select("order_id,data_venda,raw_data,venda_item(sku,valor_unitario,raw_data)").eq("marketplace", marketplace).eq("order_id", orderId).maybeSingle();
   const item: any = (sale.data as any)?.venda_item?.[0];
   if (!item) return null;
   const product = await supabaseAdmin().from("products").select("id,title,price,estoque(estoque_disponivel)").eq("sku", item.sku).maybeSingle();
-  return { order_id: orderId, purchased_at: (sale.data as any)?.data_venda, product_id: product.data?.id, sku: item.sku, product_title: product.data?.title, product_price: item.valor_unitario || product.data?.price, available_stock: (product.data as any)?.estoque?.estoque_disponivel };
+  const listingId = String(item.raw_data?.item?.id || item.raw_data?.item_id || (sale.data as any)?.raw_data?.order_items?.[0]?.item?.id || "") || null;
+  return { order_id: orderId, listing_id: listingId, purchased_at: (sale.data as any)?.data_venda, product_id: product.data?.id, sku: item.sku, product_title: product.data?.title, product_price: item.valor_unitario || product.data?.price, available_stock: (product.data as any)?.estoque?.estoque_disponivel };
 }
 
 async function findMercadoLivreAccount(userId: unknown) {
@@ -393,11 +516,12 @@ async function shopeeContext(account: ShopeeAccountConfig) {
   return { client: createShopeeClient(await getShopeeOAuthConfig(account.id)), token: await getValidShopeeAccessToken(account), shopId };
 }
 
-export function validateMarketplaceReply(text: string) {
+export function validateMarketplaceReply(text: string, conversation?: Record<string, any>) {
   const blocked: string[] = [];
   const warnings: string[] = [];
   if (!text) blocked.push("Digite uma resposta.");
-  if (text.length > 2000) blocked.push("A resposta deve ter no máximo 2.000 caracteres.");
+  const maximum = conversation?.marketplace === "mercado_livre" && conversation?.conversation_type === "post_sale" ? 350 : 2000;
+  if (text.length > maximum) blocked.push(`A resposta deve ter no máximo ${maximum.toLocaleString("pt-BR")} caracteres.`);
   if (/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(text)) blocked.push("Não informe ou solicite e-mails.");
   if (/(?:https?:\/\/|www\.|\b(?:bit\.ly|tinyurl\.com|wa\.me)\b)/i.test(text)) blocked.push("Não informe links externos.");
   if (/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?(?:9\s*)?\d{4}[-.\s]?\d{4}/.test(text) || /whats(?:app)?/i.test(text)) blocked.push("Não informe ou solicite telefone/WhatsApp.");

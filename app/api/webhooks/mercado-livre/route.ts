@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       orderId,
       description: `Evento enfileirado: ${topic}${resource ? ` (${resource})` : ""}`
     });
-    return NextResponse.json({ accepted: true, queued: true, id: queued.id }, { status: 202 });
+    return NextResponse.json({ accepted: true, queued: true, id: queued.id }, { status: 200 });
   } catch (error) {
     return NextResponse.json({
       accepted: false,

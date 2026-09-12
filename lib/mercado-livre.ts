@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabase-admin";
+import { mercadoLivreMessageResourcePath } from "./mercado-livre-post-sale";
 
 const ML_API = "https://api.mercadolibre.com";
 
@@ -90,10 +91,28 @@ export async function answerMercadoLivreQuestion(questionId: string, text: strin
   }
 }
 
-export async function sendMercadoLivrePostSaleMessage(resource: string, text: string, account: MarketplaceAccountConfig) {
+export async function getMercadoLivrePostSaleMessage(resource: string, account: MarketplaceAccountConfig) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
-  const path = resource.startsWith("/") ? resource : `/${resource}`;
-  return mlRequest(path, accessToken, "POST", { text }) as Promise<Record<string, any>>;
+  return mlGet(withQuery(mercadoLivreMessageResourcePath(resource), { tag: "post_sale" }), accessToken) as Promise<Record<string, any>>;
+}
+
+export async function getMercadoLivreUnreadPostSaleMessages(account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  return mlGet("/messages/unread?role=seller&tag=post_sale", accessToken) as Promise<Record<string, any>>;
+}
+
+export async function getMercadoLivrePostSaleConversation(path: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const messagePath = /^\/?messages\//i.test(path) ? `/${path.replace(/^\//, "")}` : `/messages/${path.replace(/^\//, "")}`;
+  return mlGet(withQuery(messagePath, { tag: "post_sale", mark_as_read: "false" }), accessToken) as Promise<Record<string, any>>;
+}
+
+export async function sendMercadoLivrePostSaleMessage(input: { packId: string; sellerId: string; recipientId: string; text: string }, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const path = `/messages/packs/${encodeURIComponent(input.packId)}/sellers/${encodeURIComponent(input.sellerId)}?tag=post_sale`;
+  return mlRequest(path, accessToken, "POST", {
+    from: { user_id: input.sellerId }, to: { user_id: input.recipientId }, text: input.text
+  }) as Promise<Record<string, any>>;
 }
 
 export async function getMercadoLivreLastModeration(itemId: string, account: MarketplaceAccountConfig) {
@@ -408,6 +427,11 @@ async function mlRequest(path: string, accessToken: string, method: "GET" | "POS
     throw new Error(JSON.stringify(json));
   }
   return json as Record<string, unknown>;
+}
+
+function withQuery(path: string, params: Record<string, string>) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${new URLSearchParams(params).toString()}`;
 }
 
 export function extractSku(item: Record<string, unknown>) {

@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { queueConversationReply, syncAllMarketplaceConversations } from "@/lib/marketplace-conversations";
-import { processOutgoingActivities } from "@/lib/outgoing-activities";
+import { queueConversationReply } from "@/lib/marketplace-conversations";
+import { enqueueMarketplaceActivity } from "@/lib/marketplace-queue";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function sendConversationReply(formData: FormData) {
@@ -18,7 +18,10 @@ export async function sendConversationReply(formData: FormData) {
 }
 
 export async function updateConversationsNow() {
-  const result = await syncAllMarketplaceConversations();
+  const result = await enqueueMarketplaceActivity({
+    marketplace: "mercado_livre", payload: { topic: "conversation_sync", requested_at: new Date().toISOString() },
+    eventType: "conversation_sync", description: "Sincronização manual de chats solicitada."
+  });
   revalidatePath("/chats-perguntas");
   return { ok: true, result };
 }
@@ -32,7 +35,6 @@ export async function retryConversationReply(formData: FormData) {
   if (!activity.data) return { ok: false, error: "Envio com erro não encontrado." };
   await db.from("outgoing_marketplace_activities").update({ status: "retry", attempt_count: 0, next_attempt_at: new Date().toISOString(), processing_error: null, processed_at: null, updated_at: new Date().toISOString() }).eq("id", activity.data.id).throwOnError();
   await db.from("marketplace_conversations").update({ status: "pending", last_error: null, updated_at: new Date().toISOString() }).eq("id", conversationId).throwOnError();
-  await processOutgoingActivities(10);
   revalidatePath("/chats-perguntas");
   return { ok: true };
 }

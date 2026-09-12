@@ -1,5 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 import { processMarketplaceQueue } from "../lib/marketplace-queue-worker";
+import { syncMercadoLivreUnreadPostSaleConversations } from "../lib/marketplace-conversations";
+import { processOutgoingActivities } from "../lib/outgoing-activities";
 
 loadEnvConfig(process.cwd());
 
@@ -9,6 +11,7 @@ const idleDelayMaxMs = integerEnv("MARKETPLACE_WORKER_IDLE_MAX_MS", 30_000, idle
 const errorDelayMinMs = integerEnv("MARKETPLACE_WORKER_ERROR_MIN_MS", 5_000, 1_000, 300_000);
 const errorDelayMaxMs = integerEnv("MARKETPLACE_WORKER_ERROR_MAX_MS", 60_000, errorDelayMinMs, 600_000);
 const validateOnly = process.env.MARKETPLACE_WORKER_VALIDATE_ONLY === "1";
+const conversationSyncIntervalMs = integerEnv("ML_CONVERSATION_SYNC_INTERVAL_MS", 10 * 60_000, 5 * 60_000, 60 * 60_000);
 
 let running = true;
 let wakeSleep: (() => void) | null = null;
@@ -24,6 +27,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 export async function runMarketplaceWorker() {
   let emptyCycles = 0;
   let errorCycles = 0;
+  let lastConversationSyncAt = 0;
 
   log("worker_started", {
     pid: process.pid,
@@ -37,16 +41,23 @@ export async function runMarketplaceWorker() {
   while (running) {
     const startedAt = Date.now();
     try {
+      if (Date.now() - lastConversationSyncAt >= conversationSyncIntervalMs) {
+        const sync = await syncMercadoLivreUnreadPostSaleConversations();
+        lastConversationSyncAt = Date.now();
+        log("ml_post_sale_sync_completed", { sync });
+      }
       const result = await processMarketplaceQueue(batchSize);
+      const outgoing = await processOutgoingActivities(batchSize);
       errorCycles = 0;
 
-      if (result.claimed > 0) {
+      if (result.claimed > 0 || outgoing.claimed > 0) {
         emptyCycles = 0;
         log("batch_completed", {
           durationMs: Date.now() - startedAt,
           claimed: result.claimed,
           processed: result.processed,
           failed: result.failed
+          , outgoingClaimed: outgoing.claimed, outgoingCompleted: outgoing.completed, outgoingFailed: outgoing.failed
         });
         for (const item of result.results.filter((entry) => !entry.ok)) {
           log("activity_failed", item);

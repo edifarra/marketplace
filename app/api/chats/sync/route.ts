@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncAllMarketplaceConversations } from "@/lib/marketplace-conversations";
-import { processOutgoingActivities } from "@/lib/outgoing-activities";
+import { enqueueMarketplaceActivity } from "@/lib/marketplace-queue";
 
 export const maxDuration = 300;
 
@@ -9,8 +8,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
   try {
-    const [sync, outgoing] = await Promise.all([syncAllMarketplaceConversations(), processOutgoingActivities(50)]);
-    return NextResponse.json({ ok: true, sync, outgoing });
+    const queued = await enqueueMarketplaceActivity({
+      marketplace: "mercado_livre", payload: { topic: "conversation_sync", requested_at: new Date().toISOString() },
+      eventType: "conversation_sync", description: "Reconciliação automática de chats solicitada."
+    });
+    return NextResponse.json({ ok: true, queued });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

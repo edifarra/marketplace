@@ -60,3 +60,11 @@ test("secrets são removidos dos relatórios", () => {
   const serialized = JSON.stringify(redactSecrets({ access_token: "ACCESS-VALUE", nested: { client_secret: "SECRET-VALUE" }, safe: "ok" }));
   assert.doesNotMatch(serialized, /ACCESS-VALUE|SECRET-VALUE/); assert.match(serialized, /\[REDACTED\]/);
 });
+
+test("manifesto contém somente os 111 candidatos do estágio 1", () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL("../scripts/data/cloudinary-orphan-stage-1-candidates.json", import.meta.url), "utf8"));
+  assert.equal(manifest.length, 111);
+  assert.equal(new Set(manifest.map(item => item.asset_id)).size, 111);
+  assert.deepEqual(Object.fromEntries(["SEM_ASSOCIACAO_LOCAL", "SOMENTE_TINY", "ML_E_TINY"].map(group => [group, manifest.filter(item => item.grupo === group).length])), { SEM_ASSOCIACAO_LOCAL: 76, SOMENTE_TINY: 28, ML_E_TINY: 7 });
+  assert.deepEqual(Object.keys(manifest[0]), ["asset_id", "public_id", "cloud_name", "secure_url", "sku", "grupo", "bytes", "derived_bytes"]);
+});

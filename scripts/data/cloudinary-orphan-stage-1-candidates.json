@@ -1,0 +1,1112 @@
+[
+  {
+    "asset_id": "aa277d54d4dc2e07881061bac9a55a86",
+    "public_id": "produtos/AU/LG/1091AU_55UP7550PSF_1783535820282",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783535821/produtos/AU/LG/1091AU_55UP7550PSF_1783535820282.jpg",
+    "sku": "1091AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2118065,
+    "derived_bytes": 34475
+  },
+  {
+    "asset_id": "f29a49dfb59b8b32245295ba43846058",
+    "public_id": "produtos/AU/LG/1091AU_55UP7550PSF_1783535829625",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783535830/produtos/AU/LG/1091AU_55UP7550PSF_1783535829625.jpg",
+    "sku": "1091AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2146266,
+    "derived_bytes": 50986
+  },
+  {
+    "asset_id": "62358854f8459c743118008199d850c1",
+    "public_id": "produtos/AU/LG/1091AU_55UP7550PSF_1783535837975",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783535838/produtos/AU/LG/1091AU_55UP7550PSF_1783535837975.jpg",
+    "sku": "1091AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1836948,
+    "derived_bytes": 26721
+  },
+  {
+    "asset_id": "dd3646611bbe49ae8f559bdbaef08fa9",
+    "public_id": "produtos/AU/MU/1082AU_TL057M_1780889480536",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889481/produtos/AU/MU/1082AU_TL057M_1780889480536.jpg",
+    "sku": "1082AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1401531,
+    "derived_bytes": 32572
+  },
+  {
+    "asset_id": "e662ee53ae8c0d59781c78e1053ae61e",
+    "public_id": "produtos/AU/MU/1082AU_TL057M_1780889488370",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889489/produtos/AU/MU/1082AU_TL057M_1780889488370.jpg",
+    "sku": "1082AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1701485,
+    "derived_bytes": 44336
+  },
+  {
+    "asset_id": "21f3672b684b7e6eef656df6fa4ae547",
+    "public_id": "produtos/AU/PT/1094AU_PTV49G50SN_1783536562000",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783536562/produtos/AU/PT/1094AU_PTV49G50SN_1783536562000.jpg",
+    "sku": "1094AU",
+    "grupo": "ML_E_TINY",
+    "bytes": 2018924,
+    "derived_bytes": 30513
+  },
+  {
+    "asset_id": "c2811aa4b84dbc12151eee9ce9a13f3f",
+    "public_id": "produtos/AU/PT/1094AU_PTV49G50SN_1783536568318",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783536568/produtos/AU/PT/1094AU_PTV49G50SN_1783536568318.jpg",
+    "sku": "1094AU",
+    "grupo": "ML_E_TINY",
+    "bytes": 1670551,
+    "derived_bytes": 48395
+  },
+  {
+    "asset_id": "bcacdd83e3f5b781133683347f23253d",
+    "public_id": "produtos/AU/PT/1094AU_PTV49G50SN_1783536575815",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783536576/produtos/AU/PT/1094AU_PTV49G50SN_1783536575815.jpg",
+    "sku": "1094AU",
+    "grupo": "ML_E_TINY",
+    "bytes": 2178414,
+    "derived_bytes": 35109
+  },
+  {
+    "asset_id": "e371461c548a9b9c3da303a33633d8f1",
+    "public_id": "produtos/AU/SA/1073AU_UN60AU7700G_1780887397914",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887399/produtos/AU/SA/1073AU_UN60AU7700G_1780887397914.jpg",
+    "sku": "1073AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 3007800,
+    "derived_bytes": 39933
+  },
+  {
+    "asset_id": "d46946dc1528a1a7f9bb20051f6cd593",
+    "public_id": "produtos/AU/SA/1073AU_UN60AU7700G_1780887408379",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887409/produtos/AU/SA/1073AU_UN60AU7700G_1780887408379.jpg",
+    "sku": "1073AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2659753,
+    "derived_bytes": 39810
+  },
+  {
+    "asset_id": "dd939e979c2ddcb2260f86f8ecfb1c55",
+    "public_id": "produtos/AU/SA/1073AU_UN60AU7700G_1780887419684",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887420/produtos/AU/SA/1073AU_UN60AU7700G_1780887419684.jpg",
+    "sku": "1073AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1771622,
+    "derived_bytes": 18997
+  },
+  {
+    "asset_id": "acaa2375abe5c21feeb13730c2a394b2",
+    "public_id": "produtos/AU/SA/1085AU_UN60BU8000G_1780890110739",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890111/produtos/AU/SA/1085AU_UN60BU8000G_1780890110739.jpg",
+    "sku": "1085AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2801894,
+    "derived_bytes": 44768
+  },
+  {
+    "asset_id": "b60648ba996def86b168f22b156f6a7e",
+    "public_id": "produtos/AU/SA/1085AU_UN60BU8000G_1780890120019",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890121/produtos/AU/SA/1085AU_UN60BU8000G_1780890120019.jpg",
+    "sku": "1085AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2499422,
+    "derived_bytes": 39134
+  },
+  {
+    "asset_id": "03934822d94862ad6d694a2860d23cdb",
+    "public_id": "produtos/AU/SA/1085AU_UN60BU8000G_1780890129754",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890130/produtos/AU/SA/1085AU_UN60BU8000G_1780890129754.jpg",
+    "sku": "1085AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1966016,
+    "derived_bytes": 30167
+  },
+  {
+    "asset_id": "b578a4601ed71ce2cf25101b62094f52",
+    "public_id": "produtos/AU/SA/1088AU_UN58AU7700G_1780890941295",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890941/produtos/AU/SA/1088AU_UN58AU7700G_1780890941295.jpg",
+    "sku": "1088AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2473118,
+    "derived_bytes": 40931
+  },
+  {
+    "asset_id": "c6528d45d773fdbd9662514ba250661e",
+    "public_id": "produtos/AU/SA/1088AU_UN58AU7700G_1780890950706",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890951/produtos/AU/SA/1088AU_UN58AU7700G_1780890950706.jpg",
+    "sku": "1088AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2802151,
+    "derived_bytes": 47245
+  },
+  {
+    "asset_id": "c0fe422f32af42704af0c51cf171090d",
+    "public_id": "produtos/AU/SA/1088AU_UN58AU7700G_1780890961399",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890961/produtos/AU/SA/1088AU_UN58AU7700G_1780890961399.jpg",
+    "sku": "1088AU",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1741899,
+    "derived_bytes": 29454
+  },
+  {
+    "asset_id": "986800c2beed4e2135ecaf163d524888",
+    "public_id": "produtos/AU/TC/1080AU_65P735_1780889195268",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889196/produtos/AU/TC/1080AU_65P735_1780889195268.jpg",
+    "sku": "1080AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1431492,
+    "derived_bytes": 30210
+  },
+  {
+    "asset_id": "bdc0effae2b710fc1e15697432927954",
+    "public_id": "produtos/AU/TC/1080AU_65P735_1780889205445",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889205/produtos/AU/TC/1080AU_65P735_1780889205445.jpg",
+    "sku": "1080AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1268114,
+    "derived_bytes": 25899
+  },
+  {
+    "asset_id": "e45e442d5c3abe865adf71d18ac0a490",
+    "public_id": "produtos/AU/TC/1080AU_65P735_1780889214792",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889215/produtos/AU/TC/1080AU_65P735_1780889214792.jpg",
+    "sku": "1080AU",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1700865,
+    "derived_bytes": 34559
+  },
+  {
+    "asset_id": "26cdfdce6dd8246ef7fa45d9477d2a36",
+    "public_id": "produtos/KT/LG/1209KT_TESTANDOSEMDEFEITO_1781139790211",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781139791/produtos/KT/LG/1209KT_TESTANDOSEMDEFEITO_1781139790211.jpg",
+    "sku": "1209KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "e056b2facb1870f93b8b30e990108e40",
+    "public_id": "produtos/KT/LG/1210KTD_TESTANDOCOMDEFEITO_1781139827943",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781139828/produtos/KT/LG/1210KTD_TESTANDOCOMDEFEITO_1781139827943.jpg",
+    "sku": "1210KTD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1832615,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "57f2b2622e45720a110335b0d98f99de",
+    "public_id": "produtos/KT/LG/1212KTD_TESTEDEFEITO4_1781146045149",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781146046/produtos/KT/LG/1212KTD_TESTEDEFEITO4_1781146045149.jpg",
+    "sku": "1212KTD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1832615,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "0e9e03e124f4aa2cc204a1b7d6babbfc",
+    "public_id": "produtos/KT/PT/1217KT_PTV49G50SN_1783536590107",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783536590/produtos/KT/PT/1217KT_PTV49G50SN_1783536590107.jpg",
+    "sku": "1217KT",
+    "grupo": "ML_E_TINY",
+    "bytes": 1877519,
+    "derived_bytes": 25834
+  },
+  {
+    "asset_id": "17616e2564d2bc06a0737d60f5011e9f",
+    "public_id": "produtos/KT/PT/1217KT_PTV49G50SN_1783536598401",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783536598/produtos/KT/PT/1217KT_PTV49G50SN_1783536598401.jpg",
+    "sku": "1217KT",
+    "grupo": "ML_E_TINY",
+    "bytes": 1867461,
+    "derived_bytes": 34832
+  },
+  {
+    "asset_id": "7d92f7fcdf2f746ec408d056eb0c4ddb",
+    "public_id": "produtos/KT/PT/1217KT_PTV49G50SN_1783536605454",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783536606/produtos/KT/PT/1217KT_PTV49G50SN_1783536605454.jpg",
+    "sku": "1217KT",
+    "grupo": "ML_E_TINY",
+    "bytes": 2161510,
+    "derived_bytes": 45250
+  },
+  {
+    "asset_id": "a8d58930fee1353ed85d112a9452d6b9",
+    "public_id": "produtos/KT/PT/1217KT_PTV49G50SN_1783536612332",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783536613/produtos/KT/PT/1217KT_PTV49G50SN_1783536612332.jpg",
+    "sku": "1217KT",
+    "grupo": "ML_E_TINY",
+    "bytes": 1977776,
+    "derived_bytes": 32808
+  },
+  {
+    "asset_id": "6af3aaf5700a0fa1d4dc3f8e40d1208f",
+    "public_id": "produtos/KT/SA/1192KT_UN60AU7700G_1780887464332",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887465/produtos/KT/SA/1192KT_UN60AU7700G_1780887464332.jpg",
+    "sku": "1192KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2276715,
+    "derived_bytes": 30209
+  },
+  {
+    "asset_id": "aaf75b86bb4bc1b711d264ec4a5e2f27",
+    "public_id": "produtos/KT/SA/1192KT_UN60AU7700G_1780887472862",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887473/produtos/KT/SA/1192KT_UN60AU7700G_1780887472862.jpg",
+    "sku": "1192KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2416092,
+    "derived_bytes": 33944
+  },
+  {
+    "asset_id": "68075b5f0b50585bc5ac0a410bcf0620",
+    "public_id": "produtos/KT/SA/1192KT_UN60AU7700G_1780887481475",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887482/produtos/KT/SA/1192KT_UN60AU7700G_1780887481475.jpg",
+    "sku": "1192KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1863943,
+    "derived_bytes": 37321
+  },
+  {
+    "asset_id": "6e1c24d51dbe44c5c2fb01070ea6d8bb",
+    "public_id": "produtos/KT/SA/1192KT_UN60AU7700G_1780887489598",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887490/produtos/KT/SA/1192KT_UN60AU7700G_1780887489598.jpg",
+    "sku": "1192KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2009406,
+    "derived_bytes": 18192
+  },
+  {
+    "asset_id": "afced37564e280553ec3acc0f44a4397",
+    "public_id": "produtos/KT/SA/1192KT_UN60AU7700G_1780887497172",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887497/produtos/KT/SA/1192KT_UN60AU7700G_1780887497172.jpg",
+    "sku": "1192KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1183172,
+    "derived_bytes": 46283
+  },
+  {
+    "asset_id": "60fbd73b569dab2c53fbcb99f261d59f",
+    "public_id": "produtos/KT/SA/1192KT_UN60AU7700G_1780887503871",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887504/produtos/KT/SA/1192KT_UN60AU7700G_1780887503871.jpg",
+    "sku": "1192KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1437663,
+    "derived_bytes": 24811
+  },
+  {
+    "asset_id": "7b2c06a30f2485824aa2888668de6879",
+    "public_id": "produtos/KT/SA/1196KT_UN43CU7700G_1780888476841",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888477/produtos/KT/SA/1196KT_UN43CU7700G_1780888476841.jpg",
+    "sku": "1196KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2286291,
+    "derived_bytes": 34350
+  },
+  {
+    "asset_id": "d5a7039dcd6c4bdfaf454411e0f6dd83",
+    "public_id": "produtos/KT/SA/1196KT_UN43CU7700G_1780888485693",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888486/produtos/KT/SA/1196KT_UN43CU7700G_1780888485693.jpg",
+    "sku": "1196KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1911568,
+    "derived_bytes": 42903
+  },
+  {
+    "asset_id": "c89fc431dce89921b053eefc35e1d6a2",
+    "public_id": "produtos/KT/SA/1196KT_UN43CU7700G_1780888494227",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888495/produtos/KT/SA/1196KT_UN43CU7700G_1780888494227.jpg",
+    "sku": "1196KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2082419,
+    "derived_bytes": 57420
+  },
+  {
+    "asset_id": "2fe4fda251d131c4a7d02c7e3a31a303",
+    "public_id": "produtos/KT/SA/1196KT_UN43CU7700G_1780888501857",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888502/produtos/KT/SA/1196KT_UN43CU7700G_1780888501857.jpg",
+    "sku": "1196KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1237184,
+    "derived_bytes": 23337
+  },
+  {
+    "asset_id": "0251532851636b27c4181d8ec6d69cb8",
+    "public_id": "produtos/KT/SA/1196KT_UN43CU7700G_1780888510536",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888511/produtos/KT/SA/1196KT_UN43CU7700G_1780888510536.jpg",
+    "sku": "1196KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1340096,
+    "derived_bytes": 35411
+  },
+  {
+    "asset_id": "b0f2e4cec327932d4736daf6c2a0fc35",
+    "public_id": "produtos/KT/SA/1198KT_UN58RU7100G_1780888753620",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888755/produtos/KT/SA/1198KT_UN58RU7100G_1780888753620.jpg",
+    "sku": "1198KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2090763,
+    "derived_bytes": 37614
+  },
+  {
+    "asset_id": "c778cf059a82914c2fc6995c49d27010",
+    "public_id": "produtos/KT/SA/1198KT_UN58RU7100G_1780888764218",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888765/produtos/KT/SA/1198KT_UN58RU7100G_1780888764218.jpg",
+    "sku": "1198KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1506368,
+    "derived_bytes": 76990
+  },
+  {
+    "asset_id": "fa0b8478901ae664c802feb5399d8f1a",
+    "public_id": "produtos/KT/SA/1198KT_UN58RU7100G_1780888773665",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888774/produtos/KT/SA/1198KT_UN58RU7100G_1780888773665.jpg",
+    "sku": "1198KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1118510,
+    "derived_bytes": 41129
+  },
+  {
+    "asset_id": "ccf165fafba5b8674c261fae6aad1666",
+    "public_id": "produtos/KT/SA/1206KT_UN58AU7700G_1780890730479",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890731/produtos/KT/SA/1206KT_UN58AU7700G_1780890730479.jpg",
+    "sku": "1206KT",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2221122,
+    "derived_bytes": 48871
+  },
+  {
+    "asset_id": "9ca2e9932794894c6fde33897adf053b",
+    "public_id": "produtos/KT/SA/1206KT_UN58AU7700G_1780890738244",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890738/produtos/KT/SA/1206KT_UN58AU7700G_1780890738244.jpg",
+    "sku": "1206KT",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2266950,
+    "derived_bytes": 62347
+  },
+  {
+    "asset_id": "567130064e152ed2281dd7c31e3fd4b0",
+    "public_id": "produtos/KT/SA/1206KT_UN58AU7700G_1780890745177",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890745/produtos/KT/SA/1206KT_UN58AU7700G_1780890745177.jpg",
+    "sku": "1206KT",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1245443,
+    "derived_bytes": 22855
+  },
+  {
+    "asset_id": "979b46099fc85c0c1e48e6a535f7aaa0",
+    "public_id": "produtos/KT/SA/1206KT_UN58AU7700G_1780890751571",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890752/produtos/KT/SA/1206KT_UN58AU7700G_1780890751571.jpg",
+    "sku": "1206KT",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1464453,
+    "derived_bytes": 27868
+  },
+  {
+    "asset_id": "64d4693b27e5f469cd6ec44f7047e649",
+    "public_id": "produtos/KT/TC/1199KT_65P735_1780889038093",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889038/produtos/KT/TC/1199KT_65P735_1780889038093.jpg",
+    "sku": "1199KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1748462,
+    "derived_bytes": 39268
+  },
+  {
+    "asset_id": "f3a3fae13754f804a3b2bae295fe0f5d",
+    "public_id": "produtos/KT/TC/1199KT_65P735_1780889045556",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889045/produtos/KT/TC/1199KT_65P735_1780889045556.jpg",
+    "sku": "1199KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1234162,
+    "derived_bytes": 25121
+  },
+  {
+    "asset_id": "0467b86972359b22f473f081f5e7c715",
+    "public_id": "produtos/KT/TC/1199KT_65P735_1780889053338",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889054/produtos/KT/TC/1199KT_65P735_1780889053338.jpg",
+    "sku": "1199KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1607403,
+    "derived_bytes": 23166
+  },
+  {
+    "asset_id": "fc3d8a7840da9323b752324c5a379d0a",
+    "public_id": "produtos/KT/TC/1199KT_65P735_1780889060408",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889061/produtos/KT/TC/1199KT_65P735_1780889060408.jpg",
+    "sku": "1199KT",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1339222,
+    "derived_bytes": 29365
+  },
+  {
+    "asset_id": "4dd4340997c002174794c2182e19e547",
+    "public_id": "produtos/PE/LG/1212PE_55UP755PSF_1783535854938",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783535856/produtos/PE/LG/1212PE_55UP755PSF_1783535854938.jpg",
+    "sku": "1212PE",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1736562,
+    "derived_bytes": 14899
+  },
+  {
+    "asset_id": "81c3b91d4651ca8d9951ae56afc5fce9",
+    "public_id": "produtos/PE/LG/1212PE_55UP755PSF_1783535864060",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783535864/produtos/PE/LG/1212PE_55UP755PSF_1783535864060.jpg",
+    "sku": "1212PE",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1445007,
+    "derived_bytes": 30221
+  },
+  {
+    "asset_id": "d0bad447f749ad87919044924adf8f4b",
+    "public_id": "produtos/PE/LG/1212PE_55UP755PSF_1783535873455",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783535874/produtos/PE/LG/1212PE_55UP755PSF_1783535873455.jpg",
+    "sku": "1212PE",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2161597,
+    "derived_bytes": 36457
+  },
+  {
+    "asset_id": "366cb066c2ddef7292db8850b41e7816",
+    "public_id": "produtos/PF/LG/754PF_TESTANDOSEMDEFEITO_1781139844705",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781139845/produtos/PF/LG/754PF_TESTANDOSEMDEFEITO_1781139844705.jpg",
+    "sku": "754PF",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2395683,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "dc65fc54d2f9e9dab9cf8daecd9c3e59",
+    "public_id": "produtos/PF/LG/755PFD_TESANDODEFEITO_1781139861498",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781139862/produtos/PF/LG/755PFD_TESANDODEFEITO_1781139861498.jpg",
+    "sku": "755PFD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "f6f47db6ee6908bbd76f7ce7f28e3a74",
+    "public_id": "produtos/PF/LG/756PF_TESTEDEFEITO4_1781146064682",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781146065/produtos/PF/LG/756PF_TESTEDEFEITO4_1781146064682.jpg",
+    "sku": "756PF",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2395683,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "134f73113a151af8003fc28db1c9e15a",
+    "public_id": "produtos/PF/LG/757PFD_TESTEDEFEITO4_1781146084381",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781146085/produtos/PF/LG/757PFD_TESTEDEFEITO4_1781146084381.jpg",
+    "sku": "757PFD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "81ebd9e8dc9dc4737f21aa9c0295cdde",
+    "public_id": "produtos/PF/SA/736PF_UN60AU7700G_1780887358858",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887359/produtos/PF/SA/736PF_UN60AU7700G_1780887358858.jpg",
+    "sku": "736PF",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2242135,
+    "derived_bytes": 45664
+  },
+  {
+    "asset_id": "8031ed5adc26e539b7630979c72629a6",
+    "public_id": "produtos/PF/SA/736PF_UN60AU7700G_1780887368070",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887369/produtos/PF/SA/736PF_UN60AU7700G_1780887368070.jpg",
+    "sku": "736PF",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2348460,
+    "derived_bytes": 51597
+  },
+  {
+    "asset_id": "714f9fb20226323a021e1490b463634c",
+    "public_id": "produtos/PF/SA/736PF_UN60AU7700G_1780887379270",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780887380/produtos/PF/SA/736PF_UN60AU7700G_1780887379270.jpg",
+    "sku": "736PF",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2782830,
+    "derived_bytes": 86462
+  },
+  {
+    "asset_id": "c45bbdfbc1bc180f6b5decd584f4e241",
+    "public_id": "produtos/PF/SA/739PF_UN43CU7700G_1780888390042",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888390/produtos/PF/SA/739PF_UN43CU7700G_1780888390042.jpg",
+    "sku": "739PF",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2047669,
+    "derived_bytes": 44916
+  },
+  {
+    "asset_id": "8a957002e60ae1dfcd0a73acf76639db",
+    "public_id": "produtos/PF/SA/739PF_UN43CU7700G_1780888398401",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888399/produtos/PF/SA/739PF_UN43CU7700G_1780888398401.jpg",
+    "sku": "739PF",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2377757,
+    "derived_bytes": 63502
+  },
+  {
+    "asset_id": "0083e40304ca481ecd7e18796896c58b",
+    "public_id": "produtos/PF/SA/749PF_UN50CU7700G_1780890485324",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890486/produtos/PF/SA/749PF_UN50CU7700G_1780890485324.jpg",
+    "sku": "749PF",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2475643,
+    "derived_bytes": 46785
+  },
+  {
+    "asset_id": "119e7789cd4839658fe70fd94260b3ad",
+    "public_id": "produtos/PF/SA/749PF_UN50CU7700G_1780890496491",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890497/produtos/PF/SA/749PF_UN50CU7700G_1780890496491.jpg",
+    "sku": "749PF",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2729904,
+    "derived_bytes": 82570
+  },
+  {
+    "asset_id": "d2f27ce34aac227b9f8e91497c3ee7c6",
+    "public_id": "produtos/PF/SA/749PF_UN50CU7700G_1780890506881",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890508/produtos/PF/SA/749PF_UN50CU7700G_1780890506881.jpg",
+    "sku": "749PF",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 3019892,
+    "derived_bytes": 77040
+  },
+  {
+    "asset_id": "1934bc578e58dafc991720dd78861f46",
+    "public_id": "produtos/PF/SA/756PF_TESTEEXTERNO_1783202818656",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783202819/produtos/PF/SA/756PF_TESTEEXTERNO_1783202818656.jpg",
+    "sku": "756PF",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2123600,
+    "derived_bytes": 31396
+  },
+  {
+    "asset_id": "29460eb04282e9bfdd989c221f99fab5",
+    "public_id": "produtos/PF/TC/743PF_40L17CW2PWC1ZG11601500073_1780889074895",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889075/produtos/PF/TC/743PF_40L17CW2PWC1ZG11601500073_1780889074895.jpg",
+    "sku": "743PF",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1801381,
+    "derived_bytes": 48623
+  },
+  {
+    "asset_id": "a9b15503aa3b09376983f556e7d14e75",
+    "public_id": "produtos/PF/TC/743PF_40L17CW2PWC1ZG11601500073_1780889083478",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780889084/produtos/PF/TC/743PF_40L17CW2PWC1ZG11601500073_1780889083478.jpg",
+    "sku": "743PF",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1445839,
+    "derived_bytes": 64956
+  },
+  {
+    "asset_id": "eae8c08bfc4a8266091a33bf136d210b",
+    "public_id": "produtos/PP/LG/1241PPD_55UP7750PSBTESTE_1781133912813",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781133913/produtos/PP/LG/1241PPD_55UP7750PSBTESTE_1781133912813.jpg",
+    "sku": "1241PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "f9f6bb3d802441c4845cab23ef9bbb51",
+    "public_id": "produtos/PP/LG/1241PPD_55UP7750PSBTESTE_1781133921040",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781133923/produtos/PP/LG/1241PPD_55UP7750PSBTESTE_1781133921040.jpg",
+    "sku": "1241PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1832615,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "11b415c3da1b12a7235af0d4564f9483",
+    "public_id": "produtos/PP/LG/1241PPD_55UP7750PSBTESTE_1781133931328",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781133932/produtos/PP/LG/1241PPD_55UP7750PSBTESTE_1781133931328.jpg",
+    "sku": "1241PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2395683,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "c9c4c0e4dce9805c15b0d3d6a7c7e155",
+    "public_id": "produtos/PP/LG/1243PP_TESTESEMDEFEITO_1781140000657",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781140001/produtos/PP/LG/1243PP_TESTESEMDEFEITO_1781140000657.jpg",
+    "sku": "1243PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1832615,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "328ab5355b620f6119e2e3272fe7da17",
+    "public_id": "produtos/PP/LG/1246PPD_TESTEDEFEITO4_1781146123040",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781146124/produtos/PP/LG/1246PPD_TESTEDEFEITO4_1781146123040.jpg",
+    "sku": "1246PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2395683,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "e6788f1592726d382dd9adbfe19ffd03",
+    "public_id": "produtos/PP/LG/1247PP_TESTEDEFEITO5_1781147427836",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781147428/produtos/PP/LG/1247PP_TESTEDEFEITO5_1781147427836.jpg",
+    "sku": "1247PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1832615,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "d587ea45692f7bb0b731d7603f03f7cf",
+    "public_id": "produtos/PP/LG/1248PPD_TESTEDEFEITO5_1781147448080",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781147450/produtos/PP/LG/1248PPD_TESTEDEFEITO5_1781147448080.jpg",
+    "sku": "1248PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2395683,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "b0496c7c5f94ff1a776bc52c56f1ee4b",
+    "public_id": "produtos/PP/SA/1221PP_UN43CU7700G_1780888443320",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888444/produtos/PP/SA/1221PP_UN43CU7700G_1780888443320.jpg",
+    "sku": "1221PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2042766,
+    "derived_bytes": 31772
+  },
+  {
+    "asset_id": "1eb88a6194402f9f5c360d86ad2d739b",
+    "public_id": "produtos/PP/SA/1221PP_UN43CU7700G_1780888453399",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888454/produtos/PP/SA/1221PP_UN43CU7700G_1780888453399.jpg",
+    "sku": "1221PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2830198,
+    "derived_bytes": 80242
+  },
+  {
+    "asset_id": "3d3bcacef12aa4fa0dc1ace8a3552ea6",
+    "public_id": "produtos/PP/SA/1221PP_UN43CU7700G_1780888462414",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888463/produtos/PP/SA/1221PP_UN43CU7700G_1780888462414.jpg",
+    "sku": "1221PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2101625,
+    "derived_bytes": 35834
+  },
+  {
+    "asset_id": "634ca09eff2b3c36e033d4940268ad94",
+    "public_id": "produtos/PP/SA/1237PP_UN58AU7700G_1780890847881",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890848/produtos/PP/SA/1237PP_UN58AU7700G_1780890847881.jpg",
+    "sku": "1237PP",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1978372,
+    "derived_bytes": 34854
+  },
+  {
+    "asset_id": "b0e04c0ee7ca57883346f0dd116370bf",
+    "public_id": "produtos/PP/SA/1237PP_UN58AU7700G_1780890856114",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890856/produtos/PP/SA/1237PP_UN58AU7700G_1780890856114.jpg",
+    "sku": "1237PP",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2683932,
+    "derived_bytes": 86198
+  },
+  {
+    "asset_id": "9187f6b2db87f38342a9f4b24dbbd5ff",
+    "public_id": "produtos/PP/SA/1237PP_UN58AU7700G_1780890863543",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890864/produtos/PP/SA/1237PP_UN58AU7700G_1780890863543.jpg",
+    "sku": "1237PP",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1975280,
+    "derived_bytes": 44240
+  },
+  {
+    "asset_id": "c4248fa31d9901efbdf65c7639505c10",
+    "public_id": "produtos/PP/SA/1242PP_TESTEFASE2_1781460045900",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781460046/produtos/PP/SA/1242PP_TESTEFASE2_1781460045900.jpg",
+    "sku": "1242PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "f1c5fa2bb6266fbb60e06bb0f49e84d8",
+    "public_id": "produtos/PP/SA/1242PP_TESTEFASE2_1781460966597",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781460967/produtos/PP/SA/1242PP_TESTEFASE2_1781460966597.jpg",
+    "sku": "1242PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "b3350280fc0ee244df1873fdb20c6d51",
+    "public_id": "produtos/PP/SA/1243PP_testefase2_1781462627482",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781462628/produtos/PP/SA/1243PP_testefase2_1781462627482.jpg",
+    "sku": "1243PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "0ababa48b7cf81c71a7f09851c3d0495",
+    "public_id": "produtos/PP/SA/1244PP_testefase2_1781463761178",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781463762/produtos/PP/SA/1244PP_testefase2_1781463761178.jpg",
+    "sku": "1244PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "717e6b6480f2faf84a86b7e1dee375e1",
+    "public_id": "produtos/PP/SA/1246PP_TESTEFASE2_1781466185074",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781466186/produtos/PP/SA/1246PP_TESTEFASE2_1781466185074.jpg",
+    "sku": "1246PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "a023651d344c8b3e9ed0c36e0e112123",
+    "public_id": "produtos/PP/SA/1246PP_TESTEFASE2_1781466661801",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781466662/produtos/PP/SA/1246PP_TESTEFASE2_1781466661801.jpg",
+    "sku": "1246PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "f84629b55608db057d4e70a84e9e4651",
+    "public_id": "produtos/PP/SA/1246PP_TESTEFASE2_1781467208347",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781467209/produtos/PP/SA/1246PP_TESTEFASE2_1781467208347.jpg",
+    "sku": "1246PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "31ae84fa0762874c3c9073ba4ae79c36",
+    "public_id": "produtos/PP/SA/1247PP_TESTEFASE2_1781467818115",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781467818/produtos/PP/SA/1247PP_TESTEFASE2_1781467818115.jpg",
+    "sku": "1247PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "53d7c36649255de73d4566d0a9a77290",
+    "public_id": "produtos/PP/SA/1248PP_TESTEFASE2_1781468580747",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781468581/produtos/PP/SA/1248PP_TESTEFASE2_1781468580747.jpg",
+    "sku": "1248PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "6da6879183e36d995baf6cae16fc1173",
+    "public_id": "produtos/PP/SA/1249PP_TESTEFASE2_1781468601995",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781468602/produtos/PP/SA/1249PP_TESTEFASE2_1781468601995.jpg",
+    "sku": "1249PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "3e687f9512dd1f22315c2910027f3d00",
+    "public_id": "produtos/PP/SA/1249PP_TESTEFASE2_1781468605690",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781468606/produtos/PP/SA/1249PP_TESTEFASE2_1781468605690.jpg",
+    "sku": "1249PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 52365
+  },
+  {
+    "asset_id": "6150b611d96ecfc6d17675331f7961ec",
+    "public_id": "produtos/PP/SA/1250PP_TESTEFASE2_1781468627895",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781468628/produtos/PP/SA/1250PP_TESTEFASE2_1781468627895.jpg",
+    "sku": "1250PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "48d0fd40c0ece6ede6fefc1a4c556f60",
+    "public_id": "produtos/PP/SA/1250PP_TESTEFASE2_1781468631441",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781468631/produtos/PP/SA/1250PP_TESTEFASE2_1781468631441.jpg",
+    "sku": "1250PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 100711
+  },
+  {
+    "asset_id": "0c1519ee0239ae8f1dd52c90d8e0b692",
+    "public_id": "produtos/PP/SA/1250PP_TESTEFASE2_1781468634946",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781468635/produtos/PP/SA/1250PP_TESTEFASE2_1781468634946.jpg",
+    "sku": "1250PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 100711
+  },
+  {
+    "asset_id": "a5abbcacd28967c8666d1fed5edcceea",
+    "public_id": "produtos/PP/SA/1251PP_TESTEFASE2_1781471002526",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781471003/produtos/PP/SA/1251PP_TESTEFASE2_1781471002526.jpg",
+    "sku": "1251PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "297fe72997ccaf70927bf5eb9f0ee43f",
+    "public_id": "produtos/PP/SA/1252PP_TESTEFASE2_1781471631850",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781471632/produtos/PP/SA/1252PP_TESTEFASE2_1781471631850.jpg",
+    "sku": "1252PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "457c06a7f7b6792da5ee501cb14bd0f4",
+    "public_id": "produtos/PP/SA/1253PP_TESTEFASE2_1781472727775",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781472728/produtos/PP/SA/1253PP_TESTEFASE2_1781472727775.jpg",
+    "sku": "1253PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "16c79baad325c34368da0724576531c8",
+    "public_id": "produtos/PP/SA/1254PP_UN70TU7000_1781481678550",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781481679/produtos/PP/SA/1254PP_UN70TU7000_1781481678550.jpg",
+    "sku": "1254PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "9b288774577bbec7009ff5e005b365da",
+    "public_id": "produtos/PP/SA/1255PP_UN70TU7000_1781482366638",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781482367/produtos/PP/SA/1255PP_UN70TU7000_1781482366638.jpg",
+    "sku": "1255PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 0
+  },
+  {
+    "asset_id": "5b7119c7be4da48784eadee7d1ebf1bf",
+    "public_id": "produtos/PP/SA/1256PP_UN70TU7000_1781482998987",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781483000/produtos/PP/SA/1256PP_UN70TU7000_1781482998987.jpg",
+    "sku": "1256PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "5bb9532cfe1f02a38af12407595a617f",
+    "public_id": "produtos/PP/SA/1256PP_UN70TU7000_1781483322273",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1781483322/produtos/PP/SA/1256PP_UN70TU7000_1781483322273.jpg",
+    "sku": "1256PP",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2650839,
+    "derived_bytes": 42929
+  },
+  {
+    "asset_id": "29ae4989ccb622fe9a8ded0d87eb50fe",
+    "public_id": "produtos/PP/SA/1258PP_TESTEMODELO_1783202838412",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783202839/produtos/PP/SA/1258PP_TESTEMODELO_1783202838412.jpg",
+    "sku": "1258PP",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1854398,
+    "derived_bytes": 26692
+  },
+  {
+    "asset_id": "b96e08b13f931224eb81e981507d3932",
+    "public_id": "produtos/PP/SA/1258PP_TESTEMODELO_1783202844816",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783202845/produtos/PP/SA/1258PP_TESTEMODELO_1783202844816.jpg",
+    "sku": "1258PP",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 2067095,
+    "derived_bytes": 88682
+  },
+  {
+    "asset_id": "db799f4ca9f1e6238bc8d0ad99ea9047",
+    "public_id": "produtos/PP/SA/1258PP_TESTEMODELO_1783202850570",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1783202851/produtos/PP/SA/1258PP_TESTEMODELO_1783202850570.jpg",
+    "sku": "1258PP",
+    "grupo": "SOMENTE_TINY",
+    "bytes": 1628678,
+    "derived_bytes": 30150
+  },
+  {
+    "asset_id": "cfb6d7a0e60119c1c5a8c576689a932e",
+    "public_id": "produtos/PP/TC/1219PPD_43R6500_1780888101555",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888102/produtos/PP/TC/1219PPD_43R6500_1780888101555.jpg",
+    "sku": "1219PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2058561,
+    "derived_bytes": 45829
+  },
+  {
+    "asset_id": "db52bd3b19393264f8c742f20deb3278",
+    "public_id": "produtos/PP/TC/1219PPD_43R6500_1780888112032",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888112/produtos/PP/TC/1219PPD_43R6500_1780888112032.jpg",
+    "sku": "1219PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 3137883,
+    "derived_bytes": 112308
+  },
+  {
+    "asset_id": "3e3726ff56da5ebdc47628921db88fcc",
+    "public_id": "produtos/PP/TC/1219PPD_43R6500_1780888122411",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888123/produtos/PP/TC/1219PPD_43R6500_1780888122411.jpg",
+    "sku": "1219PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 3052324,
+    "derived_bytes": 91701
+  },
+  {
+    "asset_id": "09d23d6924b4353938fcdc27194fc311",
+    "public_id": "produtos/PP/TC/1219PPD_43R6500_1780888131743",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780888132/produtos/PP/TC/1219PPD_43R6500_1780888131743.jpg",
+    "sku": "1219PPD",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1714142,
+    "derived_bytes": 55301
+  },
+  {
+    "asset_id": "2556e81fafd1386a526d137b53776afa",
+    "public_id": "produtos/TC/TC/1071TC_43S6500FS_1780890705237",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890705/produtos/TC/TC/1071TC_43S6500FS_1780890705237.jpg",
+    "sku": "1071TC",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1854398,
+    "derived_bytes": 26692
+  },
+  {
+    "asset_id": "70f7878ef0a94516b210c1851d874e95",
+    "public_id": "produtos/TC/TC/1071TC_43S6500FS_1780890711352",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890711/produtos/TC/TC/1071TC_43S6500FS_1780890711352.jpg",
+    "sku": "1071TC",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 2067095,
+    "derived_bytes": 88682
+  },
+  {
+    "asset_id": "ed30a2fe541037b8e663406b6ef099e0",
+    "public_id": "produtos/TC/TC/1071TC_43S6500FS_1780890717822",
+    "cloud_name": "dknfrkqol",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1780890718/produtos/TC/TC/1071TC_43S6500FS_1780890717822.jpg",
+    "sku": "1071TC",
+    "grupo": "SEM_ASSOCIACAO_LOCAL",
+    "bytes": 1628678,
+    "derived_bytes": 30150
+  }
+]

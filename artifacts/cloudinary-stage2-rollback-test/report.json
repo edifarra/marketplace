@@ -1,0 +1,312 @@
+{
+  "started_at": "2026-09-13T04:42:57.562Z",
+  "scope": "DISPOSABLE_ONLY",
+  "database_writes": 0,
+  "marketplace_writes": 0,
+  "steps": [],
+  "completed": true,
+  "public_id": "testes/cloudinary-stage2-rollback-1789274578133",
+  "usage_before": {
+    "plan": "Free",
+    "last_updated": "2026-09-12",
+    "date_requested": "2026-09-13T00:00:00Z",
+    "transformations": {
+      "usage": 20804,
+      "credits_usage": 20.8,
+      "breakdown": {
+        "transformation": 2054,
+        "background_removal": 250
+      }
+    },
+    "objects": {
+      "usage": 3926
+    },
+    "bandwidth": {
+      "usage": 584290360,
+      "credits_usage": 0.54
+    },
+    "storage": {
+      "usage": 3356755576,
+      "credits_usage": 3.13
+    },
+    "impressions": {
+      "usage": 10322,
+      "credits_usage": 0
+    },
+    "seconds_delivered": {
+      "usage": 0,
+      "credits_usage": 0
+    },
+    "credits": {
+      "usage": 24.47,
+      "limit": 25,
+      "used_percent": 97.88
+    },
+    "resources": 1935,
+    "derived_resources": 1991,
+    "requests": 10322,
+    "media_limits": {
+      "image_max_size_bytes": 10485760,
+      "video_max_size_bytes": 104857600,
+      "raw_max_size_bytes": 10485760,
+      "image_max_px": 25000000,
+      "asset_max_total_px": 50000000
+    }
+  },
+  "local": {
+    "original": {
+      "bytes": 14307,
+      "width": 640,
+      "height": 420,
+      "sha256": "e07d3ca00676537f9be00721438b20937b3bcd4d0515deb44bf2b966cb2c5c84"
+    },
+    "new": {
+      "bytes": 15571,
+      "width": 920,
+      "height": 560,
+      "sha256": "89671968d673fef0a4334b0cc66050bfb4dd6f0f3513f96459dd1b38a2a99a13"
+    }
+  },
+  "initial_upload": {
+    "asset_id": "93250639811af6628f284589298df556",
+    "public_id": "testes/cloudinary-stage2-rollback-1789274578133",
+    "version": 1789274581,
+    "version_id": "b7c5b0f07e2b97736bfdb162a40e15b8",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1789274581/testes/cloudinary-stage2-rollback-1789274578133.png",
+    "width": 640,
+    "height": 420,
+    "format": "png",
+    "bytes": 14307
+  },
+  "after_initial": {
+    "asset_id": "93250639811af6628f284589298df556",
+    "public_id": "testes/cloudinary-stage2-rollback-1789274578133",
+    "version": 1789274581,
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1789274581/testes/cloudinary-stage2-rollback-1789274578133.png",
+    "width": 640,
+    "height": 420,
+    "format": "png",
+    "bytes": 14307,
+    "backup": true,
+    "versions": [
+      {
+        "version_id": "b7c5b0f07e2b97736bfdb162a40e15b8",
+        "version": "1789274581",
+        "format": "png",
+        "size": 14307,
+        "time": "2026-09-13T04:43:01+00:00",
+        "restorable": false
+      }
+    ],
+    "derived": []
+  },
+  "backup_download": {
+    "version_id": "b7c5b0f07e2b97736bfdb162a40e15b8",
+    "bytes": 14307,
+    "sha256": "e07d3ca00676537f9be00721438b20937b3bcd4d0515deb44bf2b966cb2c5c84",
+    "matches_original": true
+  },
+  "overwrite": {
+    "asset_id": "93250639811af6628f284589298df556",
+    "public_id": "testes/cloudinary-stage2-rollback-1789274578133",
+    "version": 1789274582,
+    "version_id": "4ce93330ecbfdcb68a7c037a912aa0c3",
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1789274582/testes/cloudinary-stage2-rollback-1789274578133.png",
+    "width": 920,
+    "height": 560,
+    "format": "png",
+    "bytes": 15571
+  },
+  "identity": {
+    "public_id_same": true,
+    "asset_id_same": true,
+    "version_changed": true
+  },
+  "after_overwrite": {
+    "asset_id": "93250639811af6628f284589298df556",
+    "public_id": "testes/cloudinary-stage2-rollback-1789274578133",
+    "version": 1789274582,
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1789274582/testes/cloudinary-stage2-rollback-1789274578133.png",
+    "width": 920,
+    "height": 560,
+    "format": "png",
+    "bytes": 15571,
+    "backup": true,
+    "versions": [
+      {
+        "version_id": "b7c5b0f07e2b97736bfdb162a40e15b8",
+        "version": "1789274581",
+        "format": "png",
+        "size": 14307,
+        "time": "2026-09-13T04:43:01+00:00",
+        "restorable": true
+      },
+      {
+        "version_id": "4ce93330ecbfdcb68a7c037a912aa0c3",
+        "version": "1789274582",
+        "format": "png",
+        "size": 15571,
+        "time": "2026-09-13T04:43:02+00:00",
+        "restorable": false
+      }
+    ],
+    "derived": []
+  },
+  "url_checks": {
+    "old_version": {
+      "url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1789274581/testes/cloudinary-stage2-rollback-1789274578133.png",
+      "status": 200,
+      "bytes": 15571,
+      "width": 920,
+      "height": 560,
+      "sha256": "89671968d673fef0a4334b0cc66050bfb4dd6f0f3513f96459dd1b38a2a99a13",
+      "content": "OVERWRITE_NEW",
+      "elapsed_ms": 295
+    },
+    "new_version": {
+      "url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1789274582/testes/cloudinary-stage2-rollback-1789274578133.png",
+      "status": 200,
+      "bytes": 15571,
+      "width": 920,
+      "height": 560,
+      "sha256": "89671968d673fef0a4334b0cc66050bfb4dd6f0f3513f96459dd1b38a2a99a13",
+      "content": "OVERWRITE_NEW",
+      "elapsed_ms": 389
+    },
+    "unversioned": {
+      "url": "https://res.cloudinary.com/dknfrkqol/image/upload/testes/cloudinary-stage2-rollback-1789274578133.png",
+      "status": 200,
+      "bytes": 15571,
+      "width": 920,
+      "height": 560,
+      "sha256": "89671968d673fef0a4334b0cc66050bfb4dd6f0f3513f96459dd1b38a2a99a13",
+      "content": "OVERWRITE_NEW",
+      "elapsed_ms": 191
+    },
+    "transformed": {
+      "url": "https://res.cloudinary.com/dknfrkqol/image/upload/w_240,h_240,c_limit/v1789274582/testes/cloudinary-stage2-rollback-1789274578133.png",
+      "status": 200,
+      "bytes": 2402,
+      "width": 240,
+      "height": 146,
+      "sha256": "d1a9462b847e3beb2501d2335a7f55170c8dab852d32d7a69571a21543ae420d",
+      "content": "DERIVED_OR_REENCODED",
+      "elapsed_ms": 376
+    },
+    "invalidate_observed_after_ms": 1252
+  },
+  "restore_response": {
+    "93250639811af6628f284589298df556": {
+      "asset_id": "93250639811af6628f284589298df556",
+      "public_id": "testes/cloudinary-stage2-rollback-1789274578133",
+      "version": 1789274585,
+      "version_id": "91cce5c8a801028704bbf975a119da06",
+      "signature": "1e13889eea8cb3c8512221c77fb58ad1f585da6a",
+      "width": 640,
+      "height": 420,
+      "format": "png",
+      "resource_type": "image",
+      "created_at": "2026-09-13T04:43:01Z",
+      "tags": [],
+      "bytes": 14307,
+      "type": "upload",
+      "placeholder": false,
+      "asset_folder": ""
+    }
+  },
+  "after_restore": {
+    "asset_id": "93250639811af6628f284589298df556",
+    "public_id": "testes/cloudinary-stage2-rollback-1789274578133",
+    "version": 1789274585,
+    "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1789274585/testes/cloudinary-stage2-rollback-1789274578133.png",
+    "width": 640,
+    "height": 420,
+    "format": "png",
+    "bytes": 14307,
+    "backup": true
+  },
+  "restore_validation": {
+    "sha256": "e07d3ca00676537f9be00721438b20937b3bcd4d0515deb44bf2b966cb2c5c84",
+    "matches_original": true,
+    "width": 640,
+    "height": 420
+  },
+  "usage_after": {
+    "plan": "Free",
+    "last_updated": "2026-09-12",
+    "date_requested": "2026-09-13T00:00:00Z",
+    "transformations": {
+      "usage": 20804,
+      "credits_usage": 20.8,
+      "breakdown": {
+        "transformation": 2054,
+        "background_removal": 250
+      }
+    },
+    "objects": {
+      "usage": 3926
+    },
+    "bandwidth": {
+      "usage": 584290360,
+      "credits_usage": 0.54
+    },
+    "storage": {
+      "usage": 3356755576,
+      "credits_usage": 3.13
+    },
+    "impressions": {
+      "usage": 10322,
+      "credits_usage": 0
+    },
+    "seconds_delivered": {
+      "usage": 0,
+      "credits_usage": 0
+    },
+    "credits": {
+      "usage": 24.47,
+      "limit": 25,
+      "used_percent": 97.88
+    },
+    "resources": 1935,
+    "derived_resources": 1991,
+    "requests": 10322,
+    "media_limits": {
+      "image_max_size_bytes": 10485760,
+      "video_max_size_bytes": 104857600,
+      "raw_max_size_bytes": 10485760,
+      "image_max_px": 25000000,
+      "asset_max_total_px": 50000000
+    }
+  },
+  "resources_left": {
+    "asset_current": true,
+    "backup_versions": [
+      {
+        "version": "1789274581",
+        "version_id": "b7c5b0f07e2b97736bfdb162a40e15b8"
+      },
+      {
+        "version": "1789274582",
+        "version_id": "4ce93330ecbfdcb68a7c037a912aa0c3"
+      },
+      {
+        "version": "1789274585",
+        "version_id": "91cce5c8a801028704bbf975a119da06"
+      }
+    ],
+    "derived": [
+      {
+        "id": "32c2d00c93063b0f86b3d31ed47c1d96",
+        "bytes": 5402,
+        "transformation": "w_240,h_240,c_limit"
+      }
+    ]
+  },
+  "backup_delete_api": {
+    "available": true,
+    "method": "DELETE",
+    "path": "/resources/backup/93250639811af6628f284589298df556",
+    "not_executed": true
+  },
+  "finished_at": "2026-09-13T04:43:06.979Z"
+}

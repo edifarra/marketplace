@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CLASSIFICATIONS, applyRequiredSourceFailures, classifyCandidate, executeApproved, fetchWithPolicy, parseCleanupArgs, processCandidateBatch, redactSecrets, requiredSourcesForCandidate, runCleanup } from "../lib/cloudinary-orphan-cleanup.mjs";
+import { CLASSIFICATIONS, applyRequiredSourceFailures, classifyCandidate, executeApproved, fetchWithPolicy, parseCleanupArgs, processCandidateBatch, queryInBatches, redactSecrets, requiredSourcesForCandidate, runCleanup } from "../lib/cloudinary-orphan-cleanup.mjs";
 
 const asset = { asset_id: "a1", public_id: "produtos/SKU/master", sku: "SKU", grupo: "SEM_ASSOCIACAO_LOCAL", bytes: 100, derived_bytes: 20 };
 const validation = classification => async root => ({ auditDir: root, protectedCount: 282, stage: [asset], classified: [{ ...asset, classificacao: classification }] });
@@ -135,4 +135,23 @@ test("lote continua depois de candidato com fonte inacessível", async () => {
   }, (candidate, error) => failures.push({ id: candidate.asset_id, message: error.message }));
   assert.deepEqual(visited, ["1", "2", "3"]);
   assert.deepEqual(failures, [{ id: "2", message: "fonte inacessível" }]);
+});
+
+test("consultas locais grandes usam filtros em batch e nunca paginação integral", async () => {
+  const calls = [];
+  const db = { from(table) { return { select(columns) { return { in(column, values) { return { limit(limit) { calls.push({ table, columns, column, values, limit }); return Promise.resolve({ data: values.map((value, index) => ({ id: `${column}-${value}-${index}` })), error: null }); } }; } }; } }; } };
+  const values = Array.from({ length: 51 }, (_, index) => `SKU-${index}`);
+  const rows = await queryInBatches(db, "marketplace_activity_history", "id,activity_id,details", [{ column: "activity_id", values }], { batchSize: 25 });
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map(call => call.values.length), [25, 25, 1]);
+  assert.ok(calls.every(call => call.columns !== "*"));
+  assert.ok(calls.every(call => call.limit === 5001));
+  assert.equal(rows.length, 51);
+});
+
+test("engine não contém select coringa nem paginação de full scan", () => {
+  const source = fs.readFileSync(new URL("../lib/cloudinary-orphan-cleanup.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /select\(\s*["']\*["']\s*\)/);
+  assert.doesNotMatch(source, /\.range\s*\(/);
+  assert.doesNotMatch(source, /allRows\s*\(/);
 });

@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import {
+  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, importLegacyEvidence,
+  newState, nextAsset, runGlobalExecutor, summarizeState,
+} from "../lib/cloudinary-stage2-global.mjs";
+
+const candidates = count => Array.from({ length: count }, (_, index) => ({ asset_id: `a${index}`, public_id: `produtos/${index}`, version: 1, bytes: 2000, width: 2000, height: 1500, product_id: `p${index}` }));
+const checkpointFor = state => async () => { state.checkpoints = (state.checkpoints || 0) + 1; };
+
+test("imports 3 Stage2B, 6 Stage2C completed and 14 preflight-approved", () => {
+  const state = newState(candidates(23));
+  importLegacyEvidence(state, {
+    pilot: state.assets.slice(0, 3).map(a => ({ public_id: a.public_id, status: "COMPLETED" })),
+    stage2c: { preflight: { ok: true, assets: state.assets.slice(9).map(a => ({ public_id: a.public_id })) }, assets: state.assets.slice(3).map((a, i) => ({ public_id: a.public_id, status: i < 6 ? "COMPLETED" : "PREFLIGHT_APPROVED", preflight_approved: i >= 6 })) },
+  });
+  assert.equal(summarizeState(state).completed, 9);
+  assert.equal(summarizeState(state).preflight_approved, 14);
+});
+
+test("completed is never processed and approved asset has priority", async () => {
+  const state = newState(candidates(3)); state.assets[0].status = "COMPLETED"; state.assets[2].status = "PREFLIGHT_APPROVED";
+  const visited = [];
+  await runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async a => ({ approved: true }), processAsset: async a => { visited.push(a.public_id); return { bytes_after: 1000, savings_bytes: 1000 }; }, recover: async () => {} });
+  assert.deepEqual(visited, ["produtos/2", "produtos/1"]);
+});
+
+test("HTTP 420 pauses without failing asset and resumes on next run", async () => {
+  const state = newState(candidates(2)); let limited = true;
+  await assert.rejects(runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async () => ({ approved: true }), processAsset: async a => { if (limited) { limited = false; throw Object.assign(new Error("rate"), { httpStatus: 420 }); } return { bytes_after: 1000 }; }, recover: async a => { a.status = "PREFLIGHT_APPROVED"; a.phase = null; } }), CloudinaryRateLimitError);
+  assert.equal(state.assets[0].status, "PROCESSING");
+  await runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async () => ({ approved: true }), processAsset: async () => ({ bytes_after: 1000 }), recover: async a => { a.status = "PREFLIGHT_APPROVED"; a.phase = null; } });
+  assert.equal(summarizeState(state).completed, 2);
+});
+
+test("SIGINT before next asset preserves approved state", async () => {
+  const state = newState(candidates(2)), signal = { requested: false };
+  await runGlobalExecutor({ state, checkpoint: checkpointFor(state), signal, preflight: async () => ({ approved: true }), processAsset: async () => { signal.requested = true; return { bytes_after: 1000 }; }, recover: async () => {} });
+  assert.equal(state.assets[0].status, "COMPLETED"); assert.equal(state.assets[1].status, "PENDING");
+});
+
+test("individual blocked asset does not stop batch", async () => {
+  const state = newState(candidates(3));
+  await runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async a => a.asset_id === "a1" ? { approved: false, reason: "ambíguo" } : { approved: true }, processAsset: async () => ({ bytes_after: 1000 }), recover: async () => {} });
+  assert.equal(summarizeState(state).completed, 2); assert.equal(summarizeState(state).blocked, 1);
+});
+
+test("systemic error stops batch", async () => {
+  const state = newState(candidates(2));
+  await assert.rejects(runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async () => { throw new SystemicStage2Error("credential"); }, processAsset: async () => ({}), recover: async () => {} }), SystemicStage2Error);
+  assert.equal(state.assets[1].status, "PENDING");
+});
+
+test("atomic checkpoint leaves valid JSON and no temporary file", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "stage2-global-")), file = path.join(directory, "state.json");
+  atomicWriteJson(file, { ok: true }); assert.deepEqual(JSON.parse(fs.readFileSync(file)), { ok: true }); assert.deepEqual(fs.readdirSync(directory), ["state.json"]);
+});
+
+test("backup policy does not duplicate an existing valid file", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "stage2-backup-")), file = path.join(directory, "asset.jpg"); fs.writeFileSync(file, "original", { flag: "wx" });
+  assert.throws(() => fs.writeFileSync(file, "duplicate", { flag: "wx" }), /exist/i); assert.equal(fs.readFileSync(file, "utf8"), "original");
+});
+
+test("rollback result is persisted and processing continues", async () => {
+  const state = newState(candidates(2));
+  await runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async () => ({ approved: true }), processAsset: async a => { if (a.asset_id === "a0") throw Object.assign(new Error("invalid"), { rolledBack: true }); return { bytes_after: 1000 }; }, recover: async () => {} });
+  assert.equal(state.assets[0].status, "ROLLED_BACK"); assert.equal(state.assets[1].status, "COMPLETED");
+});
+
+test("status summary and next candidate use local state only", () => {
+  const state = newState(candidates(3)); state.assets[0].status = "COMPLETED"; state.assets[1].status = "PREFLIGHT_APPROVED";
+  assert.equal(nextAsset(state).public_id, "produtos/1"); assert.equal(summarizeState(state).pending, 1); assert.equal(summarizeState(state).remaining, 2);
+});
+
+test("hundreds of candidates are processed without a fixed batch", async () => {
+  const state = newState(candidates(500));
+  await runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async () => ({ approved: true }), processAsset: async () => ({ bytes_after: 1000, savings_bytes: 1000 }), recover: async () => {}, logger: () => {} });
+  assert.equal(summarizeState(state).completed, 500); assert.equal(state.checkpoints, 1500);
+});

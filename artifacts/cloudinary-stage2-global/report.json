@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-09-13T23:46:01.808Z",
+  "total": 860,
+  "completed": 9,
+  "skipped": 0,
+  "pending": 837,
+  "remaining": 851,
+  "preflight_approved": 14,
+  "blocked": 0,
+  "failed": 0,
+  "rolled_back": 0,
+  "bytes_original": 1841552017,
+  "bytes_current": 1841552017,
+  "savings_bytes": 49247917,
+  "savings_percent": 2.67,
+  "next_asset": "produtos/TC/1133AUAU_55P8M_02_3c03a2d955",
+  "manual_review": []
+}

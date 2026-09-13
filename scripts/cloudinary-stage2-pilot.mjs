@@ -10,6 +10,10 @@ import {
   sha256,
 } from "../lib/cloudinary-legacy-optimize.mjs";
 import { mercadoLivreReadHeaders } from "../lib/cloudinary-stage2-pilot.mjs";
+import {
+  createSigintGuard,
+  databaseReferencesProven,
+} from "../lib/cloudinary-stage2-inspection.mjs";
 
 const PILOT_IDS = [
   "produtos/LG/1239KTKT_32LN5400_02",
@@ -21,6 +25,9 @@ let IDS = PILOT_IDS,
   OUT = path.join(ROOT, "artifacts", "cloudinary-stage2-pilot"),
   BACKUPS = path.join(OUT, "backups");
 const TIMEOUT = 20000;
+let RESUME = false;
+let FULL_MANIFEST = [];
+const interrupt = createSigintGuard();
 const report = {
   started_at: new Date().toISOString(),
   authorized_public_ids: IDS,
@@ -352,11 +359,14 @@ const comparable = (s) =>
 function save() {
   fs.mkdirSync(OUT, { recursive: true });
   report.finished_at = new Date().toISOString();
-  const totalBefore = report.assets.reduce(
+  const resumeAssets = RESUME
+      ? report.assets.filter((x) => x.status !== "SKIPPED_ALREADY_VALID")
+      : report.assets,
+    totalBefore = resumeAssets.reduce(
       (s, x) => s + Number(x.before?.bytes || 0),
       0,
     ),
-    totalAfter = report.assets.reduce(
+    totalAfter = resumeAssets.reduce(
       (s, x) =>
         s +
         Number(
@@ -369,8 +379,11 @@ function save() {
     approved = report.assets.filter((x) => x.status === "APPROVED").length,
     rollbacks = report.assets.filter((x) => x.rollback?.performed).length;
   report.summary = {
-    planned: IDS.length,
-    processed: report.assets.filter((x) => x.after || x.rollback?.performed)
+    planned: RESUME ? 20 : IDS.length,
+    skipped_already_valid: report.assets.filter(
+      (x) => x.status === "SKIPPED_ALREADY_VALID",
+    ).length,
+    processed: resumeAssets.filter((x) => x.after || x.rollback?.performed)
       .length,
     approved,
     rollbacks,
@@ -380,32 +393,85 @@ function save() {
     savings_percent: totalBefore
       ? Number((((totalBefore - totalAfter) * 100) / totalBefore).toFixed(2))
       : 0,
-    public_ids: IDS,
-    statuses: report.assets.map((x) => ({
-      public_id: x.public_id,
-      status: x.status,
-    })),
+    not_started: RESUME ? Math.max(0, IDS.length - approved - rollbacks) : 0,
+    public_ids: RESUME ? FULL_MANIFEST.map((x) => x.public_id) : IDS,
+    statuses: (RESUME
+      ? FULL_MANIFEST
+      : IDS.map((public_id) => ({ public_id }))
+    ).map((item) => {
+      const existing = report.assets.find(
+        (asset) => asset.public_id === item.public_id,
+      );
+      return {
+        public_id: item.public_id,
+        status: existing?.status || "NOT_STARTED",
+      };
+    }),
   };
+  if (RESUME) {
+    const cumulativeBefore = report.assets.reduce(
+        (sum, item) => sum + Number(item.before?.bytes || 0),
+        0,
+      ),
+      cumulativeAfter = report.assets.reduce(
+        (sum, item) => sum + Number(item.after?.bytes || 0),
+        0,
+      );
+    report.summary.cumulative_20 = {
+      proven: report.assets.every(
+        (item) => item.before?.bytes && item.after?.bytes,
+      ),
+      bytes_before: cumulativeBefore,
+      bytes_after: cumulativeAfter,
+      savings_bytes: cumulativeBefore - cumulativeAfter,
+      savings_percent: cumulativeBefore
+        ? Number(
+            (
+              ((cumulativeBefore - cumulativeAfter) * 100) /
+              cumulativeBefore
+            ).toFixed(2),
+          )
+        : 0,
+    };
+  }
   fs.writeFileSync(
     path.join(OUT, "report.json"),
     JSON.stringify(report, null, 2),
   );
   fs.writeFileSync(
     path.join(OUT, "report.md"),
-    `# Cloudinary ${IDS.length === 20 ? "Etapa 2C — lote controlado" : "Etapa 2B — piloto real"}\n\nStatus: **${report.status}**\n\nPlanejados: ${IDS.length}. Processados: ${report.summary.processed}. Aprovados: ${approved}. Rollbacks: ${rollbacks}.\n\nAntes: ${totalBefore} bytes. Depois: ${totalAfter} bytes. Economia: ${totalBefore - totalAfter} bytes (${report.summary.savings_percent}%).\n\nBackups nativos e externos foram preservados. Banco e marketplaces não receberam escrita.\n`,
+    `# Cloudinary ${RESUME ? "Etapa 2C — retomada dos 14 restantes" : IDS.length === 20 ? "Etapa 2C — lote controlado" : "Etapa 2B — piloto real"}\n\nStatus: **${report.status}**\n\nTotal: ${RESUME ? 20 : IDS.length}. Ignorados já válidos: ${report.summary.skipped_already_valid}. Processados nesta retomada: ${report.summary.processed}. Aprovados: ${approved}. Rollbacks: ${rollbacks}. Não iniciados: ${report.summary.not_started}.\n\nAntes: ${totalBefore} bytes. Depois: ${totalAfter} bytes. Economia: ${totalBefore - totalAfter} bytes (${report.summary.savings_percent}%).${RESUME && report.summary.cumulative_20?.proven ? `\n\nEconomia acumulada comprovada dos 20: ${report.summary.cumulative_20.savings_bytes} bytes (${report.summary.cumulative_20.savings_percent}%).` : ""}\n\n## Resultado individual\n\n${report.summary.statuses.map((item, index) => `${index + 1}. \`${item.public_id}\` — **${item.status}**`).join("\n")}\n\nBackups nativos e externos foram preservados. Banco e marketplaces não receberam escrita.\n`,
   );
+}
+
+function checkpoint() {
+  fs.mkdirSync(OUT, { recursive: true });
+  const target = path.join(OUT, "resume-checkpoint.json"),
+    temporary = `${target}.tmp`;
+  fs.writeFileSync(
+    temporary,
+    JSON.stringify(
+      { ...report, checkpoint_at: new Date().toISOString() },
+      null,
+      2,
+    ),
+  );
+  fs.renameSync(temporary, target);
 }
 
 async function main() {
   let batchManifest = [];
   const arg = process.argv[2],
+    resume =
+      arg === "--resume-stage2c-remaining-14-internal" &&
+      process.env.STAGE2C_RESUME_LAUNCH === "confirmed-exact-remaining-14",
     batch =
       arg === "--execute-stage2c-20-internal" &&
       process.env.STAGE2C_BATCH_LAUNCH === "confirmed-exact-20",
     mode =
       arg === "--preflight-only"
         ? "preflight"
-        : arg === "--execute-stage2b-exact-3" || batch
+        : arg === "--execute-stage2b-exact-3" || batch || resume
           ? "execute"
           : null;
   if (batch) {
@@ -423,9 +489,53 @@ async function main() {
     report.authorized_public_ids = IDS;
     report.manifest = manifest;
   }
+  if (resume) {
+    const manifest = JSON.parse(process.env.STAGE2C_RESUME_MANIFEST || "[]"),
+      inspection = JSON.parse(process.env.STAGE2C_RESUME_INSPECTION || "{}");
+    if (
+      manifest.length !== 14 ||
+      new Set(manifest.map((item) => item.public_id)).size !== 14 ||
+      inspection.assets?.length !== 20
+    )
+      throw Error("Manifesto interno da retomada inválido");
+    RESUME = true;
+    FULL_MANIFEST = [
+      ...inspection.assets.slice(0, 6).map((item) => ({
+        asset_id: item.asset_id,
+        public_id: item.public_id,
+        original_version: item.original_version,
+      })),
+      ...manifest,
+    ];
+    IDS = manifest.map((item) => item.public_id);
+    batchManifest = manifest;
+    OUT = path.join(ROOT, "artifacts", "cloudinary-stage2-batch");
+    BACKUPS = path.join(OUT, "backups");
+    report.mode = "resume-stage2c-remaining-14";
+    report.reconciliation = inspection;
+    report.assets = inspection.assets.slice(0, 6).map((item) => ({
+      public_id: item.public_id,
+      asset_id: item.asset_id,
+      status: "SKIPPED_ALREADY_VALID",
+      before: {
+        bytes: item.external_backup?.bytes,
+        version: item.original_version,
+      },
+      after: { bytes: item.current?.bytes, version: item.current_version },
+    }));
+    report.authorized_public_ids = IDS;
+    report.manifest = FULL_MANIFEST;
+    process.on("SIGINT", () => {
+      interrupt.request();
+      report.sigint_received = true;
+      console.warn(
+        "SIGINT recebido: o asset atual será concluído ou restaurado; nenhum próximo asset será iniciado.",
+      );
+    });
+  }
   if (!mode || process.argv.length !== 3)
     throw Error("Use --preflight-only ou o executor explícito autorizado.");
-  report.mode = mode;
+  if (!RESUME) report.mode = mode;
   report.phase = "preflight";
   env(path.join(ROOT, ".env.local"));
   env(path.join(ROOT, ".env.vercel.local"));
@@ -498,7 +608,7 @@ async function main() {
       false,
       { source: "cloudinary", operation: "asset-preflight" },
     );
-    if (batch) {
+    if (batch || resume) {
       const expected = batchManifest.find(
         (item) => item.public_id === publicId,
       );
@@ -506,6 +616,16 @@ async function main() {
         throw Error(`${publicId}: asset_id divergiu do manifesto aprovado`);
     }
     console.log("[OK] Cloudinary");
+    if (resume) {
+      const matchingReferences = images.filter(
+        (candidate) =>
+          String(candidate.cloudinary_asset_id || "") === String(d.asset_id) ||
+          candidate.cloudinary_public_id === publicId ||
+          String(candidate.cloudinary_url || candidate.url).includes(publicId),
+      );
+      if (!databaseReferencesProven(d, matchingReferences))
+        throw Error(`${publicId}: referências do banco não comprovadas`);
+    }
     const verdict = isLegacyCandidate(d, images, CUTOFF_ISO);
     if (!verdict.eligible) throw Error(`${publicId}: ${verdict.reason}`);
     const product = products.find(
@@ -579,6 +699,12 @@ async function main() {
     })),
   };
   delete report.current_public_id;
+  if (resume && interrupt.requested) {
+    report.status = "INTERRUPTED_BEFORE_WRITE";
+    save();
+    checkpoint();
+    return;
+  }
   if (mode === "preflight") {
     report.status = "PASS";
     save();
@@ -588,6 +714,7 @@ async function main() {
   report.phase = "execute";
   fs.mkdirSync(BACKUPS, { recursive: true });
   for (const p of prepared) {
+    if (RESUME && !interrupt.mayStartNext()) break;
     const asset = p.asset,
       entry = { public_id: asset.public_id, status: "PROCESSING" };
     report.assets.push(entry);
@@ -599,9 +726,28 @@ async function main() {
       )
       .eq("id", p.row.id)
       .single();
+    let freshReferences = [];
+    if (RESUME) {
+      freshReferences = await rows(
+        db,
+        "product_images",
+        "id,product_id,position,url,cloudinary_url,cloudinary_public_id,cloudinary_asset_id",
+      );
+      freshReferences = freshReferences.filter(
+        (candidate) =>
+          String(candidate.cloudinary_asset_id || "") ===
+            String(asset.asset_id) ||
+          candidate.cloudinary_public_id === asset.public_id ||
+          String(candidate.cloudinary_url || candidate.url).includes(
+            asset.public_id,
+          ),
+      );
+    }
     if (
       freshRow.error ||
       fresh.asset_id !== asset.asset_id ||
+      Number(fresh.version) !== Number(asset.version) ||
+      (RESUME && !databaseReferencesProven(asset, freshReferences)) ||
       !isLegacyCandidate(fresh, [freshRow.data], CUTOFF_ISO).eligible
     )
       throw Error(`${asset.public_id}: revalidação imediata falhou`);
@@ -682,8 +828,9 @@ async function main() {
       download_sha256: sha256(nativeBytes),
       recoverable: true,
     };
-    const changed = await upload(a, optimized, asset);
+    let changed;
     try {
+      changed = await upload(a, optimized, asset);
       if (
         changed.public_id !== asset.public_id ||
         changed.asset_id !== asset.asset_id ||
@@ -783,6 +930,7 @@ async function main() {
         rollback_available: true,
       };
       entry.status = "APPROVED";
+      if (RESUME) checkpoint();
     } catch (error) {
       entry.failure = String(error.message || error);
       const restored = await restore(a, asset.asset_id, native.version_id);
@@ -799,6 +947,7 @@ async function main() {
         matches_original: sha256(rb) === originalHash,
       };
       entry.status = "ROLLED_BACK";
+      if (RESUME) checkpoint();
       throw error;
     }
     report.usage_after_each ||= [];
@@ -808,9 +957,18 @@ async function main() {
     });
   }
   report.usage_after = await usage(a);
+  if (RESUME && interrupt.requested) {
+    report.status = "INTERRUPTED_CONTROLLED";
+    save();
+    checkpoint();
+    return;
+  }
   report.status =
-    report.assets.length === IDS.length &&
-    report.assets.every((x) => x.status === "APPROVED")
+    report.assets.filter((x) => x.status === "APPROVED").length ===
+      IDS.length &&
+    report.assets.every((x) =>
+      ["APPROVED", "SKIPPED_ALREADY_VALID"].includes(x.status),
+    )
       ? "APPROVED"
       : "BLOCKED";
   save();

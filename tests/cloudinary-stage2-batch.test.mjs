@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { classifyInterruptedState } from "../lib/cloudinary-stage2-inspection.mjs";
+import {
+  assertResumeReconciliation,
+  classifyInterruptedState,
+  createSigintGuard,
+  databaseReferencesProven,
+} from "../lib/cloudinary-stage2-inspection.mjs";
 
 const manifest = JSON.parse(
   fs.readFileSync(
@@ -116,6 +121,87 @@ test("inspeção é somente leitura e gera os dois relatórios", () => {
   assert.match(source, /marketplace_writes: 0/);
   assert.match(source, /cloudinary_writes: 0/);
   assert.match(source, /método externo não permitido no modo somente leitura/);
+});
+
+test("resume aceita somente seis válidos seguidos dos quatorze não iniciados", () => {
+  const assets = manifest.map((item, index) => ({
+    ...item,
+    state: index < 6 ? "OVERWRITTEN_AND_VALID" : "NOT_STARTED",
+  }));
+  const report = {
+    assets,
+    counts: {
+      OVERWRITTEN_AND_VALID: 6,
+      NOT_STARTED: 14,
+      BACKUP_CREATED_NOT_OVERWRITTEN: 0,
+      OVERWRITTEN_NEEDS_REVIEW: 0,
+      ROLLED_BACK: 0,
+    },
+  };
+  assert.deepEqual(
+    assertResumeReconciliation(report, manifest),
+    manifest.slice(6),
+  );
+  assert.throws(
+    () =>
+      assertResumeReconciliation(
+        {
+          ...report,
+          assets: assets.with(6, {
+            ...assets[6],
+            state: "OVERWRITTEN_NEEDS_REVIEW",
+          }),
+        },
+        manifest,
+      ),
+    /estado atual não corresponde/,
+  );
+});
+
+test("referência não comprovada bloqueia explicitamente", () => {
+  const item = manifest[11];
+  assert.equal(databaseReferencesProven(item, []), false);
+  assert.equal(
+    databaseReferencesProven(item, [
+      { cloudinary_asset_id: item.asset_id, cloudinary_public_id: null },
+    ]),
+    false,
+  );
+  assert.equal(
+    databaseReferencesProven(item, [
+      {
+        cloudinary_asset_id: item.asset_id,
+        cloudinary_public_id: item.public_id,
+      },
+    ]),
+    true,
+  );
+});
+
+test("SIGINT impede iniciar o próximo asset", () => {
+  const guard = createSigintGuard();
+  assert.equal(guard.mayStartNext(), true);
+  guard.request();
+  assert.equal(guard.requested, true);
+  assert.equal(guard.mayStartNext(), false);
+});
+
+test("resume pula seis válidos, limita candidatos e grava checkpoint", () => {
+  assert.match(wrapper, /--resume-stage2c-remaining-14/);
+  assert.match(wrapper, /assertResumeReconciliation/);
+  assert.match(
+    wrapper,
+    /STAGE2C_RESUME_MANIFEST = JSON\.stringify\(remaining\)/,
+  );
+  assert.match(engine, /status: "SKIPPED_ALREADY_VALID"/);
+  assert.match(engine, /manifest\.length !== 14/);
+  assert.match(engine, /if \(RESUME && !interrupt\.mayStartNext\(\)\) break/);
+  assert.match(engine, /if \(RESUME\) checkpoint\(\)/);
+  assert.match(engine, /resume-checkpoint\.json/);
+  assert.ok(
+    engine.indexOf("const prepared = []") <
+      engine.indexOf("fs.mkdirSync(BACKUPS"),
+  );
 });
 
 test("executor exige flag exata e handshake interno de 20 assets", () => {

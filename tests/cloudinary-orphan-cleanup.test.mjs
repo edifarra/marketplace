@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CLASSIFICATIONS, classifyCandidate, executeApproved, parseCleanupArgs, redactSecrets, runCleanup } from "../lib/cloudinary-orphan-cleanup.mjs";
+import { CLASSIFICATIONS, applyRequiredSourceFailures, classifyCandidate, executeApproved, parseCleanupArgs, redactSecrets, requiredSourcesForCandidate, runCleanup } from "../lib/cloudinary-orphan-cleanup.mjs";
 
 const asset = { asset_id: "a1", public_id: "produtos/SKU/master", sku: "SKU", grupo: "SEM_ASSOCIACAO_LOCAL", bytes: 100, derived_bytes: 20 };
 const validation = classification => async root => ({ auditDir: root, protectedCount: 282, stage: [asset], classified: [{ ...asset, classificacao: classification }] });
@@ -67,4 +67,40 @@ test("manifesto contém somente os 111 candidatos do estágio 1", () => {
   assert.equal(new Set(manifest.map(item => item.asset_id)).size, 111);
   assert.deepEqual(Object.fromEntries(["SEM_ASSOCIACAO_LOCAL", "SOMENTE_TINY", "ML_E_TINY"].map(group => [group, manifest.filter(item => item.grupo === group).length])), { SEM_ASSOCIACAO_LOCAL: 76, SOMENTE_TINY: 28, ML_E_TINY: 7 });
   assert.deepEqual(Object.keys(manifest[0]), ["asset_id", "public_id", "cloud_name", "secure_url", "sku", "grupo", "bytes", "derived_bytes"]);
+});
+
+function evidence() { return { complete: false, currentReferences: [], errors: [], unavailable: [], expired: [], notes: [] }; }
+
+test("SOMENTE_TINY não herda expiração da Shopee sem associação", () => {
+  const candidate = { ...asset, grupo: "SOMENTE_TINY", current_marketplaces: [] };
+  const state = evidence();
+  applyRequiredSourceFailures(candidate, state, "shopee", [{ type: "expired", reason: "token Shopee expirado" }]);
+  assert.deepEqual([...requiredSourcesForCandidate(candidate)], ["tiny"]);
+  assert.equal(state.expired.length, 0);
+});
+
+test("SEM_ASSOCIACAO_LOCAL não exige ML ou Shopee sem associação", () => {
+  const candidate = { ...asset, grupo: "SEM_ASSOCIACAO_LOCAL", current_marketplaces: [] };
+  const state = evidence();
+  applyRequiredSourceFailures(candidate, state, "mercado_livre", [{ type: "expired", reason: "ML expirado" }]);
+  applyRequiredSourceFailures(candidate, state, "shopee", [{ type: "expired", reason: "Shopee expirado" }]);
+  assert.deepEqual([...requiredSourcesForCandidate(candidate)], []);
+  assert.equal(state.expired.length, 0);
+});
+
+test("ML_E_TINY exige ML e Tiny, mas não Shopee", () => {
+  const candidate = { ...asset, grupo: "ML_E_TINY", current_marketplaces: ["mercado_livre"] };
+  assert.deepEqual([...requiredSourcesForCandidate(candidate)].sort(), ["mercado_livre", "tiny"]);
+});
+
+test("associação Shopee real mantém bloqueio por token expirado", () => {
+  const candidate = { ...asset, current_marketplaces: ["shopee"] };
+  const state = evidence();
+  applyRequiredSourceFailures(candidate, state, "shopee", [{ type: "expired", reason: "token Shopee expirado" }]);
+  assert.equal(classifyCandidate(candidate, state).classificacao, CLASSIFICATIONS.EXPIRED);
+});
+
+test("REFERENCIA_ATUAL prevalece sobre token expirado", () => {
+  const state = { ...evidence(), currentReferences: [{ fonte: "product_images" }], expired: ["token expirado"] };
+  assert.equal(classifyCandidate(asset, state).classificacao, CLASSIFICATIONS.REFERENCE);
 });

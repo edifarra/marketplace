@@ -13,4 +13,5 @@ service-account.json
 tmp/
 artifacts/cloudinary-legacy-optimize/rollback-originals/
 artifacts/cloudinary-stage2-pilot/backups/
+artifacts/cloudinary-stage2-batch/backups/
 supabase/.temp/

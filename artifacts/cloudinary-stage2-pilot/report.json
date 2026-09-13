@@ -1,0 +1,20 @@
+{
+  "started_at": "2026-09-13T14:16:11.859Z",
+  "authorized_public_ids": [
+    "produtos/LG/1239KTKT_32LN5400_02",
+    "produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58",
+    "produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0"
+  ],
+  "policy": {
+    "maxDimension": 1200,
+    "jpegQuality": 88,
+    "jpegChromaSubsampling": "4:4:4",
+    "pngCompressionLevel": 9
+  },
+  "database_writes": 0,
+  "marketplace_writes": 0,
+  "assets": [],
+  "status": "BLOCKED",
+  "error": "config_marketplace_accounts: permission denied for table config_marketplace_accounts",
+  "finished_at": "2026-09-13T14:16:12.531Z"
+}

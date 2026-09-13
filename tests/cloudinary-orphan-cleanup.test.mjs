@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CLASSIFICATIONS, applyRequiredSourceFailures, classifyCandidate, executeApproved, parseCleanupArgs, redactSecrets, requiredSourcesForCandidate, runCleanup } from "../lib/cloudinary-orphan-cleanup.mjs";
+import { CLASSIFICATIONS, applyRequiredSourceFailures, classifyCandidate, executeApproved, fetchWithPolicy, parseCleanupArgs, processCandidateBatch, redactSecrets, requiredSourcesForCandidate, runCleanup } from "../lib/cloudinary-orphan-cleanup.mjs";
 
 const asset = { asset_id: "a1", public_id: "produtos/SKU/master", sku: "SKU", grupo: "SEM_ASSOCIACAO_LOCAL", bytes: 100, derived_bytes: 20 };
 const validation = classification => async root => ({ auditDir: root, protectedCount: 282, stage: [asset], classified: [{ ...asset, classificacao: classification }] });
@@ -103,4 +103,36 @@ test("associação Shopee real mantém bloqueio por token expirado", () => {
 test("REFERENCIA_ATUAL prevalece sobre token expirado", () => {
   const state = { ...evidence(), currentReferences: [{ fonte: "product_images" }], expired: ["token expirado"] };
   assert.equal(classifyCandidate(asset, state).classificacao, CLASSIFICATIONS.REFERENCE);
+});
+
+test("timeout faz no máximo um retry e registra a fonte", async () => {
+  let calls = 0;
+  const diagnostics = { timeoutsBySource: {} };
+  const hangingFetch = (_url, options) => new Promise((resolve, reject) => {
+    calls++;
+    options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+  });
+  await assert.rejects(() => fetchWithPolicy("https://example.invalid", {}, { source: "Tiny", timeoutMs: 5, retries: 1, fetchImpl: hangingFetch, diagnostics }), /timeout/);
+  assert.equal(calls, 2);
+  assert.equal(diagnostics.timeoutsBySource.Tiny, 2);
+});
+
+test("falha HTTP transitória recebe somente um retry", async () => {
+  let calls = 0;
+  const fetchImpl = async () => new Response("{}", { status: ++calls === 1 ? 503 : 200 });
+  const response = await fetchWithPolicy("https://example.invalid", {}, { source: "Mercado Livre", retries: 1, fetchImpl });
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+});
+
+test("lote continua depois de candidato com fonte inacessível", async () => {
+  const visited = [], failures = [];
+  const candidates = [{ asset_id: "1" }, { asset_id: "2" }, { asset_id: "3" }];
+  await processCandidateBatch(candidates, async candidate => {
+    visited.push(candidate.asset_id);
+    if (candidate.asset_id === "2") throw new Error("fonte inacessível");
+    return candidate.asset_id;
+  }, (candidate, error) => failures.push({ id: candidate.asset_id, message: error.message }));
+  assert.deepEqual(visited, ["1", "2", "3"]);
+  assert.deepEqual(failures, [{ id: "2", message: "fonte inacessível" }]);
 });

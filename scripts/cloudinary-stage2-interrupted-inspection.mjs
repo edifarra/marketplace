@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import { sha256 } from "../lib/cloudinary-legacy-optimize.mjs";
 import {
+  alreadyProcessedPhysicalState,
   classifyInterruptedState,
   evaluateDatabaseReferences,
   INTERRUPTED_STATES,
@@ -15,6 +16,8 @@ const ROOT = process.cwd();
 const OUT = path.join(ROOT, "artifacts", "cloudinary-stage2-batch");
 const BACKUPS = path.join(OUT, "backups");
 const manifest = JSON.parse(process.env.STAGE2C_INSPECTION_MANIFEST || "[]");
+const resumeReconciliation =
+  process.env.STAGE2C_RESUME_RECONCILIATION === "true";
 if (manifest.length !== 20)
   throw new Error("Inspeção exige o manifesto fixo de 20 assets.");
 
@@ -232,29 +235,34 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !dbKey)
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, dbKey, {
   auth: { persistSession: false },
 });
+const optionalReads = resumeReconciliation
+  ? Array.from({ length: 5 }, () => Promise.resolve([]))
+  : [
+      allRows(
+        db,
+        "product_images",
+        "id,product_id,position,status,url,cloudinary_url,cloudinary_public_id,cloudinary_cloud_name,cloudinary_asset_id,bytes,width_px,height_px",
+      ),
+      allRows(db, "products", "id,sku,status,tiny_product_id"),
+      allRows(
+        db,
+        "product_marketplaces",
+        "id,product_id,marketplace,marketplace_account_id,marketplace_product_id,status_anuncio,raw_data",
+      ),
+      allRows(
+        db,
+        "listings",
+        "id,product_id,marketplace,external_listing_id,external_sku,status",
+      ),
+      allRows(
+        db,
+        "config_marketplace_accounts",
+        "id,marketplace,account_id,shop_id,access_token,token_expires_at,client_id,client_secret,active",
+      ),
+    ];
 const [images, products, links, listings, accounts, settingsResponse] =
   await Promise.all([
-    allRows(
-      db,
-      "product_images",
-      "id,product_id,position,status,url,cloudinary_url,cloudinary_public_id,cloudinary_cloud_name,cloudinary_asset_id,bytes,width_px,height_px",
-    ),
-    allRows(db, "products", "id,sku,status,tiny_product_id"),
-    allRows(
-      db,
-      "product_marketplaces",
-      "id,product_id,marketplace,marketplace_account_id,marketplace_product_id,status_anuncio,raw_data",
-    ),
-    allRows(
-      db,
-      "listings",
-      "id,product_id,marketplace,external_listing_id,external_sku,status",
-    ),
-    allRows(
-      db,
-      "config_marketplace_accounts",
-      "id,marketplace,account_id,shop_id,access_token,token_expires_at,client_id,client_secret,active",
-    ),
+    ...optionalReads,
     db
       .from("settings")
       .select("key,value")
@@ -368,6 +376,29 @@ for (const [index, item] of manifest.entries()) {
         restorable: version.restorable,
       })),
     };
+    if (resumeReconciliation && index < 6) {
+      const physical = alreadyProcessedPhysicalState(entry);
+      entry.resume_physical_validation = physical;
+      entry.database = {
+        state: "NOT_REQUIRED_FOR_ALREADY_PROCESSED",
+        reason: "resume valida somente o estado físico das posições 1–6",
+      };
+      entry.persisted_urls = [];
+      entry.marketplaces = [];
+      entry.marketplace_read_only = true;
+      entry.state = physical.valid
+        ? INTERRUPTED_STATES.OVERWRITTEN_AND_VALID
+        : INTERRUPTED_STATES.OVERWRITTEN_NEEDS_REVIEW;
+      if (!physical.valid)
+        entry.errors.push(
+          `validação física incompleta: ${physical.failed.join(", ")}`,
+        );
+      entry.evidence.push(
+        "reconciliação física do resume; marketplaces e vínculos de banco não exigidos",
+      );
+      report.assets.push(entry);
+      continue;
+    }
     const databaseAssessment = evaluateDatabaseReferences({
       expected: item,
       imageRows: images,

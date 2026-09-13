@@ -361,7 +361,7 @@ function save() {
   fs.mkdirSync(OUT, { recursive: true });
   report.finished_at = new Date().toISOString();
   const resumeAssets = RESUME
-      ? report.assets.filter((x) => x.status !== "SKIPPED_ALREADY_VALID")
+      ? report.assets.filter((x) => x.status !== "SKIPPED_ALREADY_PROCESSED")
       : report.assets,
     totalBefore = resumeAssets.reduce(
       (s, x) => s + Number(x.before?.bytes || 0),
@@ -381,8 +381,8 @@ function save() {
     rollbacks = report.assets.filter((x) => x.rollback?.performed).length;
   report.summary = {
     planned: RESUME ? 20 : IDS.length,
-    skipped_already_valid: report.assets.filter(
-      (x) => x.status === "SKIPPED_ALREADY_VALID",
+    skipped_already_processed: report.assets.filter(
+      (x) => x.status === "SKIPPED_ALREADY_PROCESSED",
     ).length,
     processed: resumeAssets.filter((x) => x.after || x.rollback?.performed)
       .length,
@@ -441,7 +441,7 @@ function save() {
   );
   fs.writeFileSync(
     path.join(OUT, "report.md"),
-    `# Cloudinary ${RESUME ? "Etapa 2C — retomada dos 14 restantes" : IDS.length === 20 ? "Etapa 2C — lote controlado" : "Etapa 2B — piloto real"}\n\nStatus: **${report.status}**\n\nTotal: ${RESUME ? 20 : IDS.length}. Ignorados já válidos: ${report.summary.skipped_already_valid}. Processados nesta retomada: ${report.summary.processed}. Aprovados: ${approved}. Rollbacks: ${rollbacks}. Não iniciados: ${report.summary.not_started}.\n\nAntes: ${totalBefore} bytes. Depois: ${totalAfter} bytes. Economia: ${totalBefore - totalAfter} bytes (${report.summary.savings_percent}%).${RESUME && report.summary.cumulative_20?.proven ? `\n\nEconomia acumulada comprovada dos 20: ${report.summary.cumulative_20.savings_bytes} bytes (${report.summary.cumulative_20.savings_percent}%).` : ""}\n\n## Resultado individual\n\n${report.summary.statuses.map((item, index) => `${index + 1}. \`${item.public_id}\` — **${item.status}**`).join("\n")}\n\nBackups nativos e externos foram preservados. Banco e marketplaces não receberam escrita.\n`,
+    `# Cloudinary ${RESUME ? "Etapa 2C — retomada dos 14 restantes" : IDS.length === 20 ? "Etapa 2C — lote controlado" : "Etapa 2B — piloto real"}\n\nStatus: **${report.status}**\n\nTotal: ${RESUME ? 20 : IDS.length}. Ignorados já processados: ${report.summary.skipped_already_processed}. Processados nesta retomada: ${report.summary.processed}. Aprovados: ${approved}. Rollbacks: ${rollbacks}. Não iniciados: ${report.summary.not_started}.\n\nAntes: ${totalBefore} bytes. Depois: ${totalAfter} bytes. Economia: ${totalBefore - totalAfter} bytes (${report.summary.savings_percent}%).${RESUME && report.summary.cumulative_20?.proven ? `\n\nEconomia acumulada comprovada dos 20: ${report.summary.cumulative_20.savings_bytes} bytes (${report.summary.cumulative_20.savings_percent}%).` : ""}\n\n## Resultado individual\n\n${report.summary.statuses.map((item, index) => `${index + 1}. \`${item.public_id}\` — **${item.status}**`).join("\n")}\n\nBackups nativos e externos foram preservados. Banco e marketplaces não receberam escrita.\n`,
   );
 }
 
@@ -521,7 +521,7 @@ async function main() {
     report.assets = inspection.assets.slice(0, 6).map((item) => ({
       public_id: item.public_id,
       asset_id: item.asset_id,
-      status: "SKIPPED_ALREADY_VALID",
+      status: "SKIPPED_ALREADY_PROCESSED",
       before: {
         bytes: item.external_backup?.bytes,
         version: item.original_version,
@@ -1002,7 +1002,7 @@ async function main() {
     report.assets.filter((x) => x.status === "APPROVED").length ===
       IDS.length &&
     report.assets.every((x) =>
-      ["APPROVED", "SKIPPED_ALREADY_VALID"].includes(x.status),
+      ["APPROVED", "SKIPPED_ALREADY_PROCESSED"].includes(x.status),
     )
       ? "APPROVED"
       : "BLOCKED";

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  alreadyProcessedPhysicalState,
   assertResumeReconciliation,
   classifyInterruptedState,
   createSigintGuard,
@@ -23,6 +24,13 @@ const wrapper = fs.readFileSync(
 );
 const engine = fs.readFileSync(
   new URL("../scripts/cloudinary-stage2-pilot.mjs", import.meta.url),
+  "utf8",
+);
+const inspection = fs.readFileSync(
+  new URL(
+    "../scripts/cloudinary-stage2-interrupted-inspection.mjs",
+    import.meta.url,
+  ),
   "utf8",
 );
 
@@ -242,6 +250,29 @@ test("SIGINT impede iniciar o próximo asset", () => {
   assert.equal(guard.mayStartNext(), false);
 });
 
+test("seis processados usam somente critérios físicos no resume", () => {
+  const valid = alreadyProcessedPhysicalState({
+    original_version: 10,
+    current_version: 12,
+    identity: { same_asset_id: true, same_public_id: true },
+    current: { url_accessible: true },
+    external_backup: { exists: true },
+    native_backup: { exists: true },
+  });
+  assert.equal(valid.valid, true);
+  assert.equal(
+    alreadyProcessedPhysicalState({
+      ...valid,
+      original_version: 10,
+      current_version: 10,
+    }).valid,
+    false,
+  );
+  assert.match(wrapper, /STAGE2C_RESUME_RECONCILIATION = "true"/);
+  assert.match(inspection, /resumeReconciliation && index < 6/);
+  assert.match(inspection, /marketplaces e vínculos de banco não exigidos/);
+});
+
 test("resume pula seis válidos, limita candidatos e grava checkpoint", () => {
   assert.match(wrapper, /--resume-stage2c-remaining-14/);
   assert.match(wrapper, /--preflight-resume-stage2c-remaining-14/);
@@ -250,7 +281,7 @@ test("resume pula seis válidos, limita candidatos e grava checkpoint", () => {
     wrapper,
     /STAGE2C_RESUME_MANIFEST = JSON\.stringify\(remaining\)/,
   );
-  assert.match(engine, /status: "SKIPPED_ALREADY_VALID"/);
+  assert.match(engine, /status: "SKIPPED_ALREADY_PROCESSED"/);
   assert.match(engine, /manifest\.length !== 14/);
   assert.match(engine, /if \(RESUME && !interrupt\.mayStartNext\(\)\) break/);
   assert.match(engine, /if \(RESUME\) checkpoint\(\)/);

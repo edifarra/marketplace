@@ -40,6 +40,7 @@ if (process.argv[2] === INSPECT_FLAG) {
 if ([RESUME_FLAG, RESUME_PREFLIGHT_FLAG].includes(process.argv[2])) {
   const preflightOnly = process.argv[2] === RESUME_PREFLIGHT_FLAG;
   process.env.STAGE2C_INSPECTION_MANIFEST = JSON.stringify(manifest);
+  process.env.STAGE2C_RESUME_RECONCILIATION = "true";
   await import("./cloudinary-stage2-interrupted-inspection.mjs");
   const { assertResumeReconciliation } =
     await import("../lib/cloudinary-stage2-inspection.mjs");

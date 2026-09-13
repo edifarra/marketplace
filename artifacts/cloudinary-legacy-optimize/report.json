@@ -1,0 +1,459 @@
+{
+  "generated_at": "2026-09-13T04:37:22.162Z",
+  "mode": "dry-run",
+  "policy": {
+    "maxDimension": 1200,
+    "jpegQuality": 88,
+    "jpegChromaSubsampling": "4:4:4",
+    "pngCompressionLevel": 9
+  },
+  "cutoff": "2026-09-08T02:52:21.000Z",
+  "inventory": {
+    "cloudinary_assets": 1826,
+    "product_images": 1257,
+    "products": 3452,
+    "product_marketplaces": 8304,
+    "listings": 7723
+  },
+  "savings": {
+    "count": 860,
+    "originals_current_bytes": 1841552017,
+    "originals_estimated_bytes": 468222361,
+    "originals_savings_bytes": 1373329656,
+    "reduction_percent": 74.57,
+    "derived_count": 0,
+    "derived_bytes": 0,
+    "total_current_bytes": 1841552017,
+    "total_estimated_bytes": 468222361
+  },
+  "pilot": [
+    {
+      "asset_id": "c51814d91c28678ececcf0850295d647",
+      "public_id": "produtos/LG/1239KTKT_32LN5400_02",
+      "version": 1785352100,
+      "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1785352100/produtos/LG/1239KTKT_32LN5400_02.jpg",
+      "format": "jpg",
+      "width": 3024,
+      "height": 4032,
+      "bytes": 806817,
+      "optimized_bytes": 126788,
+      "optimized_width": 900,
+      "optimized_height": 1200,
+      "reduction_percent": 84.29,
+      "original_sha256": "a6f4e5ca66ddf696fc8e32df772f0fd5e1d986179e648bac9d0d13fe62546fe8",
+      "derived_count": 2,
+      "derived_bytes": 66414,
+      "backup_enabled": false,
+      "version_history_count": 0,
+      "binary_backup_ready": true,
+      "rollback_ready": false,
+      "rollback_block_reason": "backup/versionamento nativo do Cloudinary não habilitado",
+      "local_references": [
+        {
+          "id": "64b1c14d-23d9-4878-ae81-043e99b5d3bc",
+          "product_id": "4b11131f-43dc-4a8b-911f-6ae7d280b0f7",
+          "position": 2,
+          "status": "uploaded",
+          "url": "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/LG/1239KTKT_32LN5400_02",
+          "cloudinary_url": "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/LG/1239KTKT_32LN5400_02",
+          "cloudinary_public_id": "produtos/LG/1239KTKT_32LN5400_02",
+          "cloudinary_cloud_name": "dknfrkqol",
+          "cloudinary_asset_id": null,
+          "bytes": 33207,
+          "width_px": 600,
+          "height_px": 800
+        }
+      ],
+      "stored_urls": [
+        "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/LG/1239KTKT_32LN5400_02"
+      ],
+      "url_checks_before": [
+        {
+          "url": "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/LG/1239KTKT_32LN5400_02",
+          "status": 200,
+          "ok": true,
+          "content_type": "image/jpeg",
+          "content_length": 33207
+        }
+      ],
+      "marketplaces": [
+        {
+          "marketplace": "shopee",
+          "marketplace_product_id": "58265513643",
+          "status": "NORMAL",
+          "image_urls": [
+            "https://cf.shopee.com.br/file/sg-11134201-82596-mrgfe0awcn41da",
+            "https://cf.shopee.com.br/file/sg-11134201-825a8-mrgfe0ama8lde9",
+            "https://cf.shopee.com.br/file/sg-11134201-8259l-mrgfe0ambn5t42",
+            "https://cf.shopee.com.br/file/sg-11134201-825an-mrgfe0ajcw06d8",
+            "https://cf.shopee.com.br/file/sg-11134201-8258e-mrgfe0agmk9819",
+            "https://cf.shopee.com.br/file/sg-11134201-82590-mrgfe0tcr7rbdd"
+          ]
+        },
+        {
+          "marketplace": "mercado_livre",
+          "marketplace_product_id": "MLB4987756841",
+          "status": "paused",
+          "image_urls": []
+        },
+        {
+          "marketplace": "mercado_livre",
+          "marketplace_product_id": "MLB4987757523",
+          "status": "paused",
+          "image_urls": []
+        },
+        {
+          "marketplace": "shopee",
+          "marketplace_product_id": "58265522340",
+          "status": "NORMAL",
+          "image_urls": [
+            "https://cf.shopee.com.br/file/sg-11134201-825au-mrgfda1u6j2kbd",
+            "https://cf.shopee.com.br/file/sg-11134201-82583-mrgfda1qo3y90a",
+            "https://cf.shopee.com.br/file/sg-11134201-8259i-mrgfda1u54i4e1",
+            "https://cf.shopee.com.br/file/sg-11134201-82594-mrgfda1zyf40bb",
+            "https://cf.shopee.com.br/file/sg-11134201-8259n-mrgfda1xjbwm41",
+            "https://cf.shopee.com.br/file/sg-11134201-8258l-mrgfdal3jeo68d"
+          ]
+        }
+      ],
+      "listings": [
+        {
+          "id": "58aac2ad-a170-4eaf-bbd1-3fd6f51cc977",
+          "product_id": "4b11131f-43dc-4a8b-911f-6ae7d280b0f7",
+          "marketplace": "shopee",
+          "external_listing_id": "58265522340",
+          "external_sku": "1239KT",
+          "status": "paused"
+        },
+        {
+          "id": "b7781fdd-d843-4be2-b525-04437330da1e",
+          "product_id": "4b11131f-43dc-4a8b-911f-6ae7d280b0f7",
+          "marketplace": "mercado_livre",
+          "external_listing_id": "MLB4987757523",
+          "external_sku": "1239KT",
+          "status": "paused"
+        },
+        {
+          "id": "2e94d63b-427b-4155-b910-a582136b2c19",
+          "product_id": "4b11131f-43dc-4a8b-911f-6ae7d280b0f7",
+          "marketplace": "shopee",
+          "external_listing_id": "58265513643",
+          "external_sku": "1239KT",
+          "status": "paused"
+        },
+        {
+          "id": "e4c740b8-3955-4fe7-b5e7-b8fcc7436e8a",
+          "product_id": "4b11131f-43dc-4a8b-911f-6ae7d280b0f7",
+          "marketplace": "mercado_livre",
+          "external_listing_id": "MLB4987756841",
+          "external_sku": "1239KT",
+          "status": "paused"
+        }
+      ],
+      "products": [
+        {
+          "id": "4b11131f-43dc-4a8b-911f-6ae7d280b0f7",
+          "sku": "1239KT",
+          "status": "sent",
+          "tiny_product_id": "1010715951"
+        }
+      ],
+      "executed": false
+    },
+    {
+      "asset_id": "36ecb71bc5d17659d6ffd6420a8477e6",
+      "public_id": "produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58",
+      "version": 1787680855,
+      "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1787680855/produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58.jpg",
+      "format": "jpg",
+      "width": 4032,
+      "height": 3024,
+      "bytes": 2093624,
+      "optimized_bytes": 231305,
+      "optimized_width": 1200,
+      "optimized_height": 900,
+      "reduction_percent": 88.95,
+      "original_sha256": "704c7979843225c1de04b2118df7cf4e91aea7c33e46050387a9b540a4891c05",
+      "derived_count": 1,
+      "derived_bytes": 70105,
+      "backup_enabled": false,
+      "version_history_count": 0,
+      "binary_backup_ready": true,
+      "rollback_ready": false,
+      "rollback_block_reason": "backup/versionamento nativo do Cloudinary não habilitado",
+      "local_references": [
+        {
+          "id": "2332fcd2-550a-47d6-99ba-26a1398705ca",
+          "product_id": "fae4cec3-a6dd-415f-a00f-25d8c05ea260",
+          "position": 2,
+          "status": "uploaded",
+          "url": "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787680855/produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58.jpg",
+          "cloudinary_url": "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787680855/produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58.jpg",
+          "cloudinary_public_id": "produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58",
+          "cloudinary_cloud_name": "dknfrkqol",
+          "cloudinary_asset_id": null,
+          "bytes": 70105,
+          "width_px": 800,
+          "height_px": 600
+        }
+      ],
+      "stored_urls": [
+        "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787680855/produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58.jpg"
+      ],
+      "url_checks_before": [
+        {
+          "url": "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787680855/produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58.jpg",
+          "status": 200,
+          "ok": true,
+          "content_type": "image/jpeg",
+          "content_length": 70105
+        }
+      ],
+      "marketplaces": [
+        {
+          "marketplace": "mercado_livre",
+          "marketplace_product_id": "MLB5132679901",
+          "status": "active",
+          "image_urls": [
+            "http://http2.mlstatic.com/D_936890-MLB116715314255_082026-O.jpg",
+            "https://http2.mlstatic.com/D_936890-MLB116715314255_082026-O.jpg",
+            "http://http2.mlstatic.com/D_713003-MLB116715314257_082026-O.jpg",
+            "https://http2.mlstatic.com/D_713003-MLB116715314257_082026-O.jpg",
+            "http://http2.mlstatic.com/D_798562-MLB116715314259_082026-O.jpg",
+            "https://http2.mlstatic.com/D_798562-MLB116715314259_082026-O.jpg",
+            "http://http2.mlstatic.com/D_936890-MLB116715314255_082026-I.jpg"
+          ]
+        },
+        {
+          "marketplace": "shopee",
+          "marketplace_product_id": "58216914671",
+          "status": "NORMAL",
+          "image_urls": [
+            "https://cf.shopee.com.br/file/sg-11134201-8258u-msbnkjik6nepf9",
+            "https://cf.shopee.com.br/file/sg-11134201-82595-msbnkk0g7zm16b",
+            "https://cf.shopee.com.br/file/sg-11134201-825ah-msbnkkksmz9g37"
+          ]
+        },
+        {
+          "marketplace": "shopee",
+          "marketplace_product_id": "58266907589",
+          "status": "NORMAL",
+          "image_urls": [
+            "https://cf.shopee.com.br/file/sg-11134201-8257x-msbnkoiz5k3l58",
+            "https://cf.shopee.com.br/file/sg-11134201-825ax-msbnkp1l28e850",
+            "https://cf.shopee.com.br/file/sg-11134201-825a9-msbnkpktlnnr0a"
+          ]
+        },
+        {
+          "marketplace": "mercado_livre",
+          "marketplace_product_id": "MLB7512083340",
+          "status": "active",
+          "image_urls": [
+            "http://http2.mlstatic.com/D_905257-MLB116715314423_082026-O.jpg",
+            "https://http2.mlstatic.com/D_905257-MLB116715314423_082026-O.jpg",
+            "http://http2.mlstatic.com/D_893030-MLB116715314425_082026-O.jpg",
+            "https://http2.mlstatic.com/D_893030-MLB116715314425_082026-O.jpg",
+            "http://http2.mlstatic.com/D_832848-MLB116715314427_082026-O.jpg",
+            "https://http2.mlstatic.com/D_832848-MLB116715314427_082026-O.jpg",
+            "http://http2.mlstatic.com/D_905257-MLB116715314423_082026-I.jpg"
+          ]
+        }
+      ],
+      "listings": [
+        {
+          "id": "b091d7e1-4441-4ac4-97bb-f8aece16b2c1",
+          "product_id": "fae4cec3-a6dd-415f-a00f-25d8c05ea260",
+          "marketplace": "mercado_livre",
+          "external_listing_id": "MLB5132679901",
+          "external_sku": "815PF",
+          "status": "active"
+        },
+        {
+          "id": "d8919096-51c4-427e-84da-6c3e1c5dc2a7",
+          "product_id": "fae4cec3-a6dd-415f-a00f-25d8c05ea260",
+          "marketplace": "shopee",
+          "external_listing_id": "58216914671",
+          "external_sku": "815PF",
+          "status": "active"
+        },
+        {
+          "id": "e3115320-8067-4aae-9b73-bb7f03d604a3",
+          "product_id": "fae4cec3-a6dd-415f-a00f-25d8c05ea260",
+          "marketplace": "shopee",
+          "external_listing_id": "58266907589",
+          "external_sku": "815PF",
+          "status": "active"
+        },
+        {
+          "id": "919da744-74b0-43fc-a968-632d161908cc",
+          "product_id": "fae4cec3-a6dd-415f-a00f-25d8c05ea260",
+          "marketplace": "mercado_livre",
+          "external_listing_id": "MLB7512083340",
+          "external_sku": "815PF",
+          "status": "active"
+        }
+      ],
+      "products": [
+        {
+          "id": "fae4cec3-a6dd-415f-a00f-25d8c05ea260",
+          "sku": "815PF",
+          "status": "sent",
+          "tiny_product_id": null
+        }
+      ],
+      "executed": false
+    },
+    {
+      "asset_id": "123d26e7acc42e857c65a54d93a3c90c",
+      "public_id": "produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0",
+      "version": 1787684027,
+      "secure_url": "https://res.cloudinary.com/dknfrkqol/image/upload/v1787684027/produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0.png",
+      "format": "png",
+      "width": 1086,
+      "height": 1448,
+      "bytes": 3615370,
+      "optimized_bytes": 1790100,
+      "optimized_width": 900,
+      "optimized_height": 1200,
+      "reduction_percent": 50.49,
+      "original_sha256": "a9d85af95dca15616a1fc9c11259a11531cc0ebe50f3999d8cef99f53a327664",
+      "derived_count": 1,
+      "derived_bytes": 107346,
+      "backup_enabled": false,
+      "version_history_count": 0,
+      "binary_backup_ready": true,
+      "rollback_ready": false,
+      "rollback_block_reason": "backup/versionamento nativo do Cloudinary não habilitado",
+      "local_references": [
+        {
+          "id": "94e1f00b-c141-4b66-a60a-42e26c40fa1e",
+          "product_id": "6bdd53d9-440b-468c-b01e-a5d388a432de",
+          "position": 4,
+          "status": "uploaded",
+          "url": "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787684027/produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0.jpg",
+          "cloudinary_url": "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787684027/produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0.jpg",
+          "cloudinary_public_id": "produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0",
+          "cloudinary_cloud_name": "dknfrkqol",
+          "cloudinary_asset_id": null,
+          "bytes": 107346,
+          "width_px": 600,
+          "height_px": 800
+        }
+      ],
+      "stored_urls": [
+        "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787684027/produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0.jpg"
+      ],
+      "url_checks_before": [
+        {
+          "url": "https://res.cloudinary.com/dknfrkqol/image/upload/f_jpg,fl_lossy,q_auto:good,w_800,h_800,c_limit/v1787684027/produtos/LG/816PFDPF_55QNED80SRA_EAY65895417_04_8801e764b0.jpg",
+          "status": 200,
+          "ok": true,
+          "content_type": "image/jpeg",
+          "content_length": 107346
+        }
+      ],
+      "marketplaces": [
+        {
+          "marketplace": "shopee",
+          "marketplace_product_id": "58266916866",
+          "status": "NORMAL",
+          "image_urls": [
+            "https://cf.shopee.com.br/file/sg-11134201-825ar-msboznyf0vt317",
+            "https://cf.shopee.com.br/file/sg-11134201-8258c-msbozolelretec",
+            "https://cf.shopee.com.br/file/sg-11134201-8258x-msbozp65atc6fe",
+            "https://cf.shopee.com.br/file/sg-11134201-825ao-msbozpnzxo9144"
+          ]
+        },
+        {
+          "marketplace": "shopee",
+          "marketplace_product_id": "58216923687",
+          "status": "NORMAL",
+          "image_urls": [
+            "https://cf.shopee.com.br/file/sg-11134201-825b0-msbozx6zeigx6e",
+            "https://cf.shopee.com.br/file/sg-11134201-825al-msbozxiknzly15",
+            "https://cf.shopee.com.br/file/sg-11134201-82582-msbozxtd3gneed",
+            "https://cf.shopee.com.br/file/sg-11134201-82589-msbozygzjh1k77"
+          ]
+        },
+        {
+          "marketplace": "mercado_livre",
+          "marketplace_product_id": "MLB7512403468",
+          "status": "active",
+          "image_urls": [
+            "http://http2.mlstatic.com/D_784543-MLB116716921609_082026-O.webp",
+            "https://http2.mlstatic.com/D_784543-MLB116716921609_082026-O.webp",
+            "http://http2.mlstatic.com/D_846455-MLB116716921611_082026-O.jpg",
+            "https://http2.mlstatic.com/D_846455-MLB116716921611_082026-O.jpg",
+            "http://http2.mlstatic.com/D_664586-MLB116716921613_082026-O.jpg",
+            "https://http2.mlstatic.com/D_664586-MLB116716921613_082026-O.jpg",
+            "http://http2.mlstatic.com/D_980037-MLB116716921615_082026-O.jpg",
+            "https://http2.mlstatic.com/D_980037-MLB116716921615_082026-O.jpg",
+            "http://http2.mlstatic.com/D_784543-MLB116716921609_082026-I.webp"
+          ]
+        },
+        {
+          "marketplace": "mercado_livre",
+          "marketplace_product_id": "MLB7512417632",
+          "status": "active",
+          "image_urls": [
+            "http://http2.mlstatic.com/D_631606-MLB115308031940_082026-O.jpg",
+            "https://http2.mlstatic.com/D_631606-MLB115308031940_082026-O.jpg",
+            "http://http2.mlstatic.com/D_794169-MLB115308031942_082026-O.jpg",
+            "https://http2.mlstatic.com/D_794169-MLB115308031942_082026-O.jpg",
+            "http://http2.mlstatic.com/D_751525-MLB115308031944_082026-O.jpg",
+            "https://http2.mlstatic.com/D_751525-MLB115308031944_082026-O.jpg",
+            "http://http2.mlstatic.com/D_630376-MLB115308031946_082026-O.jpg",
+            "https://http2.mlstatic.com/D_630376-MLB115308031946_082026-O.jpg",
+            "http://http2.mlstatic.com/D_631606-MLB115308031940_082026-I.jpg"
+          ]
+        }
+      ],
+      "listings": [
+        {
+          "id": "badd0a72-461d-45cc-9935-162014d9a981",
+          "product_id": "6bdd53d9-440b-468c-b01e-a5d388a432de",
+          "marketplace": "mercado_livre",
+          "external_listing_id": "MLB7512417632",
+          "external_sku": "816PFD",
+          "status": "active"
+        },
+        {
+          "id": "413dc658-fbe9-4160-9b62-b1a389482d17",
+          "product_id": "6bdd53d9-440b-468c-b01e-a5d388a432de",
+          "marketplace": "shopee",
+          "external_listing_id": "58266916866",
+          "external_sku": "816PFD",
+          "status": "active"
+        },
+        {
+          "id": "6a220d5e-10ca-44ba-9cab-53e87314e7c7",
+          "product_id": "6bdd53d9-440b-468c-b01e-a5d388a432de",
+          "marketplace": "shopee",
+          "external_listing_id": "58216923687",
+          "external_sku": "816PFD",
+          "status": "active"
+        },
+        {
+          "id": "5ecf303d-7530-47d1-991a-2b1990b70ac4",
+          "product_id": "6bdd53d9-440b-468c-b01e-a5d388a432de",
+          "marketplace": "mercado_livre",
+          "external_listing_id": "MLB7512403468",
+          "external_sku": "816PFD",
+          "status": "active"
+        }
+      ],
+      "products": [
+        {
+          "id": "6bdd53d9-440b-468c-b01e-a5d388a432de",
+          "sku": "816PFD",
+          "status": "sent",
+          "tiny_product_id": null
+        }
+      ],
+      "executed": false
+    }
+  ],
+  "executed_count": 0,
+  "database_writes": 0,
+  "marketplace_writes": 0
+}

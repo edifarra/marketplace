@@ -1,0 +1,13 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { assertOverwriteIdentity, estimateBytes, isLegacyCandidate, parseOptimizeArgs, processIndividually, redactSecrets, rollbackReady, selectPilotCandidates, sha256, summarizeSavings } from "../lib/cloudinary-legacy-optimize.mjs";
+const asset={asset_id:"a1",public_id:"produtos/SKU/foto",secure_url:"https://res.cloudinary.com/cloud/image/upload/v100/produtos/SKU/foto.jpg",created_at:"2026-01-01T00:00:00Z",width:3000,height:2000,bytes:3000000,format:"jpg"};
+const row={product_id:"p1",cloudinary_asset_id:"a1",cloudinary_public_id:asset.public_id,cloudinary_cloud_name:"cloud",cloudinary_url:asset.secure_url};
+test("seleção apenas de legados e proteção da nova política",()=>{assert.equal(isLegacyCandidate(asset,[row]).eligible,true);assert.equal(isLegacyCandidate({...asset,created_at:"2026-09-09T00:00:00Z"},[row]).eligible,false);assert.equal(isLegacyCandidate(asset,[]).eligible,false)});
+test("dry-run padrão e limite rígido",()=>{assert.deepEqual(parseOptimizeArgs([]),{mode:"dry-run",limit:3});assert.throws(()=>parseOptimizeArgs(["--execute","--limit=4"]));assert.throws(()=>selectPilotCandidates([asset],4))});
+test("overwrite mantém identidades",()=>{assert.equal(assertOverwriteIdentity(asset,{...asset,version:101}),true);assert.throws(()=>assertOverwriteIdentity(asset,{...asset,public_id:"outro"}));assert.throws(()=>assertOverwriteIdentity(asset,{...asset,asset_id:"outro"}))});
+test("falha individual não interrompe lote",async()=>{const r=await processIndividually([{asset_id:"1"},{asset_id:"2"},{asset_id:"3"}],async x=>{if(x.asset_id==="2")throw Error("falha");return x.asset_id});assert.deepEqual(r.map(x=>x.ok),[true,false,true])});
+test("cálculo de bytes antes/depois",()=>{assert.ok(estimateBytes(asset)<asset.bytes);const s=summarizeSavings([asset],[{before_bytes:100,after_bytes:25}]);assert.equal(s.originals_estimated_bytes,750000);assert.equal(s.reduction_percent,75)});
+test("bloqueio quando rollback não é possível",()=>{const b=Buffer.from("original");assert.equal(rollbackReady({originalBuffer:b,originalSha256:sha256(b),publicId:asset.public_id,fetchedPublicId:asset.public_id}),true);assert.equal(rollbackReady({originalBuffer:b,originalSha256:"x",publicId:asset.public_id,fetchedPublicId:asset.public_id}),false)});
+test("sanitização de credenciais",()=>{const x=redactSecrets({api_secret:"x",nested:{access_token:"y",message:"Bearer abc.def"}});assert.equal(x.api_secret,"[REDACTED]");assert.equal(x.nested.access_token,"[REDACTED]");assert.equal(x.nested.message,"Bearer [REDACTED]")});
+test("URL antiga integra validação",()=>{assert.equal(isLegacyCandidate(asset,[row]).references[0].cloudinary_url,asset.secure_url)});

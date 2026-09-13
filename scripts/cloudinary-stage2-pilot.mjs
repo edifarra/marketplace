@@ -12,7 +12,7 @@ import {
 import { mercadoLivreReadHeaders } from "../lib/cloudinary-stage2-pilot.mjs";
 import {
   createSigintGuard,
-  databaseReferencesProven,
+  evaluateDatabaseReferences,
 } from "../lib/cloudinary-stage2-inspection.mjs";
 
 const PILOT_IDS = [
@@ -26,6 +26,7 @@ let IDS = PILOT_IDS,
   BACKUPS = path.join(OUT, "backups");
 const TIMEOUT = 20000;
 let RESUME = false;
+let RESUME_PREFLIGHT_ONLY = false;
 let FULL_MANIFEST = [];
 const interrupt = createSigintGuard();
 const report = {
@@ -499,6 +500,8 @@ async function main() {
     )
       throw Error("Manifesto interno da retomada inválido");
     RESUME = true;
+    RESUME_PREFLIGHT_ONLY =
+      process.env.STAGE2C_RESUME_PREFLIGHT_ONLY === "true";
     FULL_MANIFEST = [
       ...inspection.assets.slice(0, 6).map((item) => ({
         asset_id: item.asset_id,
@@ -511,7 +514,9 @@ async function main() {
     batchManifest = manifest;
     OUT = path.join(ROOT, "artifacts", "cloudinary-stage2-batch");
     BACKUPS = path.join(OUT, "backups");
-    report.mode = "resume-stage2c-remaining-14";
+    report.mode = RESUME_PREFLIGHT_ONLY
+      ? "preflight-resume-stage2c-remaining-14"
+      : "resume-stage2c-remaining-14";
     report.reconciliation = inspection;
     report.assets = inspection.assets.slice(0, 6).map((item) => ({
       public_id: item.public_id,
@@ -617,14 +622,20 @@ async function main() {
     }
     console.log("[OK] Cloudinary");
     if (resume) {
-      const matchingReferences = images.filter(
-        (candidate) =>
-          String(candidate.cloudinary_asset_id || "") === String(d.asset_id) ||
-          candidate.cloudinary_public_id === publicId ||
-          String(candidate.cloudinary_url || candidate.url).includes(publicId),
+      const databaseAssessment = evaluateDatabaseReferences({
+        expected: d,
+        imageRows: images,
+        products,
+        marketplaceLinks: links,
+        listings,
+      });
+      console.log(
+        `[CHECK] Banco ${databaseAssessment.state}: ${databaseAssessment.reason}`,
       );
-      if (!databaseReferencesProven(d, matchingReferences))
-        throw Error(`${publicId}: referências do banco não comprovadas`);
+      if (databaseAssessment.state !== "CONSISTENT")
+        throw Error(
+          `${publicId}: referências do banco ${databaseAssessment.state} — ${databaseAssessment.reason}`,
+        );
     }
     const verdict = isLegacyCandidate(d, images, CUTOFF_ISO);
     if (!verdict.eligible) throw Error(`${publicId}: ${verdict.reason}`);
@@ -705,6 +716,15 @@ async function main() {
     checkpoint();
     return;
   }
+  if (RESUME_PREFLIGHT_ONLY) {
+    report.status = "PASS";
+    save();
+    checkpoint();
+    console.log(
+      "PASS: reconciliação e preflight dos 14 concluídos sem escrita externa.",
+    );
+    return;
+  }
   if (mode === "preflight") {
     report.status = "PASS";
     save();
@@ -726,28 +746,43 @@ async function main() {
       )
       .eq("id", p.row.id)
       .single();
-    let freshReferences = [];
+    let freshDatabaseAssessment;
     if (RESUME) {
-      freshReferences = await rows(
-        db,
-        "product_images",
-        "id,product_id,position,url,cloudinary_url,cloudinary_public_id,cloudinary_asset_id",
-      );
-      freshReferences = freshReferences.filter(
-        (candidate) =>
-          String(candidate.cloudinary_asset_id || "") ===
-            String(asset.asset_id) ||
-          candidate.cloudinary_public_id === asset.public_id ||
-          String(candidate.cloudinary_url || candidate.url).includes(
-            asset.public_id,
+      const [freshImages, freshProducts, freshLinks, freshListings] =
+        await Promise.all([
+          rows(
+            db,
+            "product_images",
+            "id,product_id,position,url,cloudinary_url,cloudinary_public_id,cloudinary_asset_id",
           ),
-      );
+          rows(db, "products", "id,sku,status,tiny_product_id"),
+          rows(
+            db,
+            "product_marketplaces",
+            "id,product_id,marketplace,marketplace_account_id,marketplace_product_id,status_anuncio",
+          ),
+          rows(
+            db,
+            "listings",
+            "id,product_id,marketplace,external_listing_id,external_sku,status",
+          ),
+        ]);
+      freshDatabaseAssessment = evaluateDatabaseReferences({
+        expected: asset,
+        imageRows: freshImages,
+        products: freshProducts,
+        marketplaceLinks: freshLinks,
+        listings: freshListings,
+      });
+      if (freshDatabaseAssessment.state !== "CONSISTENT")
+        throw Error(
+          `${asset.public_id}: revalidação do banco ${freshDatabaseAssessment.state} — ${freshDatabaseAssessment.reason}`,
+        );
     }
     if (
       freshRow.error ||
       fresh.asset_id !== asset.asset_id ||
       Number(fresh.version) !== Number(asset.version) ||
-      (RESUME && !databaseReferencesProven(asset, freshReferences)) ||
       !isLegacyCandidate(fresh, [freshRow.data], CUTOFF_ISO).eligible
     )
       throw Error(`${asset.public_id}: revalidação imediata falhou`);

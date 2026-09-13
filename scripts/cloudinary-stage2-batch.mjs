@@ -3,6 +3,7 @@ import fs from "node:fs";
 const EXECUTE_FLAG = "--execute-stage2c-20";
 const INSPECT_FLAG = "--inspect-interrupted-stage2c";
 const RESUME_FLAG = "--resume-stage2c-remaining-14";
+const RESUME_PREFLIGHT_FLAG = "--preflight-resume-stage2c-remaining-14";
 const EXCLUDED = new Set([
   "produtos/LG/1239KTKT_32LN5400_02",
   "produtos/LG/815PFPF_65NANO81SNA_EAX68248021_02_2dedb9ca58",
@@ -10,10 +11,12 @@ const EXCLUDED = new Set([
 ]);
 if (
   process.argv.length !== 3 ||
-  ![EXECUTE_FLAG, INSPECT_FLAG, RESUME_FLAG].includes(process.argv[2])
+  ![EXECUTE_FLAG, INSPECT_FLAG, RESUME_FLAG, RESUME_PREFLIGHT_FLAG].includes(
+    process.argv[2],
+  )
 )
   throw new Error(
-    `Use exclusivamente ${EXECUTE_FLAG}, ${INSPECT_FLAG} ou ${RESUME_FLAG}.`,
+    `Use exclusivamente ${EXECUTE_FLAG}, ${INSPECT_FLAG}, ${RESUME_FLAG} ou ${RESUME_PREFLIGHT_FLAG}.`,
   );
 const manifest = JSON.parse(
   fs.readFileSync(
@@ -34,7 +37,8 @@ if (process.argv[2] === INSPECT_FLAG) {
   await import("./cloudinary-stage2-interrupted-inspection.mjs");
   process.exit(0);
 }
-if (process.argv[2] === RESUME_FLAG) {
+if ([RESUME_FLAG, RESUME_PREFLIGHT_FLAG].includes(process.argv[2])) {
+  const preflightOnly = process.argv[2] === RESUME_PREFLIGHT_FLAG;
   process.env.STAGE2C_INSPECTION_MANIFEST = JSON.stringify(manifest);
   await import("./cloudinary-stage2-interrupted-inspection.mjs");
   const { assertResumeReconciliation } =
@@ -52,6 +56,7 @@ if (process.argv[2] === RESUME_FLAG) {
   process.env.STAGE2C_RESUME_LAUNCH = "confirmed-exact-remaining-14";
   process.env.STAGE2C_RESUME_MANIFEST = JSON.stringify(remaining);
   process.env.STAGE2C_RESUME_INSPECTION = JSON.stringify(inspection);
+  if (preflightOnly) process.env.STAGE2C_RESUME_PREFLIGHT_ONLY = "true";
   process.argv[2] = "--resume-stage2c-remaining-14-internal";
   await import("./cloudinary-stage2-pilot.mjs");
 }

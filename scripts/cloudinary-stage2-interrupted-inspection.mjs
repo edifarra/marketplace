@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { sha256 } from "../lib/cloudinary-legacy-optimize.mjs";
 import {
   classifyInterruptedState,
+  evaluateDatabaseReferences,
   INTERRUPTED_STATES,
 } from "../lib/cloudinary-stage2-inspection.mjs";
 import { mercadoLivreReadHeaders } from "../lib/cloudinary-stage2-pilot.mjs";
@@ -221,21 +222,6 @@ function backupFor(item) {
   if (names.length !== 1) return names.length ? { ambiguous: names } : null;
   return { path: path.join(BACKUPS, names[0]), filename: names[0] };
 }
-const publicIdFromUrl = (value) => {
-  try {
-    const parts = decodeURIComponent(new URL(value).pathname).split("/");
-    const upload = parts.indexOf("upload");
-    const rest = parts.slice(upload + 1);
-    const version = rest.findIndex((part) => /^v\d+$/.test(part));
-    return rest
-      .slice(version >= 0 ? version + 1 : 0)
-      .join("/")
-      .replace(/\.[^.]+$/, "");
-  } catch {
-    return "";
-  }
-};
-
 loadEnv(path.join(ROOT, ".env.local"));
 loadEnv(path.join(ROOT, ".env.vercel.local"));
 const dbKey =
@@ -246,8 +232,8 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !dbKey)
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, dbKey, {
   auth: { persistSession: false },
 });
-const [images, products, links, accounts, settingsResponse] = await Promise.all(
-  [
+const [images, products, links, listings, accounts, settingsResponse] =
+  await Promise.all([
     allRows(
       db,
       "product_images",
@@ -258,6 +244,11 @@ const [images, products, links, accounts, settingsResponse] = await Promise.all(
       db,
       "product_marketplaces",
       "id,product_id,marketplace,marketplace_account_id,marketplace_product_id,status_anuncio,raw_data",
+    ),
+    allRows(
+      db,
+      "listings",
+      "id,product_id,marketplace,external_listing_id,external_sku,status",
     ),
     allRows(
       db,
@@ -273,8 +264,7 @@ const [images, products, links, accounts, settingsResponse] = await Promise.all(
         "CLOUDINARY_API_SECRET",
         "TINY_TOKEN",
       ]),
-  ],
-);
+  ]);
 if (settingsResponse.error) throw new Error(settingsResponse.error.message);
 const settings = new Map(
   (settingsResponse.data || []).map((item) => [
@@ -378,27 +368,20 @@ for (const [index, item] of manifest.entries()) {
         restorable: version.restorable,
       })),
     };
-    const imageRows = images.filter(
-      (row) =>
-        String(row.cloudinary_asset_id || "") === item.asset_id ||
-        row.cloudinary_public_id === item.public_id ||
-        publicIdFromUrl(row.cloudinary_url || row.url) === item.public_id,
-    );
+    const databaseAssessment = evaluateDatabaseReferences({
+      expected: item,
+      imageRows: images,
+      products,
+      marketplaceLinks: links,
+      listings,
+    });
+    const imageRows = databaseAssessment.matchedRows;
     entry.database = {
-      identity_consistent:
-        imageRows.length > 0 &&
-        imageRows.every(
-          (row) =>
-            (!row.cloudinary_asset_id ||
-              row.cloudinary_asset_id === item.asset_id) &&
-            (!row.cloudinary_public_id ||
-              row.cloudinary_public_id === item.public_id),
-        ),
-      references: imageRows.map((row) => ({
-        id: row.id,
-        product_id: row.product_id,
-        position: row.position,
-      })),
+      state: databaseAssessment.state,
+      reason: databaseAssessment.reason,
+      identity_consistent: databaseAssessment.state === "CONSISTENT",
+      references: databaseAssessment.references,
+      tables: databaseAssessment.tables,
       writes_observed: false,
       comparison_with_interrupted_preflight:
         "indisponível: report.json não existe",
@@ -537,7 +520,7 @@ for (const asset of report.assets)
     `- Identidade preservada: ${asset.identity?.same_asset_id && asset.identity?.same_public_id ? "sim" : "não comprovado"}`,
     `- URL atual acessível: ${asset.current?.url_accessible ? "sim" : "não comprovado"}`,
     `- URLs persistidas acessíveis: ${asset.persisted_urls?.length && asset.persisted_urls.every((item) => item.accessible) ? `sim (${asset.persisted_urls.length})` : "não comprovado"}`,
-    `- Referências do banco consistentes: ${asset.database?.identity_consistent ? "sim" : "não comprovado"}`,
+    `- Referências do banco: ${asset.database?.state || "NOT_PROVABLE"} — ${asset.database?.reason || "falha de consulta"}`,
     `- Consultas de marketplace: ${asset.marketplaces?.length ?? 0} (somente leitura)`,
     ...(asset.errors.length ? [`- Erros: ${asset.errors.join("; ")}`] : []),
     "",

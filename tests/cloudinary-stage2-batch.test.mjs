@@ -5,7 +5,7 @@ import {
   assertResumeReconciliation,
   classifyInterruptedState,
   createSigintGuard,
-  databaseReferencesProven,
+  evaluateDatabaseReferences,
 } from "../lib/cloudinary-stage2-inspection.mjs";
 
 const manifest = JSON.parse(
@@ -158,24 +158,80 @@ test("resume aceita somente seis válidos seguidos dos quatorze não iniciados",
   );
 });
 
-test("referência não comprovada bloqueia explicitamente", () => {
-  const item = manifest[11];
-  assert.equal(databaseReferencesProven(item, []), false);
-  assert.equal(
-    databaseReferencesProven(item, [
-      { cloudinary_asset_id: item.asset_id, cloudinary_public_id: null },
-    ]),
-    false,
-  );
-  assert.equal(
-    databaseReferencesProven(item, [
+test("asset TC 1133 usa URL inequívoca sem aceitar identificador conflitante", () => {
+  const item = manifest[6],
+    product = { id: "product-tc" };
+  const assessment = evaluateDatabaseReferences({
+    expected: item,
+    imageRows: [
       {
-        cloudinary_asset_id: item.asset_id,
-        cloudinary_public_id: item.public_id,
+        id: "image-tc",
+        product_id: product.id,
+        cloudinary_asset_id: null,
+        cloudinary_public_id: null,
+        cloudinary_url: `https://res.cloudinary.com/store/image/upload/v${item.original_version}/${item.public_id}.jpg`,
       },
-    ]),
-    true,
-  );
+    ],
+    products: [product],
+  });
+  assert.equal(assessment.state, "CONSISTENT");
+  assert.deepEqual(assessment.references[0].matched_by, ["cloudinary_url"]);
+  const conflicting = evaluateDatabaseReferences({
+    expected: item,
+    imageRows: [
+      { ...assessment.matchedRows[0], cloudinary_asset_id: "outro-asset" },
+    ],
+    products: [product],
+  });
+  assert.equal(conflicting.state, "INCONSISTENT");
+});
+
+test("assets 12, 16 e 17 preservam bloqueios NOT_PROVABLE/INCONSISTENT", () => {
+  const [asset12, asset16, asset17] = [
+    manifest[11],
+    manifest[15],
+    manifest[16],
+  ];
+  const missingProduct = evaluateDatabaseReferences({
+    expected: asset12,
+    imageRows: [
+      {
+        id: "i12",
+        product_id: "missing",
+        cloudinary_asset_id: asset12.asset_id,
+      },
+    ],
+    products: [],
+  });
+  assert.equal(missingProduct.state, "NOT_PROVABLE");
+  assert.equal(missingProduct.reason, "produto ausente");
+  const conflictingPublicId = evaluateDatabaseReferences({
+    expected: asset16,
+    imageRows: [
+      {
+        id: "i16",
+        product_id: "p16",
+        cloudinary_asset_id: asset16.asset_id,
+        cloudinary_public_id: "produtos/outro",
+      },
+    ],
+    products: [{ id: "p16" }],
+  });
+  assert.equal(conflictingPublicId.state, "INCONSISTENT");
+  const ambiguous = evaluateDatabaseReferences({
+    expected: asset17,
+    imageRows: [
+      { id: "i17a", product_id: "p17a", cloudinary_asset_id: asset17.asset_id },
+      {
+        id: "i17b",
+        product_id: "p17b",
+        cloudinary_public_id: asset17.public_id,
+      },
+    ],
+    products: [{ id: "p17a" }, { id: "p17b" }],
+  });
+  assert.equal(ambiguous.state, "INCONSISTENT");
+  assert.match(ambiguous.reason, /ambiguidade/);
 });
 
 test("SIGINT impede iniciar o próximo asset", () => {
@@ -188,6 +244,7 @@ test("SIGINT impede iniciar o próximo asset", () => {
 
 test("resume pula seis válidos, limita candidatos e grava checkpoint", () => {
   assert.match(wrapper, /--resume-stage2c-remaining-14/);
+  assert.match(wrapper, /--preflight-resume-stage2c-remaining-14/);
   assert.match(wrapper, /assertResumeReconciliation/);
   assert.match(
     wrapper,
@@ -198,6 +255,11 @@ test("resume pula seis válidos, limita candidatos e grava checkpoint", () => {
   assert.match(engine, /if \(RESUME && !interrupt\.mayStartNext\(\)\) break/);
   assert.match(engine, /if \(RESUME\) checkpoint\(\)/);
   assert.match(engine, /resume-checkpoint\.json/);
+  assert.match(engine, /databaseAssessment\.state !== "CONSISTENT"/);
+  assert.match(
+    engine,
+    /PASS: reconciliação e preflight dos 14 concluídos sem escrita externa/,
+  );
   assert.ok(
     engine.indexOf("const prepared = []") <
       engine.indexOf("fs.mkdirSync(BACKUPS"),

@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { CUTOFF_ISO, POLICY, isLegacyCandidate, sha256 } from "../lib/cloudinary-legacy-optimize.mjs";
 import { evaluateDatabaseReferences } from "../lib/cloudinary-stage2-inspection.mjs";
 import {
-  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, importLegacyEvidence,
+  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, formatCloudinaryRateLimit, importLegacyEvidence,
   loadLegacyFiles, newState, runGlobalExecutor, summarizeState, writeReports,
 } from "../lib/cloudinary-stage2-global.mjs";
 
@@ -23,7 +23,7 @@ async function request(url, options = {}, binary = false, cloudinary = false) {
   try { response = await fetch(url, { ...options, signal: AbortSignal.timeout(TIMEOUT) }); }
   catch (error) { const wrapped = new SystemicStage2Error(`indisponibilidade geral: ${safe(error.message)}`, error); wrapped.systemic = true; throw wrapped; }
   const retryAfter = response.headers.get("retry-after") || response.headers.get("x-ratelimit-reset");
-  if (cloudinary && response.status === 420) { const error = new CloudinaryRateLimitError("Rate Limit Exceeded"); error.retryAfter = retryAfter; throw error; }
+  if (cloudinary && response.status === 420) { const body = await response.text().catch(() => ""); let detail = body; try { const parsed = JSON.parse(body); detail = parsed?.error?.message || parsed?.message || body; } catch {} const error = new CloudinaryRateLimitError(detail || "Rate Limit Exceeded"); error.retryAfter = retryAfter; throw error; }
   if (binary) { const body = Buffer.from(await response.arrayBuffer()); if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { httpStatus: response.status, systemic: response.status === 401 || response.status >= 500 }); return body; }
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body?.error) throw Object.assign(new Error(safe(body?.error?.message || body?.message || `HTTP ${response.status}`)), { httpStatus: response.status, systemic: response.status === 401 || response.status >= 500 });
@@ -123,6 +123,6 @@ try {
   await checkpoint(); show(state);
 } catch (error) {
   await checkpoint();
-  if (error instanceof CloudinaryRateLimitError) { const s = summarizeState(state); console.error(`PAUSADO — CLOUDINARY RATE LIMIT\nConcluídos: ${s.completed}\nPendentes: ${s.remaining}\nBloqueados: ${s.blocked}\nEconomia acumulada: ${human(s.savings_bytes)}\nPróximo asset: ${s.next_asset || "nenhum"}\nLiberado após: ${state.paused?.retry_after || "não informado"}`); process.exitCode = 2; }
+  if (error instanceof CloudinaryRateLimitError) { const s = summarizeState(state), release = formatCloudinaryRateLimit(error.message); const releaseText = release.found ? `Cloudinary informou liberação: ${release.utc_text} UTC\nHorário de São Paulo: ${release.sao_paulo_text}\nPara continuar depois desse horário:\nnode scripts/cloudinary-stage2-global.mjs --continue` : `Erro original: ${error.message}\nPara continuar quando o limite for liberado:\nnode scripts/cloudinary-stage2-global.mjs --continue`; console.error(`PAUSADO — CLOUDINARY RATE LIMIT\n${releaseText}\nConcluídos: ${s.completed}\nPendentes: ${s.remaining}\nBloqueados: ${s.blocked}\nEconomia acumulada: ${human(s.savings_bytes)}\nPróximo asset: ${s.next_asset || "nenhum"}`); process.exitCode = 2; }
   else { console.error(`PAUSADO — FALHA SISTÊMICA: ${safe(error.message)}`); process.exitCode = 1; }
 }

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, importLegacyEvidence,
+  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, formatCloudinaryRateLimit, importLegacyEvidence,
   newState, nextAsset, runGlobalExecutor, summarizeState,
 } from "../lib/cloudinary-stage2-global.mjs";
 
@@ -79,4 +79,29 @@ test("hundreds of candidates are processed without a fixed batch", async () => {
   const state = newState(candidates(500));
   await runGlobalExecutor({ state, checkpoint: checkpointFor(state), preflight: async () => ({ approved: true }), processAsset: async () => ({ bytes_after: 1000, savings_bytes: 1000 }), recover: async () => {}, logger: () => {} });
   assert.equal(summarizeState(state).completed, 500); assert.equal(state.checkpoints, 1500);
+});
+
+test("converts Cloudinary UTC release to America/Sao_Paulo", () => {
+  const result = formatCloudinaryRateLimit("Rate Limit Exceeded. Try again on 2026-09-14 10:30:00 UTC");
+  assert.equal(result.utc_text, "2026-09-14 10:30"); assert.equal(result.sao_paulo_text, "14/09/2026 às 07:30");
+});
+
+test("UTC conversion preserves the previous local calendar day", () => {
+  const result = formatCloudinaryRateLimit("Try again on 2026-09-14 01:00:00 UTC");
+  assert.equal(result.sao_paulo_text, "13/09/2026 às 22:00");
+});
+
+test("420 message with release time returns display-ready details", () => {
+  const result = formatCloudinaryRateLimit("Rate Limit Exceeded: Try again on 2026-09-14 01:00:00 UTC");
+  assert.equal(result.found, true); assert.equal(result.utc, "2026-09-14T01:00:00.000Z");
+});
+
+test("420 message without release time preserves original error", () => {
+  const message = "Rate Limit Exceeded without reset information", result = formatCloudinaryRateLimit(message);
+  assert.equal(result.found, false); assert.equal(result.original_message, message);
+});
+
+test("formatting reset time performs no Cloudinary call", () => {
+  let calls = 0; const previous = globalThis.fetch; globalThis.fetch = async () => { calls += 1; throw new Error("unexpected request"); };
+  try { formatCloudinaryRateLimit("Try again on 2026-09-14 01:00:00 UTC"); assert.equal(calls, 0); } finally { globalThis.fetch = previous; }
 });

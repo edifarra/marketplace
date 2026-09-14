@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, formatCloudinaryRateLimit, importLegacyEvidence,
+  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, ensureExternalBackup, formatCloudinaryRateLimit, importLegacyEvidence,
   newState, nextAsset, runGlobalExecutor, summarizeState,
 } from "../lib/cloudinary-stage2-global.mjs";
 
@@ -104,4 +104,30 @@ test("420 message without release time preserves original error", () => {
 test("formatting reset time performs no Cloudinary call", () => {
   let calls = 0; const previous = globalThis.fetch; globalThis.fetch = async () => { calls += 1; throw new Error("unexpected request"); };
   try { formatCloudinaryRateLimit("Try again on 2026-09-14 01:00:00 UTC"); assert.equal(calls, 0); } finally { globalThis.fetch = previous; }
+});
+
+test("new external backup is mandatory, non-empty and SHA-256 verified", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "stage2-external-")), file = path.join(directory, "asset__v7.jpg"), buffer = Buffer.from("original asset");
+  const result = ensureExternalBackup({ file, buffer, assetId: "asset-1", publicId: "produtos/1", version: 7, format: "jpg" });
+  assert.equal(result.verified, true); assert.equal(result.bytes, buffer.length); assert.match(result.sha256, /^[a-f0-9]{64}$/); assert.equal(result.version, 7);
+});
+
+test("empty or divergent external backup prevents overwrite preparation", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "stage2-external-fail-")), file = path.join(directory, "asset__v1.jpg");
+  assert.throws(() => ensureExternalBackup({ file, buffer: Buffer.alloc(0), assetId: "a", publicId: "p", version: 1, format: "jpg" }), /vazio/);
+  fs.writeFileSync(file, "different");
+  assert.throws(() => ensureExternalBackup({ file, buffer: Buffer.from("expected"), assetId: "a", publicId: "p", version: 1, format: "jpg" }), /SHA-256/);
+});
+
+test("executor has no native backup calls and rollback uploads external backup", () => {
+  const source = fs.readFileSync(new URL("../scripts/cloudinary-stage2-global.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /download_backup|resources\/restore|form\.set\(["']backup["']/);
+  assert.doesNotMatch(source, /BACKUP NATIVO OK/);
+  assert.match(source, /upload\(account, fs\.readFileSync\(asset\.external_backup\.path\)/);
+  assert.match(source, /sha256\(backup\) !== asset\.sha256/);
+});
+
+test("legacy state with native backup remains compatible", () => {
+  const state = newState(candidates(1)); state.assets[0].native_backup = { version_id: "legacy-version", recoverable: true }; state.assets[0].status = "COMPLETED";
+  assert.equal(summarizeState(state).completed, 1); assert.equal(nextAsset(state), null); assert.equal(state.assets[0].native_backup.version_id, "legacy-version");
 });

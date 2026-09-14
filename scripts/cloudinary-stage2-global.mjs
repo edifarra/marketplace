@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { CUTOFF_ISO, POLICY, isLegacyCandidate, sha256 } from "../lib/cloudinary-legacy-optimize.mjs";
 import { evaluateDatabaseReferences } from "../lib/cloudinary-stage2-inspection.mjs";
 import {
-  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, formatCloudinaryRateLimit, importLegacyEvidence,
+  CloudinaryRateLimitError, SystemicStage2Error, atomicWriteJson, ensureExternalBackup, formatCloudinaryRateLimit, importLegacyEvidence,
   loadLegacyFiles, newState, runGlobalExecutor, summarizeState, writeReports,
 } from "../lib/cloudinary-stage2-global.mjs";
 
@@ -31,9 +31,7 @@ async function request(url, options = {}, binary = false, cloudinary = false) {
 }
 async function rows(db, table, columns) { const out = []; for (let from = 0; ; from += 1000) { const result = await db.from(table).select(columns).range(from, from + 999); if (result.error) throw new SystemicStage2Error(`${table}: ${result.error.message}`); out.push(...(result.data || [])); if (!result.data || result.data.length < 1000) return out; } }
 const detail = (account, assetId) => request(`https://api.cloudinary.com/v1_1/${account.cloud}/resources/${encodeURIComponent(assetId)}?versions=true&max_results=100`, { headers: { Authorization: basic(account) } }, false, true);
-async function upload(account, buffer, asset) { const form = new FormData(); form.set("file", new Blob([buffer], { type: asset.format === "png" ? "image/png" : "image/jpeg" }), `asset.${asset.format}`); form.set("public_id", asset.public_id); form.set("backup", "true"); form.set("overwrite", "true"); form.set("invalidate", "true"); return request(`https://api.cloudinary.com/v1_1/${account.cloud}/image/upload`, { method: "POST", headers: { Authorization: basic(account) }, body: form }, false, true); }
-async function restore(account, assetId, versionId) { const form = new URLSearchParams(); form.append("asset_ids[]", assetId); form.append("versions[]", versionId); return request(`https://api.cloudinary.com/v1_1/${account.cloud}/resources/restore`, { method: "POST", headers: { Authorization: basic(account), "content-type": "application/x-www-form-urlencoded" }, body: form }, false, true); }
-const backupDownload = (account, assetId, versionId) => request(`https://api.cloudinary.com/v1_1/${account.cloud}/download_backup?${new URLSearchParams({ asset_id: assetId, version_id: versionId })}`, { headers: { Authorization: basic(account) } }, true, true);
+async function upload(account, buffer, asset) { const form = new FormData(); form.set("file", new Blob([buffer], { type: asset.format === "png" ? "image/png" : "image/jpeg" }), `asset.${asset.format}`); form.set("public_id", asset.public_id); form.set("overwrite", "true"); form.set("invalidate", "true"); return request(`https://api.cloudinary.com/v1_1/${account.cloud}/image/upload`, { method: "POST", headers: { Authorization: basic(account) }, body: form }, false, true); }
 async function optimize(buffer, format) { let pipeline = sharp(buffer, { failOn: "warning" }).rotate().resize({ width: POLICY.maxDimension, height: POLICY.maxDimension, fit: "inside", withoutEnlargement: true }); pipeline = /png/i.test(format) ? pipeline.png({ compressionLevel: POLICY.pngCompressionLevel, adaptiveFiltering: true }) : pipeline.jpeg({ quality: POLICY.jpegQuality, progressive: true, chromaSubsampling: POLICY.jpegChromaSubsampling, mozjpeg: true }); return pipeline.toBuffer(); }
 function human(bytes) { return bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} GB` : `${(bytes / 1048576).toFixed(2)} MB`; }
 function show(state) { const s = summarizeState(state); console.log(`Total conhecido: ${s.total}\nCompleted: ${s.completed}\nPreflight aprovado: ${s.preflight_approved}\nPendentes: ${s.pending}\nRestantes executáveis: ${s.remaining}\nBloqueados: ${s.blocked}\nEconomia: ${human(s.savings_bytes)}\nPróximo asset: ${s.next_asset || "nenhum"}`); }
@@ -84,13 +82,8 @@ async function processAsset(asset, phase) {
   const current = await detail(account, asset.asset_id);
   if (String(current.asset_id) !== String(asset.asset_id) || String(current.public_id) !== String(asset.public_id)) throw new Error("identidade atual divergiu");
   const original = await request(current.secure_url, { cache: "no-store" }, true), originalHash = sha256(original), meta = await sharp(original).metadata();
-  fs.mkdirSync(BACKUPS, { recursive: true }); const backupPath = path.join(BACKUPS, `${asset.asset_id}__v${current.version}.${current.format}`);
-  if (fs.existsSync(backupPath)) { if (sha256(fs.readFileSync(backupPath)) !== originalHash) throw new SystemicStage2Error("backup externo existente diverge"); }
-  else fs.writeFileSync(backupPath, original, { flag: "wx" });
-  asset.external_backup = { path: backupPath, bytes: original.length, sha256: originalHash, valid: true }; asset.sha256 = originalHash; asset.bytes_before = original.length; asset.dimensions_before = { width: meta.width, height: meta.height }; await phase("EXTERNAL_BACKUP_READY"); console.log(`[${asset.order}/${state.assets.length}] BACKUP EXTERNO OK`);
-  const armed = await upload(account, original, current), armedDetail = await detail(account, asset.asset_id); const native = (armedDetail.versions || []).find(item => String(item.version) === String(armed.version));
-  if (!armedDetail.backup || !native?.version_id) throw new Error("backup nativo não foi criado"); const nativeBytes = await backupDownload(account, asset.asset_id, native.version_id); if (sha256(nativeBytes) !== originalHash) throw new Error("backup nativo divergiu");
-  asset.native_backup = { armed_version: armed.version, version_id: native.version_id, sha256: originalHash, recoverable: true }; await phase("NATIVE_BACKUP_READY"); console.log(`[${asset.order}/${state.assets.length}] BACKUP NATIVO OK`);
+  const backupPath = path.join(BACKUPS, `${asset.asset_id}__v${current.version}.${current.format}`);
+  asset.external_backup = ensureExternalBackup({ file: backupPath, buffer: original, assetId: current.asset_id, publicId: current.public_id, version: current.version, format: current.format }); asset.backup_external_verified = true; asset.backup_external_sha256 = asset.external_backup.sha256; asset.sha256 = originalHash; asset.bytes_before = original.length; asset.dimensions_before = { width: meta.width, height: meta.height }; await phase("EXTERNAL_BACKUP_READY"); console.log(`[${asset.order}/${state.assets.length}] BACKUP EXTERNO OK`); console.log(`[${asset.order}/${state.assets.length}] SHA-256 OK`);
   const optimized = await optimize(original, current.format), optimizedHash = sha256(optimized); asset.optimized_sha256 = optimizedHash; console.log(`[${asset.order}/${state.assets.length}] OTIMIZANDO`);
   let changed;
   try {
@@ -101,19 +94,20 @@ async function processAsset(asset, phase) {
     console.log(`[${asset.order}/${state.assets.length}] COMPLETED — ${human(original.length)} -> ${human(after.bytes)} — -${((1 - after.bytes / original.length) * 100).toFixed(1)}%`); return result;
   } catch (error) {
     if (Number(error?.httpStatus) === 420) throw error;
-    await restore(account, asset.asset_id, native.version_id); const restored = await detail(account, asset.asset_id); const bytes = await request(`${restored.secure_url}?_rollback=${Date.now()}`, { cache: "no-store" }, true);
-    const wrapped = new Error(`${error.message}; rollback ${sha256(bytes) === originalHash ? "confirmado" : "não confirmado"}`); wrapped.rolledBack = sha256(bytes) === originalHash; throw wrapped;
+    const restoredUpload = await upload(account, fs.readFileSync(asset.external_backup.path), current); const restored = await detail(account, asset.asset_id); const bytes = await request(`${restoredUpload.secure_url}?_rollback=${Date.now()}`, { cache: "no-store" }, true);
+    const rollbackOk = restored.asset_id === asset.asset_id && restored.public_id === asset.public_id && sha256(bytes) === originalHash; const wrapped = new Error(`${error.message}; rollback externo ${rollbackOk ? "confirmado" : "não confirmado"}`); wrapped.rolledBack = rollbackOk; throw wrapped;
   }
 }
 async function recoverAsset(asset) {
   if (["BEFORE_OVERWRITE", "EXTERNAL_BACKUP_READY", "NATIVE_BACKUP_READY"].includes(asset.phase)) { asset.status = "PREFLIGHT_APPROVED"; asset.phase = null; await checkpoint(); return; }
-  if (asset.phase !== "OVERWRITE_DONE" || !asset.optimized_sha256 || !asset.native_backup?.version_id) throw Object.assign(new Error("estado PROCESSING sem evidência suficiente para recuperação"), { recoverable: false });
+  if (asset.phase !== "OVERWRITE_DONE" || !asset.optimized_sha256 || !asset.external_backup?.path || !asset.sha256) throw Object.assign(new Error("estado PROCESSING sem backup externo verificado para recuperação"), { recoverable: false });
   const current = await detail(account, asset.asset_id), delivered = await request(`${current.secure_url}?_recover=${Date.now()}`, { cache: "no-store" }, true), hash = sha256(delivered);
   if (hash === asset.optimized_sha256 && current.asset_id === asset.asset_id && current.public_id === asset.public_id && Number(current.bytes) < Number(asset.bytes_before)) {
     const meta = await sharp(delivered).metadata(); Object.assign(asset, { status: "COMPLETED", phase: null, current_version: current.version, bytes_after: Number(current.bytes), dimensions_after: { width: meta.width, height: meta.height }, savings_bytes: Number(asset.bytes_before) - Number(current.bytes), processed_at: new Date().toISOString(), error: null }); await checkpoint(); return;
   }
-  await restore(account, asset.asset_id, asset.native_backup.version_id); const restored = await detail(account, asset.asset_id), original = await request(`${restored.secure_url}?_recover_rollback=${Date.now()}`, { cache: "no-store" }, true);
-  asset.status = sha256(original) === asset.sha256 ? "ROLLED_BACK" : "BLOCKED"; asset.phase = null; asset.error = { message: asset.status === "ROLLED_BACK" ? "interrupção pós-overwrite: rollback confirmado" : "interrupção pós-overwrite: rollback não comprovado", recoverable: false }; await checkpoint();
+  const backup = fs.readFileSync(asset.external_backup.path); if (backup.length === 0 || sha256(backup) !== asset.sha256) throw Object.assign(new Error("backup externo inválido durante recuperação"), { recoverable: false });
+  const restoredUpload = await upload(account, backup, asset), restored = await detail(account, asset.asset_id), original = await request(`${restoredUpload.secure_url}?_recover_rollback=${Date.now()}`, { cache: "no-store" }, true);
+  asset.status = restored.asset_id === asset.asset_id && restored.public_id === asset.public_id && sha256(original) === asset.sha256 ? "ROLLED_BACK" : "BLOCKED"; asset.phase = null; asset.error = { message: asset.status === "ROLLED_BACK" ? "interrupção pós-overwrite: rollback externo confirmado" : "interrupção pós-overwrite: rollback externo não comprovado", recoverable: false }; await checkpoint();
 }
 const stop = { requested: false };
 for (const event of ["SIGINT", "SIGTERM"]) process.on(event, () => { stop.requested = true; console.warn(`${event} recebido; nenhum próximo asset será iniciado.`); });

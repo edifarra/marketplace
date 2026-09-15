@@ -315,7 +315,7 @@ async function ensureProduct(
   return { productId, sku: String(result.data.sku || sku) };
 }
 
-export async function syncListingsStock(productId: string, stock: number, origin?: { marketplace?: string; accountId?: string; sourceType?: string }, processImmediately = true) {
+export async function syncListingsStock(productId: string, stock: number, origin?: { marketplace?: string; accountId?: string; sourceType?: string; skipTiny?: boolean }, processImmediately = true) {
   const supabase = supabaseAdmin();
   const [result, legacyLinks, product, inventory, variationLinks] = await Promise.all([
     supabase.from("listings").select("id,marketplace,marketplace_account_id,external_listing_id,stock,status,paused_by_stock_control").eq("product_id", productId).throwOnError(),
@@ -375,7 +375,7 @@ export async function syncListingsStock(productId: string, stock: number, origin
       }, sourceType: origin?.sourceType || "sale", sourceId: null, stockVersion: Number(inventory.data.stock_version || 0)
     });
   }
-  if (product.data.tiny_product_id) {
+  if (product.data.tiny_product_id && !origin?.skipTiny) {
     await enqueueOutgoingActivity({ destination: "tiny", activityType: "stock_update", productId,
       sku: String(product.data.sku), productName: String(product.data.title || ""), listingId: String(product.data.tiny_product_id),
       previousData: {}, requestedData: { stock, status: stock > 0 ? "active" : "zero" }, sourceType: origin?.sourceType || "sale", sourceId: null,

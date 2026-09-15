@@ -436,7 +436,7 @@ export async function updateProductDetailsAction(formData: FormData) {
       // O Mercado Livre rejeita atualizacoes completas de anuncios sem saldo.
       // Conservamos a intencao para publicar todos os atributos no primeiro
       // crescimento de estoque, sem fazer uma chamada externa que ja falharia.
-      await syncListingsStock(productId, availableStock, { sourceType: "product_update" }, false);
+      await syncListingsStock(productId, availableStock, { sourceType: "product_update", skipTiny: true }, false);
       await db.from("products").update({ marketplace_update_pending: true }).eq("id", productId).throwOnError();
     }
     waitUntil(drainOutgoingActivities());

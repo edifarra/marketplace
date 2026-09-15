@@ -33,8 +33,8 @@ test("foto 2 propria nao remove fundo", () => {
   );
 });
 
-test("foto 1 de marketplace aplica somente orientacao e fundo", () => {
-  assert.equal(cloudinaryIncomingTransformation("marketplace", 1), "a_auto/e_background_removal,b_white/f_jpg");
+test("foto 1 de marketplace aplica somente fundo branco, sem redimensionar ou recodificar", () => {
+  assert.equal(cloudinaryIncomingTransformation("marketplace", 1), "e_background_removal,b_white");
 });
 
 test("fotos 2 a 6 de marketplace e masters clonados nao sao transformados", () => {

@@ -14,6 +14,14 @@ export function buildShopeeStockPayload(itemId: string | number, modelIds: Array
   };
 }
 
+export function buildMercadoLivreStockRequests(stock: number, reactivateIfStockControlled: boolean) {
+  const quantity = normalizedStock(stock);
+  if (quantity === 0) return [{ status: "paused" }];
+  return reactivateIfStockControlled
+    ? [{ status: "active" }, { available_quantity: quantity }]
+    : [{ available_quantity: quantity }];
+}
+
 function uniquePositiveIds(values: Array<string | number>) {
   return [...new Set(values.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
 }

@@ -36,16 +36,21 @@ export async function recoverTemporaryImagesWhenCloudinaryIsUnavailable(
     || (await Promise.all(currentImages.map(image => isReachableCloudinaryUrl(image.cloudinary_url)))).some(reachable => !reachable);
   if (!unavailable) return null;
 
-  const links = await supabaseAdmin().from("product_marketplaces")
+  const db = supabaseAdmin();
+  const [linksResult, accountsResult] = await Promise.all([
+    db.from("product_marketplaces")
     .select("marketplace,marketplace_account_id,marketplace_product_id,raw_data,updated_at")
     .eq("product_id", productId)
     .eq("existe_no_marketplace", true)
     .not("marketplace_product_id", "is", null)
-    .throwOnError();
-  const ordered = [...(links.data || [])]
+    .throwOnError(),
+    db.from("config_marketplace_accounts").select("id,marketplace,name,created_at").eq("active", true).throwOnError()
+  ]);
+  const accountOrder = new Map(orderMarketplaceAccounts(accountsResult.data || []).map((account, index) => [String(account.id), index]));
+  const ordered = [...(linksResult.data || [])]
     .filter(link => link.marketplace === "mercado_livre" || link.marketplace === "shopee")
-    .sort((left, right) => marketplacePriority(String(left.marketplace)) - marketplacePriority(String(right.marketplace))
-      || String(left.updated_at || "").localeCompare(String(right.updated_at || "")));
+    .sort((left, right) => (accountOrder.get(String(left.marketplace_account_id)) ?? Number.MAX_SAFE_INTEGER)
+      - (accountOrder.get(String(right.marketplace_account_id)) ?? Number.MAX_SAFE_INTEGER));
 
   for (const link of ordered) {
     const marketplace = link.marketplace as Marketplace;
@@ -124,4 +129,10 @@ async function isReachableCloudinaryUrl(url: string | null | undefined) {
   }
 }
 
-function marketplacePriority(marketplace: string) { return marketplace === "mercado_livre" ? 0 : 1; }
+export function orderMarketplaceAccounts<T extends { marketplace?: unknown; name?: unknown; created_at?: unknown }>(accounts: T[]) {
+  return [...accounts].sort((left, right) => marketplacePriority(String(left.marketplace)) - marketplacePriority(String(right.marketplace))
+    || String(left.created_at || "").localeCompare(String(right.created_at || ""))
+    || String(left.name || "").localeCompare(String(right.name || ""), "pt-BR"));
+}
+
+function marketplacePriority(marketplace: string) { return marketplace === "mercado_livre" ? 0 : marketplace === "shopee" ? 1 : 2; }

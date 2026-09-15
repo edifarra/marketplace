@@ -339,9 +339,15 @@ export async function updateProductDetailsAction(formData: FormData) {
   try { preparedImages = JSON.parse(text("preparedImages") || "[]") as PreparedImage[]; } catch { redirect(detailError("Os dados das fotos processadas ficaram inconsistentes. Envie as fotos novamente.")); }
   if (imageSequence.length === 0) redirect(detailError("Preencha os campos obrigatórios: adicione pelo menos a Foto 1."));
   if (imageSequence.length > 6) redirect(detailError("O produto pode possuir no máximo 6 fotos."));
-  if (newKeys.length !== preparedImages.length || preparedImages.some(image => !image.key || !image.url || !image.publicId)) redirect(detailError("Aguarde o processamento de todas as fotos antes de salvar."));
+  const preparedByKey = new Map(preparedImages.map(image => [image.key, image]));
+  if (newKeys.length !== preparedImages.length || new Set(newKeys).size !== newKeys.length
+    || preparedImages.some(image => !image.key || !image.url || !image.publicId)
+    || newKeys.some(key => !preparedByKey.has(key))) redirect(detailError("Aguarde o processamento de todas as fotos antes de salvar."));
+  const misplacedUpload = imageSequence.findIndex((token, index) => token.startsWith("new:")
+    && Number(preparedByKey.get(token.slice("new:".length))?.position) !== index + 1);
+  if (misplacedUpload >= 0) redirect(detailError("A ordem das fotos mudou durante o processamento. Aguarde o novo tratamento antes de salvar."));
   if (imageSequence.some(token => !token.startsWith("existing:") && !token.startsWith("new:") && !token.startsWith("remote:"))) redirect(detailError("A sequência das fotos ficou inconsistente. Abra novamente o produto antes de salvar."));
-  const newImagesByKey = new Map(preparedImages.map(image => [image.key, image]));
+  const newImagesByKey = preparedByKey;
   const remoteImagesByKey = new Map<string, { buffer: Buffer; name: string }>();
   if (remoteKeys.length) {
     const recoveryMarketplace = text("recoveryMarketplace");

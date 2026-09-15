@@ -103,10 +103,10 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
     db.from("products").select("*,product_images(position,url,cloudinary_url)").eq("id", productId).single().throwOnError(),
     db.from("product_marketplaces").select("marketplace,marketplace_account_id,marketplace_product_id,titulo_marketplace,valor_marketplace,family_id,family_name,user_product_id,raw_data")
       .eq("product_id", productId).eq("existe_no_marketplace", true).throwOnError(),
-    db.from("listings").select("marketplace,marketplace_account_id,external_listing_id,price")
+    db.from("listings").select("marketplace,marketplace_account_id,external_listing_id,price,paused_by_stock_control")
       .eq("product_id", productId).not("external_listing_id", "is", null).throwOnError()
   ]);
-  const links = new Map<string, { marketplace: string; marketplace_account_id: string; marketplace_product_id: string; titulo_marketplace?: string | null; valor_marketplace?: number | null; family_id?: string | null; family_name?: string | null; user_product_id?: string | null; raw_data?: Record<string, any> | null }>();
+  const links = new Map<string, { marketplace: string; marketplace_account_id: string; marketplace_product_id: string; titulo_marketplace?: string | null; valor_marketplace?: number | null; family_id?: string | null; family_name?: string | null; user_product_id?: string | null; raw_data?: Record<string, any> | null; paused_by_stock_control?: boolean }>();
   for (const link of linksResult.data || []) {
     if (!link.marketplace_account_id || !link.marketplace_product_id) continue;
     links.set(`${link.marketplace_account_id}:${link.marketplace_product_id}`, link as any);
@@ -114,8 +114,10 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
   for (const link of listingLinksResult.data || []) {
     if (!link.marketplace_account_id || !link.external_listing_id) continue;
     const key = `${link.marketplace_account_id}:${link.external_listing_id}`;
-    if (!links.has(key)) links.set(key, { marketplace: String(link.marketplace), marketplace_account_id: String(link.marketplace_account_id),
-      marketplace_product_id: String(link.external_listing_id), valor_marketplace: Number(link.price || 0) });
+    const existing = links.get(key);
+    if (existing) existing.paused_by_stock_control = Boolean(link.paused_by_stock_control);
+    else links.set(key, { marketplace: String(link.marketplace), marketplace_account_id: String(link.marketplace_account_id),
+      marketplace_product_id: String(link.external_listing_id), valor_marketplace: Number(link.price || 0), paused_by_stock_control: Boolean(link.paused_by_stock_control) });
   }
   if (!links.size) return [];
   if (changes && !changes.title && !changes.price && !changes.attributes && !changes.images) return [];
@@ -186,6 +188,7 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
         ...(managedTitleRecovery ? { managedTitleRecovery } : {}),
         ...(fullAttributeUpdate && destination === "mercado_livre" ? { description: htmlToPlainText(String(product.description || "")) } : {}),
         ...(imageUrls && destination === "shopee" ? { imageUrls } : {}),
+        ...(destination === "mercado_livre" && stock > 0 ? { reactivateIfStockControlled: Boolean(link.paused_by_stock_control) } : {}),
         ...(fullAttributeUpdate ? { stock } : {}) },
       sourceType: "product_update", sourceId: productId }));
   }

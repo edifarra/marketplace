@@ -22,7 +22,9 @@ export type CloudinaryImageSource = "owned" | "marketplace" | "stored_master";
 export function cloudinaryIncomingTransformation(source: CloudinaryImageSource, position: number) {
   if (source === "marketplace" && position > 1) return "";
   if (source === "stored_master") return "";
-  if (source === "marketplace") return "a_auto/e_background_removal,b_white/f_jpg";
+  // Marketplace masters must retain their original geometry and encoding. The
+  // cover receives only the explicitly requested background treatment.
+  if (source === "marketplace") return "e_background_removal,b_white";
   const cover = position === 1 ? "e_background_removal,b_white/" : "";
   return `a_auto/${cover}c_limit,w_${CLOUDINARY_MASTER_MAX_PX},h_${CLOUDINARY_MASTER_MAX_PX}/q_auto:good,f_jpg`;
 }

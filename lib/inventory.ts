@@ -318,7 +318,7 @@ async function ensureProduct(
 export async function syncListingsStock(productId: string, stock: number, origin?: { marketplace?: string; accountId?: string; sourceType?: string }, processImmediately = true) {
   const supabase = supabaseAdmin();
   const [result, legacyLinks, product, inventory, variationLinks] = await Promise.all([
-    supabase.from("listings").select("id,marketplace,marketplace_account_id,external_listing_id,stock,status").eq("product_id", productId).throwOnError(),
+    supabase.from("listings").select("id,marketplace,marketplace_account_id,external_listing_id,stock,status,paused_by_stock_control").eq("product_id", productId).throwOnError(),
     supabase.from("product_marketplaces").select("id,marketplace,marketplace_account_id,marketplace_product_id,estoque_marketplace,status_anuncio")
       .eq("product_id", productId).eq("existe_no_marketplace", true).throwOnError(),
     supabase.from("products").select("sku,title,tiny_product_id,mercado_livre_parent_listing_id,mercado_livre_variation_id,marketplace_update_pending").eq("id", productId).single().throwOnError(),
@@ -366,6 +366,7 @@ export async function syncListingsStock(productId: string, stock: number, origin
       previousData: { stock: listing.stock, status: listing.status }, requestedData: {
         stock,
         status: stock <= 0 ? (listing.marketplace === "mercado_livre" ? "paused" : "zero") : "active",
+        ...(listing.marketplace === "mercado_livre" ? { reactivateIfStockControlled: Boolean(listing.paused_by_stock_control) } : {}),
         ...(listing.marketplace === "mercado_livre" && listingVariationIds.length
           ? { variationIds: listingVariationIds.map(Number).filter(Boolean) }
           : listing.marketplace === "shopee" && listingVariationIds.length

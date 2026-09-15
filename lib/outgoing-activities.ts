@@ -4,7 +4,7 @@ import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createTinyProduct, deactivateTinyProductById, findTinyProductId, getTinyProductInventory, getTinyProductSnapshot, updateTinyProduct, updateTinyProductPriceById, updateTinyProductStockById } from "./tiny";
 import { htmlToPlainText } from "./html-to-plain-text";
-import { buildMercadoLivreVariationStockPayload } from "./marketplace-stock-payloads";
+import { buildMercadoLivreStockRequests, buildMercadoLivreVariationStockPayload } from "./marketplace-stock-payloads";
 import { executeConversationReply, markConversationReplyError } from "./marketplace-conversations";
 import { normalizeMercadoLivrePackageAttributes } from "./effective-product";
 import { prepareManagedTitleRetry } from "./mercado-livre-managed-title";
@@ -105,6 +105,7 @@ export async function processOutgoingActivities(limit = 10) {
         const confirmedStatus = String(confirmed.status || (confirmedStock <= 0 ? "paused" : "active"));
         await Promise.all([
           db.from("listings").update({ stock: confirmedStock, status: confirmedStatus === "active" ? "active" : "paused",
+            paused_by_stock_control: activity.destination === "mercado_livre" ? confirmedStatus !== "active" : false,
             last_sync_at: new Date().toISOString(), error_message: null })
             .eq("marketplace_account_id", activity.marketplace_account_id).eq("external_listing_id", activity.listing_id),
           db.from("product_marketplaces").update({ estoque_marketplace: confirmedStock, status_anuncio: confirmedStatus,
@@ -120,6 +121,7 @@ export async function processOutgoingActivities(limit = 10) {
           db.from("listings").update({
             ...(Number.isFinite(confirmedPrice) ? { price: confirmedPrice } : {}),
             ...(Number.isFinite(confirmedStock) ? { stock: confirmedStock } : {}),
+            ...(String(confirmed.status) === "active" ? { paused_by_stock_control: false } : {}),
             last_sync_at: now, error_message: null
           }).eq("marketplace_account_id", activity.marketplace_account_id).eq("external_listing_id", activity.listing_id),
           db.from("product_marketplaces").update({
@@ -341,7 +343,13 @@ async function updateAndConfirmListing(activity: Record<string, any>) {
       await mlApi(`/items/${listingId}`, token, "PUT", payload);
     }
     if (activity.requested_data?.description !== undefined) await mlApi(`/items/${listingId}/description`, token, "PUT", { plain_text: htmlToPlainText(String(activity.requested_data.description || "")) });
-    const remote = await mlApi(`/items/${listingId}`, token, "GET");
+    let remote = await mlApi(`/items/${listingId}`, token, "GET");
+    if (Number(activity.requested_data?.stock) > 0 && activity.requested_data?.reactivateIfStockControlled && String(remote.status) === "paused") {
+      await mlApi(`/items/${listingId}`, token, "PUT", { status: "active" });
+      await mlApi(`/items/${listingId}`, token, "PUT", { available_quantity: Number(activity.requested_data.stock) });
+      remote = await mlApi(`/items/${listingId}`, token, "GET");
+      if (String(remote.status) !== "active") throw new Error(`Mercado Livre confirmou status ${remote.status}, esperado active apos reposicao de estoque.`);
+    }
     await synchronizeMercadoLivreManagedProduct(activity, remote);
     return { listingId, status: remote.status, title: remote.title, price: remote.price };
   }
@@ -662,6 +670,9 @@ async function updateAndConfirmMercadoLivre(activity: Record<string, any>, stock
     activity.requested_data?.variationId
   ].map(Number).filter((id) => id > 0))];
   if (variationIds.length > 0) {
+    if (stock > 0 && activity.requested_data?.reactivateIfStockControlled) {
+      await mlRequest(listingId, token, "PUT", { status: "active" });
+    }
     await mlRequest(listingId, token, "PUT", buildMercadoLivreVariationStockPayload(variationIds, stock));
     const remote = await mlRequest(listingId, token, "GET");
     const remoteVariations = Array.isArray(remote.variations) ? remote.variations : [];
@@ -674,8 +685,9 @@ async function updateAndConfirmMercadoLivre(activity: Record<string, any>, stock
     }
     return { stock, status: remote.status, listingId, variationIds };
   }
-  const body = stock <= 0 ? { status: "paused" } : { status: "active", available_quantity: stock };
-  await mlRequest(listingId, token, "PUT", body);
+  for (const request of buildMercadoLivreStockRequests(stock, Boolean(activity.requested_data?.reactivateIfStockControlled))) {
+    await mlRequest(listingId, token, "PUT", request);
+  }
   const remote = await mlRequest(listingId, token, "GET");
   if (stock <= 0 && !["paused", "closed", "inactive"].includes(String(remote.status))) throw new Error(`Mercado Livre confirmou status ${remote.status}, esperado indisponivel.`);
   if (stock > 0 && Number(remote.available_quantity) !== stock) throw new Error(`Mercado Livre confirmou estoque ${remote.available_quantity}, esperado ${stock}.`);

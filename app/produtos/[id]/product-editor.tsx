@@ -111,14 +111,14 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     if (target < 0 || target >= current.length) return current;
     const next = [...current];
     [next[index], next[target]] = [next[target], next[index]];
-    setDirty(true); return next;
+    setDirty(true); return reconcilePreparedPositions(next);
   });
   const imageKey = (image: EditorImage) => image.kind === "existing" ? `existing:${image.id}` : `${image.kind}:${image.key}`;
   const remove = (key: string) => { setDirty(true); setOrdered((current) => { const removed = current.find(image => imageKey(image) === key); if (removed?.kind === "new") {
     activeNewImageKeysRef.current.delete(removed.key);
     if (removed.publicId) { preparedPublicIdsRef.current.delete(removed.publicId); void deletePreparedImage(removed.publicId); }
     URL.revokeObjectURL(removed.url); newImageUrlsRef.current.delete(removed.url);
-  } return current.filter(image => imageKey(image) !== key); }); };
+  } return reconcilePreparedPositions(current.filter(image => imageKey(image) !== key)); }); };
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
@@ -145,10 +145,17 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
         await deletePreparedImage(result.image.publicId);
         return;
       }
+      setOrdered(current => current.map(image => {
+        if (image.kind !== "new" || image.key !== key) return image;
+        if (image.publicId && image.publicId !== result.image.publicId) {
+          preparedPublicIdsRef.current.delete(image.publicId);
+          void deletePreparedImage(image.publicId);
+        }
+        return { ...image, url: result.image.url, bytes: result.image.bytes, width: result.image.width, height: result.image.height,
+          publicId: result.image.publicId, assetId: result.image.assetId, cloudName: result.image.cloudName,
+          uploadedPosition: result.image.position, uploadStatus: "ready" };
+      }));
       preparedPublicIdsRef.current.add(result.image.publicId);
-      setOrdered(current => current.map(image => image.kind === "new" && image.key === key ? { ...image, url: result.image.url,
-        bytes: result.image.bytes, width: result.image.width, height: result.image.height, publicId: result.image.publicId, assetId: result.image.assetId, cloudName: result.image.cloudName,
-        uploadedPosition: result.image.position, uploadStatus: "ready" } : image));
     } catch (error) {
       setOrdered(current => current.map(image => image.kind === "new" && image.key === key ? { ...image, uploadStatus: "error",
         uploadError: error instanceof Error ? error.message : String(error) } : image));
@@ -158,6 +165,14 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
   function queuePrepareImage(key: string, file: File, position: number) {
     const task = prepareImage(key, file, position).finally(() => pendingUploadsRef.current.delete(task));
     pendingUploadsRef.current.add(task);
+  }
+
+  function reconcilePreparedPositions(next: EditorImage[]): EditorImage[] {
+    return next.map((image, index) => {
+      if (image.kind !== "new" || image.uploadStatus === "uploading" || image.uploadedPosition === index + 1) return image;
+      queuePrepareImage(image.key, image.file, index + 1);
+      return { ...image, uploadStatus: "uploading" as const, uploadError: undefined };
+    });
   }
 
   async function discardPreparedAndNavigate(href: string) {

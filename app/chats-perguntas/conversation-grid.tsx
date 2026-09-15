@@ -18,8 +18,15 @@ export function ConversationGrid({ rows }: { rows: Row[] }) {
 
   useEffect(() => setLiveRows(rows), [rows]);
   useEffect(() => {
-    const timer = window.setInterval(() => router.refresh(), 5000);
-    return () => window.clearInterval(timer);
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    const timer = window.setInterval(refreshIfVisible, 30_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
   }, [router]);
 
   return <>

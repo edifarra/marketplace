@@ -1,10 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { waitUntil } from "@vercel/functions";
 import { enqueueMarketplaceActivity, marketplaceEventId } from "@/lib/marketplace-queue";
-import { processMarketplaceQueue } from "@/lib/marketplace-queue-worker";
-
-export const maxDuration = 300;
 
 export async function GET() {
   return NextResponse.json({ ok: true, marketplace: "shopee" });
@@ -43,9 +39,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (!verifiedKey) return new NextResponse(null, { status: 401 });
-  waitUntil(processMarketplaceQueue(5).catch((error) => {
-    console.error("[shopee_queue_worker]", error);
-  }));
   return new NextResponse(null, { status: 204 });
 }
 

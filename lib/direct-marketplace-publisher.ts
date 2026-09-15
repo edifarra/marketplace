@@ -97,7 +97,7 @@ export async function publishProductDirectly(productId: string, processImmediate
   return result.data || [];
 }
 
-export async function enqueueDirectListingUpdates(productId: string, target?: { accountId?: string; listingId?: string; marketplace?: string }, processImmediately = true, changes?: { title?: boolean; price?: boolean; attributes?: boolean; images?: boolean; stock?: number }) {
+export async function enqueueDirectListingUpdates(productId: string, target?: { accountId?: string; listingId?: string; marketplace?: string }, processImmediately = true, changes?: { title?: boolean; price?: boolean; attributes?: boolean; images?: boolean; stock?: number; reactivatePausedOnManualSave?: boolean }) {
   const db = supabaseAdmin();
   const [productResult, linksResult, listingLinksResult] = await Promise.all([
     db.from("products").select("*,product_images(position,url,cloudinary_url)").eq("id", productId).single().throwOnError(),
@@ -188,6 +188,7 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
         ...(managedTitleRecovery ? { managedTitleRecovery } : {}),
         ...(fullAttributeUpdate && destination === "mercado_livre" ? { description: htmlToPlainText(String(product.description || "")) } : {}),
         ...(imageUrls && destination === "shopee" ? { imageUrls } : {}),
+        ...(destination === "mercado_livre" && stock > 0 && changes?.reactivatePausedOnManualSave ? { reactivatePausedOnManualSave: true } : {}),
         ...(destination === "mercado_livre" && stock > 0 ? { reactivateIfStockControlled: Boolean(link.paused_by_stock_control) } : {}),
         ...(fullAttributeUpdate ? { stock } : {}) },
       sourceType: "product_update", sourceId: productId }));

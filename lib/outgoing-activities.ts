@@ -4,7 +4,7 @@ import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createTinyProduct, deactivateTinyProductById, findTinyProductId, getTinyProductInventory, getTinyProductSnapshot, updateTinyProduct, updateTinyProductPriceById, updateTinyProductStockById } from "./tiny";
 import { htmlToPlainText } from "./html-to-plain-text";
-import { buildMercadoLivreStockRequests, buildMercadoLivreVariationStockPayload } from "./marketplace-stock-payloads";
+import { buildMercadoLivreStockRequests, buildMercadoLivreVariationStockPayload, shouldReactivateMercadoLivreListing } from "./marketplace-stock-payloads";
 import { executeConversationReply, markConversationReplyError } from "./marketplace-conversations";
 import { normalizeMercadoLivrePackageAttributes } from "./effective-product";
 import { prepareManagedTitleRetry } from "./mercado-livre-managed-title";
@@ -344,7 +344,7 @@ async function updateAndConfirmListing(activity: Record<string, any>) {
     }
     if (activity.requested_data?.description !== undefined) await mlApi(`/items/${listingId}/description`, token, "PUT", { plain_text: htmlToPlainText(String(activity.requested_data.description || "")) });
     let remote = await mlApi(`/items/${listingId}`, token, "GET");
-    if (Number(activity.requested_data?.stock) > 0 && activity.requested_data?.reactivateIfStockControlled && String(remote.status) === "paused") {
+    if (shouldReactivateMercadoLivreListing(activity.requested_data, remote.status)) {
       await mlApi(`/items/${listingId}`, token, "PUT", { status: "active" });
       await mlApi(`/items/${listingId}`, token, "PUT", { available_quantity: Number(activity.requested_data.stock) });
       remote = await mlApi(`/items/${listingId}`, token, "GET");

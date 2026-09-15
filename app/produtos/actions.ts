@@ -430,12 +430,13 @@ export async function updateProductDetailsAction(formData: FormData) {
         listingId: String(current.data.tiny_product_id), requestedData: { reason: "product_saved", imagesChanged } });
     }
     if (availableStock > 0) {
-      await enqueueDirectListingUpdates(productId, undefined, false, { title: titleChanged, price: true, attributes: true, images: imagesChanged, stock: availableStock });
+      await enqueueDirectListingUpdates(productId, undefined, false, { title: titleChanged, price: true, attributes: true, images: imagesChanged, stock: availableStock, reactivatePausedOnManualSave: true });
       await db.from("products").update({ marketplace_update_pending: false }).eq("id", productId).throwOnError();
     } else {
       // O Mercado Livre rejeita atualizacoes completas de anuncios sem saldo.
       // Conservamos a intencao para publicar todos os atributos no primeiro
       // crescimento de estoque, sem fazer uma chamada externa que ja falharia.
+      await syncListingsStock(productId, availableStock, { sourceType: "product_update" }, false);
       await db.from("products").update({ marketplace_update_pending: true }).eq("id", productId).throwOnError();
     }
     waitUntil(drainOutgoingActivities());

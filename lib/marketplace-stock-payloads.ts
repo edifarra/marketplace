@@ -22,6 +22,13 @@ export function buildMercadoLivreStockRequests(stock: number, reactivateIfStockC
     : [{ available_quantity: quantity }];
 }
 
+export function shouldReactivateMercadoLivreListing(requestedData: Record<string, unknown> | null | undefined, remoteStatus: unknown) {
+  const stock = normalizedStock(Number(requestedData?.stock));
+  if (stock <= 0 || String(remoteStatus) !== "paused") return false;
+  return requestedData?.reactivatePausedOnManualSave === true
+    || requestedData?.reactivateIfStockControlled === true;
+}
+
 function uniquePositiveIds(values: Array<string | number>) {
   return [...new Set(values.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
 }

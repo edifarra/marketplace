@@ -14,6 +14,7 @@ import {
   sendMercadoLivrePostSaleMessage
 } from "./mercado-livre";
 import { canonicalMercadoLivreConversationId, MLB_MESSAGING_AGENT_ID, normalizeMercadoLivrePostSale, parseMercadoLivreConversationPath } from "./mercado-livre-post-sale";
+import { mercadoLivrePostSaleRevision, mercadoLivreQuestionRevision } from "./mercado-livre-conversation-reconciliation";
 import { getActiveShopeeAccounts, getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { enqueueOutgoingActivity } from "./outgoing-activities";
@@ -53,6 +54,36 @@ export async function syncMercadoLivreUnreadPostSaleConversations() {
     catch (error) { results.push({ account: account.name, ok: false, error: safeError(error) }); }
   }
   return results;
+}
+
+export async function syncMercadoLivreConversationsIncremental() {
+  const results = [];
+  for (const account of await getActiveMercadoLivreAccounts()) {
+    try {
+      results.push({ account: account.name, ...(await syncMercadoLivreAccountIncremental(account)), ok: true });
+    } catch (error) {
+      results.push({ account: account.name, ok: false, error: safeError(error) });
+    }
+  }
+  return results;
+}
+
+export async function syncMarketplaceConversationsSafetyNet() {
+  const mercadoLivre = await syncMercadoLivreConversationsIncremental();
+  const shopee = [];
+  for (const account of await getActiveShopeeAccounts()) {
+    try {
+      shopee.push({ account: account.name, ...(await syncShopeeConversationsIncremental(account)), ok: true });
+    } catch (error) {
+      shopee.push({ account: account.name, ok: false, error: safeError(error) });
+    }
+  }
+  return { mercadoLivre, shopee };
+}
+
+export async function reconcileMercadoLivrePostSaleConversationPath(account: Account, path: string) {
+  const remote = await getMercadoLivrePostSaleConversation(path, account as any);
+  return resolveAndPersistMercadoLivrePostSale(remote, account);
 }
 
 export async function processMercadoLivreConversationNotification(activity: Record<string, any>, payload: Record<string, any>) {
@@ -355,6 +386,145 @@ async function syncMercadoLivreUnreadPostSale(account: Account) {
   return count;
 }
 
+async function syncMercadoLivreAccountIncremental(account: Account) {
+  const sellerId = String(account.seller_id || account.account_id || "");
+  if (!sellerId) throw new Error(`Seller ID não configurado para ${account.name}.`);
+
+  const recent = await getMercadoLivreResource(`/questions/search?seller_id=${encodeURIComponent(sellerId)}&api_version=4&limit=50&sort_fields=date_created&sort_types=DESC`, account as any);
+  const questions = Array.isArray(recent.questions) ? recent.questions as Array<Record<string, any>> : [];
+  const questionIds = questions.map(question => String(question.id || "")).filter(Boolean);
+  const existingQuestions = questionIds.length
+    ? await supabaseAdmin().from("marketplace_conversations").select("id,external_conversation_id,raw_data")
+      .eq("marketplace", "mercado_livre").eq("marketplace_account_id", account.id)
+      .eq("conversation_type", "question").in("external_conversation_id", questionIds).throwOnError()
+    : { data: [] as Array<Record<string, any>> };
+  const existingQuestionRows = existingQuestions.data || [];
+  const revisions = new Map(existingQuestionRows.map(row => [String(row.external_conversation_id), mercadoLivreQuestionRevision(row.raw_data || {})]));
+  const questionConversationIds = existingQuestionRows.map(row => String(row.id));
+  const existingQuestionMessages = questionConversationIds.length
+    ? await supabaseAdmin().from("marketplace_conversation_messages").select("conversation_id,external_message_id")
+      .in("conversation_id", questionConversationIds).throwOnError()
+    : { data: [] as Array<Record<string, any>> };
+  const questionMessageKeys = new Set((existingQuestionMessages.data || []).map(row => `${row.conversation_id}:${row.external_message_id}`));
+  const conversationIdByQuestion = new Map(existingQuestionRows.map(row => [String(row.external_conversation_id), String(row.id)]));
+  let changedQuestions = 0;
+  for (const question of questions) {
+    const id = String(question.id || "");
+    const conversationId = conversationIdByQuestion.get(id);
+    const hasIncoming = conversationId ? questionMessageKeys.has(`${conversationId}:${id}`) : false;
+    const hasAnswer = !question.answer || (conversationId ? questionMessageKeys.has(`${conversationId}:answer:${id}`) : false);
+    if (!id || (revisions.get(id) === mercadoLivreQuestionRevision(question) && hasIncoming && hasAnswer)) continue;
+    await persistMercadoLivreQuestion(question, account);
+    changedQuestions += 1;
+  }
+
+  const pendingQuestions = await pendingMarketplaceReconciliationRows("mercado_livre", account.id, "question", 5);
+  let checkedQuestions = 0;
+  for (const conversation of pendingQuestions) {
+    if (!questionIds.includes(String(conversation.external_conversation_id))) {
+      const question = await getMercadoLivreResource(`/questions/${encodeURIComponent(String(conversation.external_conversation_id))}?api_version=4`, account as any);
+      if (mercadoLivreQuestionRevision(conversation.raw_data || {}) !== mercadoLivreQuestionRevision(question)) {
+        await persistMercadoLivreQuestion(question, account);
+        changedQuestions += 1;
+      }
+    }
+    await markMercadoLivreConversationReconciled(String(conversation.id));
+    checkedQuestions += 1;
+  }
+
+  const unread = await getMercadoLivreUnreadPostSaleMessages(account as any);
+  const unreadItems = Array.isArray(unread.results) ? unread.results as Array<Record<string, any>> : [];
+  const checkedPaths = new Set<string>();
+  let changedPostSale = 0;
+  for (const item of unreadItems) {
+    const path = String(item.resource || item.path || "");
+    if (!path || checkedPaths.has(path)) continue;
+    checkedPaths.add(path);
+    const remote = await getMercadoLivrePostSaleConversation(path, account as any);
+    await resolveAndPersistMercadoLivrePostSale(remote, account);
+    changedPostSale += 1;
+  }
+
+  const pendingPostSale = await pendingMarketplaceReconciliationRows("mercado_livre", account.id, "post_sale", 5);
+  let checkedPostSale = 0;
+  for (const conversation of pendingPostSale) {
+    const path = String(conversation.conversation_path || (conversation.pack_id && conversation.seller_id ? `/packs/${conversation.pack_id}/sellers/${conversation.seller_id}` : ""));
+    if (path && !checkedPaths.has(path)) {
+      const remote = await getMercadoLivrePostSaleConversation(path, account as any);
+      if (await mercadoLivrePostSaleNeedsPersistence(conversation, remote, sellerId)) {
+        await persistMercadoLivrePostSale(remote, account, conversation);
+        changedPostSale += 1;
+      }
+      checkedPaths.add(path);
+    }
+    await markMercadoLivreConversationReconciled(String(conversation.id));
+    checkedPostSale += 1;
+  }
+
+  return { recentQuestions: questions.length, changedQuestions, checkedQuestions, unreadConversations: unreadItems.length, checkedPostSale, changedPostSale };
+}
+
+async function mercadoLivrePostSaleNeedsPersistence(conversation: Record<string, any>, remote: Record<string, any>, sellerId: string) {
+  if (mercadoLivrePostSaleRevision(conversation.raw_data || {}, sellerId) !== mercadoLivrePostSaleRevision(remote, sellerId)) return true;
+  const expected = normalizeMercadoLivrePostSale(remote, sellerId).map(message => message.messageId);
+  if (!expected.length) return false;
+  const existing = await supabaseAdmin().from("marketplace_conversation_messages").select("external_message_id")
+    .eq("conversation_id", conversation.id).in("external_message_id", expected).throwOnError();
+  return new Set((existing.data || []).map(row => String(row.external_message_id))).size !== new Set(expected).size;
+}
+
+async function pendingMarketplaceReconciliationRows(marketplace: "mercado_livre" | "shopee", accountId: string, conversationType: "question" | "post_sale" | "chat", limit: number) {
+  const result = await supabaseAdmin().from("marketplace_conversations")
+    .select("id,external_conversation_id,external_status,conversation_path,pack_id,seller_id,raw_data,last_message_at,last_reconciled_at")
+    .eq("marketplace", marketplace).eq("marketplace_account_id", accountId)
+    .eq("conversation_type", conversationType).eq("requires_response", true)
+    .order("last_reconciled_at", { ascending: true, nullsFirst: true }).order("last_message_at", { ascending: false })
+    .limit(limit).throwOnError();
+  return result.data || [];
+}
+
+async function markMercadoLivreConversationReconciled(conversationId: string) {
+  await supabaseAdmin().from("marketplace_conversations")
+    .update({ last_reconciled_at: new Date().toISOString() }).eq("id", conversationId).throwOnError();
+}
+
+async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) {
+  const { client, token, shopId } = await shopeeContext(account);
+  const payload = await client.getConversationList(token, shopId, "", 50);
+  const response = payload.response as Record<string, any> | undefined;
+  const recent = (response?.conversation_list || response?.conversations || response?.conversation || []) as Array<Record<string, any>>;
+  const ids = recent.map(item => String(item.conversation_id || item.id || "")).filter(Boolean);
+  const existing = ids.length
+    ? await supabaseAdmin().from("marketplace_conversations").select("external_conversation_id,external_status,last_message_at")
+      .eq("marketplace", "shopee").eq("marketplace_account_id", account.id).in("external_conversation_id", ids).throwOnError()
+    : { data: [] as Array<Record<string, any>> };
+  const localById = new Map((existing.data || []).map(row => [String(row.external_conversation_id), row]));
+  const checked = new Set<string>();
+  let changed = 0;
+  for (const item of recent) {
+    const id = String(item.conversation_id || item.id || "");
+    if (!id) continue;
+    const local = localById.get(id);
+    const remoteAt = shopeeDate(item.last_message || item) || "";
+    const remoteStatus = String(item.status || item.conversation_status || "");
+    const shouldSync = !local || Number(item.unread_count || 0) > 0 || (remoteAt && remoteAt > String(local.last_message_at || "")) || (remoteStatus && remoteStatus !== String(local.external_status || ""));
+    if (!shouldSync) continue;
+    await syncShopeeConversation(account, id, item);
+    checked.add(id);
+    changed += 1;
+  }
+
+  const pending = await pendingMarketplaceReconciliationRows("shopee", account.id, "chat", 5);
+  let rotated = 0;
+  for (const conversation of pending) {
+    const id = String(conversation.external_conversation_id || "");
+    if (id && !checked.has(id)) await syncShopeeConversation(account, id, conversation.raw_data || {});
+    await markMercadoLivreConversationReconciled(String(conversation.id));
+    rotated += 1;
+  }
+  return { recentConversations: recent.length, changed, rotated };
+}
+
 async function firstLocalMercadoLivreOrder(orderIds: string[]) {
   if (!orderIds.length) return null;
   const result = await supabaseAdmin().from("venda").select("order_id").eq("marketplace", "mercado_livre").in("order_id", orderIds).limit(1).maybeSingle();
@@ -430,14 +600,32 @@ async function syncShopeeConversation(account: ShopeeAccountConfig, conversation
     : Number(detail.unread_count ?? seed.unread_count ?? 0) > 0;
   const itemId = String(latest.content?.item_id || latest.source_content?.item_id || latest.item_id || detail.item_id || seed.latest_message_content?.item_id || "");
   const orderSn = String(latest.content?.order_sn || latest.order_sn || detail.order_sn || "");
-  const product = itemId ? await findProduct(account.id, itemId) : orderSn ? await findOrder("shopee", orderSn) : null;
   const sentAt = shopeeDate(latest) || new Date().toISOString();
+  const externalStatus = detail.status ? String(detail.status) : "NOT_INFORMED";
+  const status = incoming ? "pending" : "answered";
+  const preview = messageText(latest).slice(0, 240);
+  const existing = await supabaseAdmin().from("marketplace_conversations")
+    .select("*,marketplace_conversation_messages(external_message_id)")
+    .eq("marketplace", "shopee").eq("marketplace_account_id", account.id)
+    .eq("external_conversation_id", conversationId).maybeSingle().throwOnError();
+  const expectedMessageIds = messages.map(item => String(item.message_id || item.id || hash(item)));
+  const existingMessageIds = new Set((existing.data?.marketplace_conversation_messages || []).map((item: Record<string, any>) => String(item.external_message_id)));
+  const stateUnchanged = existing.data
+    && String(existing.data.external_status || "") === externalStatus
+    && String(existing.data.status || "") === status
+    && Boolean(existing.data.requires_response) === incoming
+    && String(existing.data.last_message_at || "") === sentAt
+    && String(existing.data.last_message_preview || "") === preview
+    && expectedMessageIds.every(id => existingMessageIds.has(id));
+  if (stateUnchanged) return existing.data;
+
+  const product = itemId ? await findProduct(account.id, itemId) : orderSn ? await findOrder("shopee", orderSn) : null;
   const conversation = await upsertConversation({
     marketplace: "shopee", marketplace_account_id: account.id, external_conversation_id: conversationId, conversation_type: "chat",
-    external_status: detail.status ? String(detail.status) : "NOT_INFORMED", status: incoming ? "pending" : "answered", requires_response: incoming, unread: incoming,
+    external_status: externalStatus, status, requires_response: incoming, unread: incoming,
     buyer_id: buyerId || null, buyer_name: String(detail.to_name || detail.peer_name || detail.buyer_username || "") || null,
     listing_id: itemId || null, order_id: orderSn || null, last_incoming_at: incoming ? sentAt : null, last_outgoing_at: incoming ? null : sentAt,
-    last_message_at: sentAt, last_message_preview: messageText(latest).slice(0, 240), raw_data: { ...detail, marketplace_url: "https://seller.shopee.com.br/webchat" }, ...(product || {})
+    last_message_at: sentAt, last_message_preview: preview, raw_data: { ...detail, marketplace_url: "https://seller.shopee.com.br/webchat" }, ...(product || {})
   });
   for (const item of messages) {
     const direction = isShopeeSellerMessage(item, account) ? "outgoing" : "incoming";

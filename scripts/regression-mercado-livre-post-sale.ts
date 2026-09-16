@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { canonicalMercadoLivreConversationId, MLB_MESSAGING_AGENT_ID, mercadoLivreMessageResourcePath, normalizeMercadoLivrePostSale, parseMercadoLivreConversationPath } from "../lib/mercado-livre-post-sale";
+import { mercadoLivrePostSaleRevision, mercadoLivreQuestionRevision } from "../lib/mercado-livre-conversation-reconciliation";
 
 const seller = "111";
 const old = normalizeMercadoLivrePostSale({ message_id: "old-1", resource: "orders", resource_id: "order-1", from: { user_id: "222" }, to: { user_id: seller }, text: { plain: "Texto antigo" }, date_received: "2026-01-01T10:00:00Z" }, seller)[0];
@@ -40,5 +41,17 @@ assert.throws(() => canonicalMercadoLivreConversationId({}), /pack\/pedido/);
 const moderated = normalizeMercadoLivrePostSale({ messages: [{ id: "mod-1", text: "", status: "rejected", message_moderation: { status: "rejected" } }] }, seller)[0];
 assert.equal(moderated.status, "rejected");
 assert.equal(moderated.moderation?.status, "rejected");
+
+const externalReplyPayload = { conversation_status: { status: "active", path: "/packs/pack-1/sellers/111" }, messages: [
+  ...currentPayload.messages,
+  { id: "external-answer", from: { user_id: seller }, to: { user_id: "222" }, text: "Respondida no app oficial", message_date: { created: "2026-01-01T12:00:00Z" }, message_resources: [{ name: "packs", id: "pack-1" }, { name: "sellers", id: seller }] }
+] };
+assert.notEqual(mercadoLivrePostSaleRevision(currentPayload, seller), mercadoLivrePostSaleRevision(externalReplyPayload, seller));
+assert.equal(mercadoLivrePostSaleRevision(externalReplyPayload, seller), mercadoLivrePostSaleRevision(structuredClone(externalReplyPayload), seller));
+
+const unansweredQuestion = { id: 123, status: "UNANSWERED", deleted_from_listing: false, answer: null };
+const externallyAnsweredQuestion = { ...unansweredQuestion, status: "ANSWERED", answer: { id: 456, text: "Resposta externa", date_created: "2026-01-01T12:00:00Z" } };
+assert.notEqual(mercadoLivreQuestionRevision(unansweredQuestion), mercadoLivreQuestionRevision(externallyAnsweredQuestion));
+assert.equal(mercadoLivreQuestionRevision(externallyAnsweredQuestion), mercadoLivreQuestionRevision(structuredClone(externallyAnsweredQuestion)));
 
 console.log("Regressão de chats pós-compra do Mercado Livre: OK");

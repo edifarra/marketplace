@@ -9,7 +9,7 @@ import { supabaseAdmin } from "./supabase-admin";
 import { activityDescription } from "./marketplace-activity-labels";
 import { clearMarketplaceModeration, mercadoLivreModerationClass, recordMarketplaceModeration, shopeeModerationClass } from "./marketplace-moderations";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
-import { processMercadoLivreConversationNotification, processShopeeConversationNotification, syncMercadoLivreUnreadPostSaleConversations } from "./marketplace-conversations";
+import { processMercadoLivreConversationNotification, processShopeeConversationNotification, syncMarketplaceConversationsSafetyNet } from "./marketplace-conversations";
 
 const SHOPEE_ORDER_PUSH_CODES = new Set([3, 4, 15, 29, 30, 37, 47]);
 const SHOPEE_ACCOUNT_PUSH_CODES = new Set([1, 2, 12]);
@@ -63,8 +63,8 @@ async function processMercadoLivreActivity(activity: Record<string, any>) {
   const payload = (storedPayload.notification || storedPayload) as Record<string, any>;
   const topic = String(payload.topic || payload.type || "notification");
   if (topic === "conversation_sync") {
-    const sync = await syncMercadoLivreUnreadPostSaleConversations();
-    return completeQueuedActivity(String(activity.id), "Chats pós-compra reconciliados.", { topic, sync });
+    const sync = await syncMarketplaceConversationsSafetyNet();
+    return completeQueuedActivity(String(activity.id), "Perguntas e chats dos marketplaces reconciliados.", { topic, sync });
   }
   if (["questions", "messages"].includes(topic)) {
     const result = await processMercadoLivreConversationNotification(activity, payload);

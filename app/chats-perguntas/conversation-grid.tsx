@@ -1,36 +1,85 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { ConversationCursor, mergeConversationDelta, shouldPollConversationChanges } from "@/lib/marketplace-conversation-delta";
+import { ConversationRow, ConversationView } from "@/lib/marketplace-conversation-view";
 import { retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
 
-type Row = Record<string, any> & { messages: Array<Record<string, any>>; slaHours: number; slaBreached: boolean };
+type Row = ConversationRow;
+type DeltaResponse = { cursor: ConversationCursor; changes: Row[]; changedConversationIds: string[]; hasMore: boolean };
 
-export function ConversationGrid({ rows }: { rows: Row[] }) {
-  const router = useRouter();
+export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows: Row[]; initialCursor: ConversationCursor; view: ConversationView; pageSize: number }) {
+  const initialCursorId = initialCursor.id;
+  const initialCursorUpdatedAt = initialCursor.updatedAt;
   const [liveRows, setLiveRows] = useState(rows);
   const [open, setOpen] = useState(() => new Set(rows.filter(row => row.requires_response).map(row => row.id)));
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [notices, setNotices] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
   const [sending, setSending] = useState(() => new Set<string>());
+  const [syncNotice, setSyncNotice] = useState("");
+  const cursor = useRef(initialCursor);
+  const polling = useRef(false);
+  const syncActivityId = useRef<string | null>(null);
   const toggle = (id: string) => setOpen(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
-  useEffect(() => setLiveRows(rows), [rows]);
   useEffect(() => {
-    const refreshIfVisible = () => {
-      if (document.visibilityState === "visible") router.refresh();
+    setLiveRows(rows);
+    cursor.current = { id: initialCursorId, updatedAt: initialCursorUpdatedAt };
+  }, [rows, initialCursorId, initialCursorUpdatedAt]);
+
+  const pollChanges = useCallback(async () => {
+    if (polling.current || !shouldPollConversationChanges(document.visibilityState)) return;
+    polling.current = true;
+    try {
+      let hasMore = true;
+      while (hasMore) {
+        const query = new URLSearchParams({ after: cursor.current.updatedAt, afterId: cursor.current.id });
+        const response = await fetch(`/api/chats/changes?${query}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Não foi possível verificar atualizações dos chats.");
+        const payload = await response.json() as DeltaResponse;
+        cursor.current = payload.cursor;
+        hasMore = payload.hasMore;
+        setLiveRows(current => mergeConversationDelta(current, payload.changes, payload.changedConversationIds, view, pageSize));
+      }
+      if (syncActivityId.current) {
+        const statusResponse = await fetch(`/api/chats/sync-status?id=${encodeURIComponent(syncActivityId.current)}`, { cache: "no-store" });
+        if (statusResponse.ok) {
+          const payload = await statusResponse.json() as { activity: { status: string; processing_error?: string | null } };
+          if (payload.activity.status === "processed") {
+            syncActivityId.current = null;
+            setSyncNotice("Sincronização com os marketplaces concluída.");
+          } else if (payload.activity.status === "error") {
+            syncActivityId.current = null;
+            setSyncNotice(`Erro na sincronização: ${payload.activity.processing_error || "falha não informada"}`);
+          }
+        }
+      }
+    } catch (error) {
+      setSyncNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      polling.current = false;
+    }
+  }, [pageSize, view]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (shouldPollConversationChanges(document.visibilityState)) void pollChanges();
     };
-    const timer = window.setInterval(refreshIfVisible, 30_000);
-    document.addEventListener("visibilitychange", refreshIfVisible);
+    const handleVisibilityChange = () => {
+      if (shouldPollConversationChanges(document.visibilityState)) void pollChanges();
+    };
+    const timer = window.setInterval(refreshWhenVisible, 30_000);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [router]);
+  }, [pollChanges]);
 
   return <>
-    <div className="conversation-toolbar"><span className="muted">{liveRows.length} atendimento(s) nesta página · atualização automática</span><div className="row-actions"><button className="secondary" type="button" onClick={() => setOpen(new Set(liveRows.map(row => row.id)))}>Expandir tudo</button><button className="secondary" type="button" onClick={() => setOpen(new Set())}>Recolher tudo</button><button className="secondary" disabled={pending} onClick={() => startTransition(async () => { await updateConversationsNow(); router.refresh(); })}>{pending ? "Atualizando..." : "Atualizar agora"}</button></div></div>
+    <div className="conversation-toolbar"><span className="muted">{liveRows.length} atendimento(s) nesta página · atualização automática</span><div className="row-actions"><button className="secondary" type="button" onClick={() => setOpen(new Set(liveRows.map(row => row.id)))}>Expandir tudo</button><button className="secondary" type="button" onClick={() => setOpen(new Set())}>Recolher tudo</button><button className="secondary" disabled={pending} onClick={() => startTransition(async () => { try { const result = await updateConversationsNow(); syncActivityId.current = result.result.id; setSyncNotice("Sincronização solicitada. Aguardando processamento pelo worker..."); await pollChanges(); } catch (error) { setSyncNotice(`Erro ao solicitar sincronização: ${error instanceof Error ? error.message : String(error)}`); } })}>{pending ? "Solicitando..." : "Atualizar agora"}</button></div></div>
+    {syncNotice && <div className={syncNotice.startsWith("Erro") || syncNotice.startsWith("Não foi") ? "form-error" : "form-success"}>{syncNotice}</div>}
     <div className="conversation-list">{liveRows.map(row => {
       const isOpen = open.has(row.id);
       const draft = drafts[row.id] ?? row.messages.find(message => message.status === "error" && message.direction === "outgoing")?.text ?? "";
@@ -61,7 +110,7 @@ export function ConversationGrid({ rows }: { rows: Row[] }) {
             <div className="reply-meta"><span className={draft.length >= maximumLength * .9 ? "character-warning" : "muted"}>{draft.length}/{maximumLength.toLocaleString("pt-BR")} caracteres</span>{validation && <span className="validation-warning">{validation}</span>}</div>
             {notices[row.id] && <div className={notices[row.id].startsWith("Erro") ? "form-error" : "form-success"}>{notices[row.id]}</div>}
             <div className="form-actions">
-              {row.last_error && <button className="secondary" disabled={sending.has(row.id)} onClick={async () => { const fd = new FormData(); fd.set("conversationId", row.id); const result = await retryConversationReply(fd); setNotices(current => ({ ...current, [row.id]: result.ok ? "Nova tentativa iniciada." : `Erro: ${result.error}` })); router.refresh(); }}>Tentar novamente</button>}
+              {row.last_error && <button className="secondary" disabled={sending.has(row.id)} onClick={async () => { const fd = new FormData(); fd.set("conversationId", row.id); const result = await retryConversationReply(fd); setNotices(current => ({ ...current, [row.id]: result.ok ? "Nova tentativa iniciada." : `Erro: ${result.error}` })); await pollChanges(); }}>Tentar novamente</button>}
               <button disabled={sending.has(row.id) || !draft.trim() || Boolean(validation)} onClick={() => {
                 if (row.conversation_type === "question" && !confirm("A resposta pública do Mercado Livre só pode ser enviada uma vez e não poderá ser corrigida. Deseja enviar?")) return;
                 void sendOptimistically(row, draft);
@@ -87,7 +136,7 @@ export function ConversationGrid({ rows }: { rows: Row[] }) {
     if (result.ok) {
       setNotices(current => ({ ...current, [row.id]: "Mensagem confirmada pela fila." }));
       setLiveRows(current => current.map(item => item.id === row.id ? { ...item, messages: item.messages.map(message => message.id === optimisticId ? { ...message, status: "sent" } : message) } : item));
-      router.refresh();
+      await pollChanges();
     } else {
       setNotices(current => ({ ...current, [row.id]: `Erro: ${result.error}` }));
       setDrafts(current => ({ ...current, [row.id]: text }));

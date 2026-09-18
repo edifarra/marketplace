@@ -19,8 +19,28 @@ import { getActiveShopeeAccounts, getValidShopeeAccessToken, ShopeeAccountConfig
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { enqueueOutgoingActivity } from "./outgoing-activities";
 import { supabaseAdmin } from "./supabase-admin";
+import {
+  MESSAGE_SNAPSHOT_SELECT,
+  MarketplaceMessageWrite,
+  marketplaceConversationChanged,
+  marketplaceMessageChanged,
+  planMarketplaceMessageWrites
+} from "./marketplace-message-reconciliation";
 
 type Account = { id: string; name: string; marketplace: string; seller_id?: string | null; account_id?: string | null; shop_id?: string | null };
+type ReconciliationStats = {
+  conversationsInspected: number;
+  conversationsChanged: number;
+  messagesReceived: number;
+  messagesInserted: number;
+  messagesUpdated: number;
+  messagesUnchanged: number;
+};
+
+const emptyReconciliationStats = (): ReconciliationStats => ({
+  conversationsInspected: 0, conversationsChanged: 0, messagesReceived: 0,
+  messagesInserted: 0, messagesUpdated: 0, messagesUnchanged: 0
+});
 
 export async function syncAllMarketplaceConversations() {
   const results: Array<Record<string, unknown>> = [];
@@ -327,7 +347,7 @@ async function persistMercadoLivrePostSale(remote: Record<string, any>, account:
   const blocked = status.toLowerCase() === "blocked";
   const rejected = latest.status === "rejected" || String(latest.moderation?.status || "").toLowerCase() === "rejected";
   const counterpartyId = String(latest.counterpartyId || context.counterpartyId || "") || null;
-  const conversation = await upsertConversation({
+  const conversationResult = await upsertConversationResult({
     marketplace: "mercado_livre", marketplace_account_id: account.id, external_conversation_id: externalId, conversation_type: "post_sale",
     external_status: rejected ? "rejected" : status, status: blocked || rejected ? "blocked" : incoming ? "pending" : "answered", requires_response: incoming && !blocked && !rejected, unread: incoming && !rejected,
     buyer_id: latest.isMessagingAgent ? null : counterpartyId, buyer_name: null, order_id: orderId || null,
@@ -337,12 +357,19 @@ async function persistMercadoLivrePostSale(remote: Record<string, any>, account:
     last_outgoing_at: messages.filter(message => message.direction === "outgoing").at(-1)?.sentAt || null,
     last_message_at: latest.sentAt, last_message_preview: latest.text.slice(0, 240), raw_data: remote, ...(order || {})
   });
+  const conversation = conversationResult.data;
+  const reconciliationStats = emptyReconciliationStats();
+  reconciliationStats.conversationsInspected = 1;
+  reconciliationStats.conversationsChanged = conversationResult.changed ? 1 : 0;
+  reconciliationStats.messagesReceived = messages.length;
   for (const item of messages) {
-    await upsertMessage(conversation.id, item.messageId, item.direction, item.text, item.senderId || "", "", item.sentAt, item.raw, {
+    const action = await upsertMessage(conversation.id, item.messageId, item.direction, item.text, item.senderId || "", "", item.sentAt, item.raw, {
       accountId: account.id, externalKey: `ml-message:${item.messageId}`
     });
+    incrementMessageStat(reconciliationStats, action);
   }
-  return conversation;
+  if (reconciliationStats.messagesInserted || reconciliationStats.messagesUpdated) reconciliationStats.conversationsChanged = 1;
+  return { ...conversation, reconciliationStats };
 }
 
 async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>, account: Account) {
@@ -389,6 +416,7 @@ async function syncMercadoLivreUnreadPostSale(account: Account) {
 async function syncMercadoLivreAccountIncremental(account: Account) {
   const sellerId = String(account.seller_id || account.account_id || "");
   if (!sellerId) throw new Error(`Seller ID não configurado para ${account.name}.`);
+  const reconciliation = emptyReconciliationStats();
 
   const recent = await getMercadoLivreResource(`/questions/search?seller_id=${encodeURIComponent(sellerId)}&api_version=4&limit=50&sort_fields=date_created&sort_types=DESC`, account as any);
   const questions = Array.isArray(recent.questions) ? recent.questions as Array<Record<string, any>> : [];
@@ -441,7 +469,8 @@ async function syncMercadoLivreAccountIncremental(account: Account) {
     if (!path || checkedPaths.has(path)) continue;
     checkedPaths.add(path);
     const remote = await getMercadoLivrePostSaleConversation(path, account as any);
-    await resolveAndPersistMercadoLivrePostSale(remote, account);
+    const persisted = await resolveAndPersistMercadoLivrePostSale(remote, account);
+    mergeReconciliationStats(reconciliation, persisted.reconciliationStats);
     changedPostSale += 1;
   }
 
@@ -452,7 +481,8 @@ async function syncMercadoLivreAccountIncremental(account: Account) {
     if (path && !checkedPaths.has(path)) {
       const remote = await getMercadoLivrePostSaleConversation(path, account as any);
       if (await mercadoLivrePostSaleNeedsPersistence(conversation, remote, sellerId)) {
-        await persistMercadoLivrePostSale(remote, account, conversation);
+        const persisted = await persistMercadoLivrePostSale(remote, account, conversation);
+        mergeReconciliationStats(reconciliation, persisted.reconciliationStats);
         changedPostSale += 1;
       }
       checkedPaths.add(path);
@@ -461,7 +491,7 @@ async function syncMercadoLivreAccountIncremental(account: Account) {
     checkedPostSale += 1;
   }
 
-  return { recentQuestions: questions.length, changedQuestions, checkedQuestions, unreadConversations: unreadItems.length, checkedPostSale, changedPostSale };
+  return { recentQuestions: questions.length, changedQuestions, checkedQuestions, unreadConversations: unreadItems.length, checkedPostSale, changedPostSale, reconciliation };
 }
 
 async function mercadoLivrePostSaleNeedsPersistence(conversation: Record<string, any>, remote: Record<string, any>, sellerId: string) {
@@ -500,7 +530,7 @@ async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) 
     : { data: [] as Array<Record<string, any>> };
   const localById = new Map((existing.data || []).map(row => [String(row.external_conversation_id), row]));
   const checked = new Set<string>();
-  let changed = 0;
+  const reconciliation = emptyReconciliationStats();
   for (const item of recent) {
     const id = String(item.conversation_id || item.id || "");
     if (!id) continue;
@@ -509,20 +539,19 @@ async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) 
     const remoteStatus = String(item.status || item.conversation_status || "");
     const shouldSync = !local || Number(item.unread_count || 0) > 0 || (remoteAt && remoteAt > String(local.last_message_at || "")) || (remoteStatus && remoteStatus !== String(local.external_status || ""));
     if (!shouldSync) continue;
-    await syncShopeeConversation(account, id, item);
+    mergeReconciliationStats(reconciliation, (await syncShopeeConversation(account, id, item)).stats);
     checked.add(id);
-    changed += 1;
   }
 
   const pending = await pendingMarketplaceReconciliationRows("shopee", account.id, "chat", 5);
   let rotated = 0;
   for (const conversation of pending) {
     const id = String(conversation.external_conversation_id || "");
-    if (id && !checked.has(id)) await syncShopeeConversation(account, id, conversation.raw_data || {});
+    if (id && !checked.has(id)) mergeReconciliationStats(reconciliation, (await syncShopeeConversation(account, id, conversation.raw_data || {})).stats);
     await markMercadoLivreConversationReconciled(String(conversation.id));
     rotated += 1;
   }
-  return { recentConversations: recent.length, changed, rotated };
+  return { recentConversations: recent.length, changed: reconciliation.conversationsChanged, rotated, reconciliation };
 }
 
 async function firstLocalMercadoLivreOrder(orderIds: string[]) {
@@ -604,41 +633,70 @@ async function syncShopeeConversation(account: ShopeeAccountConfig, conversation
   const externalStatus = detail.status ? String(detail.status) : "NOT_INFORMED";
   const status = incoming ? "pending" : "answered";
   const preview = messageText(latest).slice(0, 240);
-  const existing = await supabaseAdmin().from("marketplace_conversations")
-    .select("*,marketplace_conversation_messages(external_message_id)")
+  const db = supabaseAdmin();
+  const existing: any = await db.from("marketplace_conversations")
+    .select(`*,marketplace_conversation_messages(${MESSAGE_SNAPSHOT_SELECT})`)
     .eq("marketplace", "shopee").eq("marketplace_account_id", account.id)
     .eq("external_conversation_id", conversationId).maybeSingle().throwOnError();
-  const expectedMessageIds = messages.map(item => String(item.message_id || item.id || hash(item)));
-  const existingMessageIds = new Set((existing.data?.marketplace_conversation_messages || []).map((item: Record<string, any>) => String(item.external_message_id)));
-  const stateUnchanged = existing.data
-    && String(existing.data.external_status || "") === externalStatus
-    && String(existing.data.status || "") === status
-    && Boolean(existing.data.requires_response) === incoming
-    && String(existing.data.last_message_at || "") === sentAt
-    && String(existing.data.last_message_preview || "") === preview
-    && expectedMessageIds.every(id => existingMessageIds.has(id));
-  if (stateUnchanged) return existing.data;
-
-  const product = itemId ? await findProduct(account.id, itemId) : orderSn ? await findOrder("shopee", orderSn) : null;
-  const conversation = await upsertConversation({
+  const preservedProduct = existing.data ? {
+    product_id: existing.data.product_id, sku: existing.data.sku, product_title: existing.data.product_title,
+    product_price: existing.data.product_price, available_stock: existing.data.available_stock,
+    product_status: existing.data.product_status, product_image_url: existing.data.product_image_url,
+    purchased_at: existing.data.purchased_at
+  } : {};
+  const conversationInput = {
     marketplace: "shopee", marketplace_account_id: account.id, external_conversation_id: conversationId, conversation_type: "chat",
     external_status: externalStatus, status, requires_response: incoming, unread: incoming,
     buyer_id: buyerId || null, buyer_name: String(detail.to_name || detail.peer_name || detail.buyer_username || "") || null,
     listing_id: itemId || null, order_id: orderSn || null, last_incoming_at: incoming ? sentAt : null, last_outgoing_at: incoming ? null : sentAt,
-    last_message_at: sentAt, last_message_preview: preview, raw_data: { ...detail, marketplace_url: "https://seller.shopee.com.br/webchat" }, ...(product || {})
-  });
-  for (const item of messages) {
+    last_message_at: sentAt, last_message_preview: preview, raw_data: { ...detail, marketplace_url: "https://seller.shopee.com.br/webchat" }, ...preservedProduct
+  };
+  const desiredMessages = messages.map((item): MarketplaceMessageWrite => {
     const direction = isShopeeSellerMessage(item, account) ? "outgoing" : "incoming";
-    await upsertMessage(conversation.id, String(item.message_id || item.id || hash(item)), direction, messageText(item), String(item.from_id || item.sender_id || ""), direction === "outgoing" ? account.name : String(detail.to_name || detail.peer_name || ""), shopeeDate(item) || sentAt, item);
+    return messageWrite(String(existing.data?.id || ""), String(item.message_id || item.id || hash(item)), direction,
+      messageText(item), String(item.from_id || item.sender_id || ""),
+      direction === "outgoing" ? account.name : String(detail.to_name || detail.peer_name || ""),
+      shopeeDate(item) || sentAt, item);
+  });
+  const plan = planMarketplaceMessageWrites(desiredMessages, existing.data?.marketplace_conversation_messages || []);
+  const conversationChanged = marketplaceConversationChanged(existing.data, conversationInput);
+  const stats: ReconciliationStats = {
+    conversationsInspected: 1,
+    conversationsChanged: conversationChanged || plan.inserted.length > 0 || plan.updated.length > 0 ? 1 : 0,
+    messagesReceived: messages.length,
+    messagesInserted: plan.inserted.length,
+    messagesUpdated: plan.updated.length,
+    messagesUnchanged: plan.unchanged.length
+  };
+  if (!stats.conversationsChanged) return { conversation: existing.data, stats };
+
+  const product = conversationChanged && (itemId || orderSn)
+    ? itemId ? await findProduct(account.id, itemId) : await findOrder("shopee", orderSn)
+    : null;
+  const conversation = conversationChanged ? await upsertConversation({ ...conversationInput, ...(product || {}) }) : existing.data;
+  const withConversationId = (rows: MarketplaceMessageWrite[]) => rows.map(row => ({ ...row, conversation_id: conversation.id }));
+  if (plan.inserted.length) {
+    await db.from("marketplace_conversation_messages").upsert(withConversationId(plan.inserted), {
+      onConflict: "conversation_id,external_message_id", ignoreDuplicates: true
+    }).throwOnError();
   }
-  return conversation;
+  if (plan.updated.length) {
+    await db.from("marketplace_conversation_messages").upsert(withConversationId(plan.updated), {
+      onConflict: "conversation_id,external_message_id"
+    }).throwOnError();
+  }
+  return { conversation, stats };
 }
 
 async function upsertConversation(input: Record<string, any>) {
+  return (await upsertConversationResult(input)).data;
+}
+
+async function upsertConversationResult(input: Record<string, any>) {
   const now = new Date().toISOString();
   const db = supabaseAdmin();
   const existing = await db.from("marketplace_conversations")
-    .select("reviewed_at")
+    .select("*")
     .eq("marketplace", input.marketplace)
     .eq("marketplace_account_id", input.marketplace_account_id)
     .eq("external_conversation_id", input.external_conversation_id)
@@ -649,28 +707,62 @@ async function upsertConversation(input: Record<string, any>) {
   if (reviewedAt && incomingAt <= reviewedAt) {
     input = { ...input, status: "answered", requires_response: false, unread: false, reviewed_at: existing.data?.reviewed_at };
   }
+  if (!marketplaceConversationChanged(existing.data, input)) return { data: existing.data, changed: false };
   const result = await db.from("marketplace_conversations").upsert({ ...input, updated_at: now }, { onConflict: "marketplace,marketplace_account_id,external_conversation_id" }).select("*").single();
   if (result.error) throw new Error(result.error.message);
-  return result.data;
+  return { data: result.data, changed: true };
 }
 
 async function upsertMessage(conversationId: string, externalId: string, direction: string, text: string, senderId: string, senderName: string, sentAt: string, raw: Record<string, any>, identity?: { accountId: string; externalKey: string }) {
   const db = supabaseAdmin();
+  const desired = messageWrite(conversationId, externalId, direction, text, senderId, senderName, sentAt, raw, identity);
   if (identity) {
-    const existing = await db.from("marketplace_conversation_messages").select("id,conversation_id")
+    const existing: any = await db.from("marketplace_conversation_messages").select(MESSAGE_SNAPSHOT_SELECT)
       .eq("marketplace_account_id", identity.accountId).eq("external_message_key", identity.externalKey).maybeSingle().throwOnError();
     if (existing.data) {
-      await db.from("marketplace_conversation_messages").update({ conversation_id: conversationId, direction, text, sender_id: senderId || null,
-        sender_name: senderName || null, sent_at: sentAt, status: direction === "incoming" ? "received" : "sent", raw_data: raw })
+      if (!marketplaceMessageChanged(existing.data, desired)) return "unchanged" as const;
+      await db.from("marketplace_conversation_messages").update(desired)
         .eq("id", existing.data.id).throwOnError();
-      return;
+      return "updated" as const;
     }
   }
-  await db.from("marketplace_conversation_messages").upsert({
-    conversation_id: conversationId, external_message_id: externalId, direction, message_type: String(raw.message_type || raw.type || "text"),
-    text, sender_id: senderId || null, sender_name: senderName || null, sent_at: sentAt, status: direction === "incoming" ? "received" : "sent", raw_data: raw,
-    marketplace_account_id: identity?.accountId || null, external_message_key: identity?.externalKey || null
-  }, { onConflict: "conversation_id,external_message_id", ignoreDuplicates: true }).throwOnError();
+  await db.from("marketplace_conversation_messages").upsert(desired, {
+    onConflict: "conversation_id,external_message_id", ignoreDuplicates: true
+  }).throwOnError();
+  return "inserted" as const;
+}
+
+function messageWrite(conversationId: string, externalId: string, direction: string, text: string, senderId: string, senderName: string,
+  sentAt: string, raw: Record<string, any>, identity?: { accountId: string; externalKey: string }): MarketplaceMessageWrite {
+  return {
+    conversation_id: conversationId,
+    external_message_id: externalId,
+    direction,
+    message_type: String(raw.message_type || raw.type || "text"),
+    text,
+    sender_id: senderId || null,
+    sender_name: senderName || null,
+    sent_at: sentAt,
+    status: direction === "incoming" ? "received" : "sent",
+    raw_data: raw,
+    marketplace_account_id: identity?.accountId || null,
+    external_message_key: identity?.externalKey || null
+  };
+}
+
+function incrementMessageStat(stats: ReconciliationStats, action: "inserted" | "updated" | "unchanged") {
+  if (action === "inserted") stats.messagesInserted += 1;
+  else if (action === "updated") stats.messagesUpdated += 1;
+  else stats.messagesUnchanged += 1;
+}
+
+function mergeReconciliationStats(target: ReconciliationStats, source: ReconciliationStats) {
+  target.conversationsInspected += source.conversationsInspected;
+  target.conversationsChanged += source.conversationsChanged;
+  target.messagesReceived += source.messagesReceived;
+  target.messagesInserted += source.messagesInserted;
+  target.messagesUpdated += source.messagesUpdated;
+  target.messagesUnchanged += source.messagesUnchanged;
 }
 
 async function findProduct(accountId: string, listingId: string) {

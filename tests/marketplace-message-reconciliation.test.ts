@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
+  MESSAGE_SNAPSHOT_SELECT,
   MarketplaceMessageSnapshot,
   MarketplaceMessageWrite,
   marketplaceConversationChanged,
@@ -50,6 +51,16 @@ test("Shopee com 50 mensagens existentes e idênticas produz zero writes", () =>
   assert.equal(plan.inserted.length, 0);
   assert.equal(plan.updated.length, 0);
   assert.equal(plan.unchanged.length, 50);
+});
+
+test("snapshot PostgREST inclui conversation_id e detecta identidade inconsistente", () => {
+  assert.ok(MESSAGE_SNAPSHOT_SELECT.split(",").includes("conversation_id"));
+  const desired = message(1);
+  const existing = snapshot(desired);
+  assert.equal(marketplaceMessageChanged(existing, desired), false);
+  assert.equal(marketplaceMessageChanged({ ...existing, conversation_id: undefined }, desired), true);
+  assert.equal(marketplaceMessageChanged({ ...existing, conversation_id: "outra-conversa" }, desired), true);
+  assert.equal(marketplaceMessageChanged(existing, { ...desired, text: "Texto realmente alterado" }), true);
 });
 
 test("49 mensagens idênticas e uma nova persistem somente a nova", () => {

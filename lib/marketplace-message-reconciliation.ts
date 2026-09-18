@@ -38,7 +38,7 @@ const CONVERSATION_FIELDS = [
 ] as const;
 
 export const MESSAGE_SNAPSHOT_SELECT = [
-  "id", "external_message_id", "direction", "message_type", "text", "sender_id", "sender_name", "sent_at", "status",
+  "id", "conversation_id", "external_message_id", "direction", "message_type", "text", "sender_id", "sender_name", "sent_at", "status",
   "marketplace_account_id", "external_message_key", "raw_content:raw_data->content",
   "raw_source_content:raw_data->source_content", "raw_image_url:raw_data->>image_url",
   "raw_url:raw_data->>url", "raw_message_type:raw_data->>message_type", "raw_type:raw_data->>type"

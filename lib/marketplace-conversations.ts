@@ -26,21 +26,48 @@ import {
   marketplaceMessageChanged,
   planMarketplaceMessageWrites
 } from "./marketplace-message-reconciliation";
+import {
+  mapShopeeConversationSnapshots,
+  shopeeProductEnrichment,
+  shopeeProductLookupNeeded,
+  shopeeSnapshotKey,
+  SHOPEE_CONVERSATION_SNAPSHOT_FIELDS,
+  SHOPEE_CONVERSATION_SNAPSHOT_SELECT,
+  SHOPEE_PRODUCT_LOOKUP_SELECT,
+  uniqueShopeeCandidates
+} from "./shopee-conversation-reconciliation";
 
 type Account = { id: string; name: string; marketplace: string; seller_id?: string | null; account_id?: string | null; shop_id?: string | null };
 type ReconciliationStats = {
+  candidateConversations: number;
+  snapshotsLoaded: number;
   conversationsInspected: number;
   conversationsChanged: number;
   messagesReceived: number;
   messagesInserted: number;
   messagesUpdated: number;
   messagesUnchanged: number;
+  productLookupsNeeded: number;
+  productLookupsLoaded: number;
 };
 
 const emptyReconciliationStats = (): ReconciliationStats => ({
-  conversationsInspected: 0, conversationsChanged: 0, messagesReceived: 0,
-  messagesInserted: 0, messagesUpdated: 0, messagesUnchanged: 0
+  candidateConversations: 0, snapshotsLoaded: 0, conversationsInspected: 0,
+  conversationsChanged: 0, messagesReceived: 0, messagesInserted: 0,
+  messagesUpdated: 0, messagesUnchanged: 0, productLookupsNeeded: 0,
+  productLookupsLoaded: 0
 });
+
+type ShopeeContext = Awaited<ReturnType<typeof shopeeContext>>;
+type ShopeeCandidate = { id: string; seed: Record<string, any> };
+type PreparedShopeeConversation = {
+  existing: Record<string, any> | null;
+  conversationInput: Record<string, any>;
+  plan: ReturnType<typeof planMarketplaceMessageWrites>;
+  itemId: string;
+  orderSn: string;
+  stats: ReconciliationStats;
+};
 
 export async function syncAllMarketplaceConversations() {
   const results: Array<Record<string, unknown>> = [];
@@ -132,7 +159,9 @@ export async function processShopeeConversationNotification(payload: Record<stri
   if (!account) throw new Error(`Conta Shopee ${shopId || "não informada"} não encontrada.`);
   const conversationId = String(payload.data?.conversation_id || payload.data?.conversationid || payload.conversation_id || "");
   if (conversationId) {
-    await syncShopeeConversation(account, conversationId, payload);
+    const context = await shopeeContext(account);
+    const snapshots = await loadShopeeConversationSnapshots(account.id, [conversationId]);
+    await syncShopeeCandidates(account, context, [{ id: conversationId, seed: payload }], snapshots);
     return { description: "Conversa atualizada.", conversationId };
   }
   const count = await syncShopeeConversationList(account);
@@ -519,7 +548,8 @@ async function markMercadoLivreConversationReconciled(conversationId: string) {
 }
 
 async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) {
-  const { client, token, shopId } = await shopeeContext(account);
+  const context = await shopeeContext(account);
+  const { client, token, shopId } = context;
   const payload = await client.getConversationList(token, shopId, "", 50);
   const response = payload.response as Record<string, any> | undefined;
   const recent = (response?.conversation_list || response?.conversations || response?.conversation || []) as Array<Record<string, any>>;
@@ -529,8 +559,7 @@ async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) 
       .eq("marketplace", "shopee").eq("marketplace_account_id", account.id).in("external_conversation_id", ids).throwOnError()
     : { data: [] as Array<Record<string, any>> };
   const localById = new Map((existing.data || []).map(row => [String(row.external_conversation_id), row]));
-  const checked = new Set<string>();
-  const reconciliation = emptyReconciliationStats();
+  const recentCandidates: ShopeeCandidate[] = [];
   for (const item of recent) {
     const id = String(item.conversation_id || item.id || "");
     if (!id) continue;
@@ -538,16 +567,19 @@ async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) 
     const remoteAt = shopeeDate(item.last_message || item) || "";
     const remoteStatus = String(item.status || item.conversation_status || "");
     const shouldSync = !local || Number(item.unread_count || 0) > 0 || (remoteAt && remoteAt > String(local.last_message_at || "")) || (remoteStatus && remoteStatus !== String(local.external_status || ""));
-    if (!shouldSync) continue;
-    mergeReconciliationStats(reconciliation, (await syncShopeeConversation(account, id, item)).stats);
-    checked.add(id);
+    if (shouldSync) recentCandidates.push({ id, seed: item });
   }
 
   const pending = await pendingMarketplaceReconciliationRows("shopee", account.id, "chat", 5);
+  const recentIds = new Set(recentCandidates.map(candidate => candidate.id));
+  const pendingCandidates = pending
+    .map(conversation => ({ id: String(conversation.external_conversation_id || ""), seed: conversation.raw_data || {} }))
+    .filter(candidate => candidate.id && !recentIds.has(candidate.id));
+  const candidates = uniqueShopeeCandidates([...recentCandidates, ...pendingCandidates]);
+  const snapshots = await loadShopeeConversationSnapshots(account.id, candidates.map(candidate => candidate.id));
+  const reconciliation = await syncShopeeCandidates(account, context, candidates, snapshots);
   let rotated = 0;
   for (const conversation of pending) {
-    const id = String(conversation.external_conversation_id || "");
-    if (id && !checked.has(id)) mergeReconciliationStats(reconciliation, (await syncShopeeConversation(account, id, conversation.raw_data || {})).stats);
     await markMercadoLivreConversationReconciled(String(conversation.id));
     rotated += 1;
   }
@@ -585,7 +617,8 @@ async function reconcileMercadoLivrePostSaleReply(conversation: Record<string, a
 }
 
 async function syncShopeeConversationList(account: ShopeeAccountConfig) {
-  const { client, token, shopId } = await shopeeContext(account);
+  const context = await shopeeContext(account);
+  const { client, token, shopId } = context;
   let cursor = "";
   const seen = new Set<string>();
   const conversations: Array<{ id: string; item: Record<string, any> }> = [];
@@ -605,14 +638,15 @@ async function syncShopeeConversationList(account: ShopeeAccountConfig) {
     if (!pageResult.more || !next || next === cursor || list.length === 0) break;
     cursor = next;
   }
-  for (let index = 0; index < conversations.length; index += 5) {
-    await Promise.all(conversations.slice(index, index + 5).map(entry => syncShopeeConversation(account, entry.id, entry.item)));
-  }
+  const candidates = conversations.map(entry => ({ id: entry.id, seed: entry.item }));
+  const snapshots = await loadShopeeConversationSnapshots(account.id, candidates.map(candidate => candidate.id));
+  await syncShopeeCandidates(account, context, candidates, snapshots, 5);
   return conversations.length;
 }
 
-async function syncShopeeConversation(account: ShopeeAccountConfig, conversationId: string, seed: Record<string, any>) {
-  const { client, token, shopId } = await shopeeContext(account);
+async function prepareShopeeConversation(account: ShopeeAccountConfig, context: ShopeeContext, conversationId: string,
+  seed: Record<string, any>, existing: Record<string, any> | null): Promise<PreparedShopeeConversation> {
+  const { client, token, shopId } = context;
   const [detailPayload, messagePayload] = await Promise.all([
     client.getConversation(token, shopId, conversationId).catch(() => ({ response: seed })),
     client.getConversationMessages(token, shopId, conversationId).catch(() => ({ response: { messages: seed.messages || [] } }))
@@ -633,16 +667,11 @@ async function syncShopeeConversation(account: ShopeeAccountConfig, conversation
   const externalStatus = detail.status ? String(detail.status) : "NOT_INFORMED";
   const status = incoming ? "pending" : "answered";
   const preview = messageText(latest).slice(0, 240);
-  const db = supabaseAdmin();
-  const existing: any = await db.from("marketplace_conversations")
-    .select(`*,marketplace_conversation_messages(${MESSAGE_SNAPSHOT_SELECT})`)
-    .eq("marketplace", "shopee").eq("marketplace_account_id", account.id)
-    .eq("external_conversation_id", conversationId).maybeSingle().throwOnError();
-  const preservedProduct = existing.data ? {
-    product_id: existing.data.product_id, sku: existing.data.sku, product_title: existing.data.product_title,
-    product_price: existing.data.product_price, available_stock: existing.data.available_stock,
-    product_status: existing.data.product_status, product_image_url: existing.data.product_image_url,
-    purchased_at: existing.data.purchased_at
+  const preservedProduct = existing ? {
+    product_id: existing.product_id, sku: existing.sku, product_title: existing.product_title,
+    product_price: existing.product_price, available_stock: existing.available_stock,
+    product_status: existing.product_status, product_image_url: existing.product_image_url,
+    purchased_at: existing.purchased_at
   } : {};
   const conversationInput = {
     marketplace: "shopee", marketplace_account_id: account.id, external_conversation_id: conversationId, conversation_type: "chat",
@@ -653,27 +682,37 @@ async function syncShopeeConversation(account: ShopeeAccountConfig, conversation
   };
   const desiredMessages = messages.map((item): MarketplaceMessageWrite => {
     const direction = isShopeeSellerMessage(item, account) ? "outgoing" : "incoming";
-    return messageWrite(String(existing.data?.id || ""), String(item.message_id || item.id || hash(item)), direction,
+    return messageWrite(String(existing?.id || ""), String(item.message_id || item.id || hash(item)), direction,
       messageText(item), String(item.from_id || item.sender_id || ""),
       direction === "outgoing" ? account.name : String(detail.to_name || detail.peer_name || ""),
       shopeeDate(item) || sentAt, item);
   });
-  const plan = planMarketplaceMessageWrites(desiredMessages, existing.data?.marketplace_conversation_messages || []);
-  const conversationChanged = marketplaceConversationChanged(existing.data, conversationInput);
+  const plan = planMarketplaceMessageWrites(desiredMessages, existing?.marketplace_conversation_messages || []);
+  const conversationChanged = marketplaceConversationChanged(existing, conversationInput);
   const stats: ReconciliationStats = {
+    candidateConversations: 0,
+    snapshotsLoaded: 0,
     conversationsInspected: 1,
     conversationsChanged: conversationChanged || plan.inserted.length > 0 || plan.updated.length > 0 ? 1 : 0,
     messagesReceived: messages.length,
     messagesInserted: plan.inserted.length,
     messagesUpdated: plan.updated.length,
-    messagesUnchanged: plan.unchanged.length
+    messagesUnchanged: plan.unchanged.length,
+    productLookupsNeeded: 0,
+    productLookupsLoaded: 0
   };
-  if (!stats.conversationsChanged) return { conversation: existing.data, stats };
+  return { existing, conversationInput, plan, itemId, orderSn, stats };
+}
 
-  const product = conversationChanged && (itemId || orderSn)
-    ? itemId ? await findProduct(account.id, itemId) : await findOrder("shopee", orderSn)
-    : null;
-  const conversation = conversationChanged ? await upsertConversation({ ...conversationInput, ...(product || {}) }) : existing.data;
+async function persistPreparedShopeeConversation(prepared: PreparedShopeeConversation, product: Record<string, any> | null) {
+  const { existing, conversationInput, plan, stats } = prepared;
+  if (!stats.conversationsChanged) return { conversation: existing, stats };
+  const db = supabaseAdmin();
+  const conversationChanged = marketplaceConversationChanged(existing, conversationInput);
+  const conversation = conversationChanged
+    ? (await upsertConversationResult({ ...conversationInput, ...(product || {}) }, existing)).data
+    : existing;
+  if (!conversation) throw new Error(`Conversa Shopee ${conversationInput.external_conversation_id} não pôde ser persistida.`);
   const withConversationId = (rows: MarketplaceMessageWrite[]) => rows.map(row => ({ ...row, conversation_id: conversation.id }));
   if (plan.inserted.length) {
     await db.from("marketplace_conversation_messages").upsert(withConversationId(plan.inserted), {
@@ -688,19 +727,81 @@ async function syncShopeeConversation(account: ShopeeAccountConfig, conversation
   return { conversation, stats };
 }
 
+async function syncShopeeCandidates(account: ShopeeAccountConfig, context: ShopeeContext, candidates: ShopeeCandidate[],
+  snapshots: Map<string, Record<string, any>>, concurrency = 1) {
+  const prepared: PreparedShopeeConversation[] = [];
+  for (let index = 0; index < candidates.length; index += concurrency) {
+    const batch = candidates.slice(index, index + concurrency);
+    prepared.push(...await Promise.all(batch.map(candidate => prepareShopeeConversation(
+      account,
+      context,
+      candidate.id,
+      candidate.seed,
+      snapshots.get(shopeeSnapshotKey(account.id, candidate.id)) || null
+    ))));
+  }
+  const itemIds = [...new Set(prepared
+    .filter(item => marketplaceConversationChanged(item.existing, item.conversationInput)
+      && shopeeProductLookupNeeded(item.existing, item.itemId))
+    .map(item => item.itemId))];
+  const products = await loadShopeeProducts(account.id, itemIds);
+  const orderLookupsNeeded = prepared.filter(item => marketplaceConversationChanged(item.existing, item.conversationInput)
+    && !item.itemId && item.orderSn && !item.existing?.product_id).length;
+  const reconciliation = emptyReconciliationStats();
+  reconciliation.candidateConversations = candidates.length;
+  reconciliation.snapshotsLoaded = snapshots.size;
+  reconciliation.productLookupsNeeded = itemIds.length + orderLookupsNeeded;
+  reconciliation.productLookupsLoaded = products.size;
+  for (const item of prepared) {
+    const conversationChanged = marketplaceConversationChanged(item.existing, item.conversationInput);
+    const orderLookupNeeded = Boolean(conversationChanged && !item.itemId && item.orderSn && !item.existing?.product_id);
+    const product = conversationChanged
+      ? shopeeProductLookupNeeded(item.existing, item.itemId)
+        ? products.get(item.itemId) || null
+        : orderLookupNeeded ? await findOrder("shopee", item.orderSn) : null
+      : null;
+    if (orderLookupNeeded && product) reconciliation.productLookupsLoaded += 1;
+    mergeReconciliationStats(reconciliation, (await persistPreparedShopeeConversation(item, product)).stats);
+  }
+  console.info("[marketplace-worker] Shopee reconciliation", { accountId: account.id, ...reconciliation });
+  return reconciliation;
+}
+
+async function loadShopeeConversationSnapshots(accountId: string, externalConversationIds: string[]) {
+  const ids = [...new Set(externalConversationIds.filter(Boolean))];
+  if (!ids.length) return new Map<string, Record<string, any>>();
+  const result = await supabaseAdmin().from("marketplace_conversations")
+    .select(SHOPEE_CONVERSATION_SNAPSHOT_SELECT)
+    .eq("marketplace", "shopee").eq("marketplace_account_id", accountId)
+    .in("external_conversation_id", ids).throwOnError();
+  return mapShopeeConversationSnapshots((result.data || []) as Array<Record<string, any>>);
+}
+
+async function loadShopeeProducts(accountId: string, itemIds: string[]) {
+  if (!itemIds.length) return new Map<string, Record<string, any>>();
+  const result = await supabaseAdmin().from("product_marketplaces")
+    .select(SHOPEE_PRODUCT_LOOKUP_SELECT)
+    .eq("marketplace_account_id", accountId).in("marketplace_product_id", itemIds).throwOnError();
+  return new Map(((result.data || []) as Array<Record<string, any>>).map(row => [
+    String(row.marketplace_product_id), shopeeProductEnrichment(row)
+  ]));
+}
+
 async function upsertConversation(input: Record<string, any>) {
   return (await upsertConversationResult(input)).data;
 }
 
-async function upsertConversationResult(input: Record<string, any>) {
+async function upsertConversationResult(input: Record<string, any>, existingSnapshot?: Record<string, any> | null) {
   const now = new Date().toISOString();
   const db = supabaseAdmin();
-  const existing = await db.from("marketplace_conversations")
-    .select("*")
-    .eq("marketplace", input.marketplace)
-    .eq("marketplace_account_id", input.marketplace_account_id)
-    .eq("external_conversation_id", input.external_conversation_id)
-    .maybeSingle();
+  const existing = existingSnapshot === undefined
+    ? await db.from("marketplace_conversations")
+      .select("*")
+      .eq("marketplace", input.marketplace)
+      .eq("marketplace_account_id", input.marketplace_account_id)
+      .eq("external_conversation_id", input.external_conversation_id)
+      .maybeSingle()
+    : { data: existingSnapshot, error: null };
   if (existing.error) throw new Error(existing.error.message);
   const reviewedAt = existing.data?.reviewed_at ? new Date(existing.data.reviewed_at).getTime() : 0;
   const incomingAt = input.last_message_at ? new Date(input.last_message_at).getTime() : 0;
@@ -708,7 +809,10 @@ async function upsertConversationResult(input: Record<string, any>) {
     input = { ...input, status: "answered", requires_response: false, unread: false, reviewed_at: existing.data?.reviewed_at };
   }
   if (!marketplaceConversationChanged(existing.data, input)) return { data: existing.data, changed: false };
-  const result = await db.from("marketplace_conversations").upsert({ ...input, updated_at: now }, { onConflict: "marketplace,marketplace_account_id,external_conversation_id" }).select("*").single();
+  const result = await db.from("marketplace_conversations")
+    .upsert({ ...input, updated_at: now }, { onConflict: "marketplace,marketplace_account_id,external_conversation_id" })
+    .select(existingSnapshot === undefined ? "*" : SHOPEE_CONVERSATION_SNAPSHOT_FIELDS.join(","))
+    .single();
   if (result.error) throw new Error(result.error.message);
   return { data: result.data, changed: true };
 }
@@ -757,21 +861,24 @@ function incrementMessageStat(stats: ReconciliationStats, action: "inserted" | "
 }
 
 function mergeReconciliationStats(target: ReconciliationStats, source: ReconciliationStats) {
+  target.candidateConversations += source.candidateConversations;
+  target.snapshotsLoaded += source.snapshotsLoaded;
   target.conversationsInspected += source.conversationsInspected;
   target.conversationsChanged += source.conversationsChanged;
   target.messagesReceived += source.messagesReceived;
   target.messagesInserted += source.messagesInserted;
   target.messagesUpdated += source.messagesUpdated;
   target.messagesUnchanged += source.messagesUnchanged;
+  target.productLookupsNeeded += source.productLookupsNeeded;
+  target.productLookupsLoaded += source.productLookupsLoaded;
 }
 
 async function findProduct(accountId: string, listingId: string) {
   if (!listingId) return {};
   const db = supabaseAdmin();
-  const link = await db.from("product_marketplaces").select("product_id,sku,titulo_marketplace,valor_marketplace,estoque_marketplace,status_anuncio,raw_data,products(title,price),estoque(estoque_disponivel)")
-    .eq("marketplace_account_id", accountId).eq("marketplace_product_id", listingId).maybeSingle();
-  const row: any = link.data;
-  return row ? { product_id: row.product_id, sku: row.sku, product_title: row.titulo_marketplace || row.products?.title, product_price: row.valor_marketplace || row.products?.price, available_stock: row.estoque?.estoque_disponivel ?? row.estoque_marketplace, product_status: row.status_anuncio, product_image_url: row.raw_data?.image?.image_url_list?.[0] || row.raw_data?.promotion_image?.image_url_list?.[0] || row.raw_data?.thumbnail || null, item_permalink: row.raw_data?.permalink || null } : {};
+  const link = await db.from("product_marketplaces").select(SHOPEE_PRODUCT_LOOKUP_SELECT)
+    .eq("marketplace_account_id", accountId).eq("marketplace_product_id", listingId).maybeSingle().throwOnError();
+  return shopeeProductEnrichment(link.data as Record<string, any> | null);
 }
 
 async function findOrder(marketplace: string, orderId: string) {

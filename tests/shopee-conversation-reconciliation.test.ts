@@ -3,13 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
+  loadUniqueValuesInChunks,
   mapShopeeConversationSnapshots,
+  persistBeforeOptionalEnrichment,
   shopeeProductEnrichment,
   shopeeProductLookupNeeded,
   shopeeSnapshotKey,
   SHOPEE_CONVERSATION_SNAPSHOT_FIELDS,
   SHOPEE_CONVERSATION_SNAPSHOT_SELECT,
   SHOPEE_PRODUCT_LOOKUP_SELECT,
+  SHOPEE_POSTGREST_IN_CHUNK_SIZE,
+  uniqueStringChunks,
   uniqueShopeeCandidates
 } from "../lib/shopee-conversation-reconciliation";
 import {
@@ -56,6 +60,25 @@ test("candidatos recentes e pendentes são deduplicados", () => {
   ]).map(item => item.id), ["one", "two"]);
 });
 
+test("chunking conserva todos os IDs, inclusive último chunk incompleto e duplicados entre chunks", () => {
+  const ids = Array.from({ length: SHOPEE_POSTGREST_IN_CHUNK_SIZE * 2 + 7 }, (_, index) => `id-${index}`);
+  const chunks = uniqueStringChunks([...ids, "id-1", `id-${SHOPEE_POSTGREST_IN_CHUNK_SIZE + 1}`]);
+  assert.deepEqual(chunks.map(chunk => chunk.length), [SHOPEE_POSTGREST_IN_CHUNK_SIZE, SHOPEE_POSTGREST_IN_CHUNK_SIZE, 7]);
+  assert.deepEqual(chunks.flat(), ids);
+  assert.equal(new Set(chunks.flat()).size, ids.length);
+});
+
+test("falha no segundo chunk interrompe snapshot crítico sem ocultar o erro", async () => {
+  const ids = Array.from({ length: SHOPEE_POSTGREST_IN_CHUNK_SIZE + 3 }, (_, index) => `id-${index}`);
+  let calls = 0;
+  await assert.rejects(loadUniqueValuesInChunks(ids, async chunk => {
+    calls += 1;
+    if (calls === 2) throw new Error("segundo chunk indisponível");
+    return chunk;
+  }), /segundo chunk indisponível/);
+  assert.equal(calls, 2);
+});
+
 function message(text: string): MarketplaceMessageWrite {
   return {
     conversation_id: "conversation-1", external_message_id: "message-1", direction: "incoming",
@@ -93,10 +116,44 @@ test("produto preservado não gera lookup e produto ausente é enriquecido pela 
   assert.doesNotMatch(SHOPEE_PRODUCT_LOOKUP_SELECT, /products\(title,price\),estoque\(/);
 });
 
-test("lookup de produto em lote propaga erro e não silencia HTTP 400", () => {
+test("lookup de produto em lote usa chunking e não silencia HTTP 400", () => {
   const loader = source.slice(source.indexOf("async function loadShopeeProducts"), source.indexOf("async function upsertConversation"));
-  assert.match(loader, /\.in\("marketplace_product_id", itemIds\)\.throwOnError\(\)/);
+  assert.match(loader, /loadUniqueValuesInChunks\(itemIds/);
+  assert.match(loader, /\.in\("marketplace_product_id", ids\)\.throwOnError\(\)/);
   assert.doesNotMatch(loader, /catch\s*\(/);
+});
+
+test("falha auxiliar de produto preserva mensagem, fica observável e permite retry idempotente", async () => {
+  const persistedMessages = new Set<string>();
+  let enrichmentAttempts = 0;
+  let observedErrors = 0;
+  let enriched = false;
+  const cycle = (fail: boolean) => persistBeforeOptionalEnrichment(async () => {
+    persistedMessages.add("message-1");
+    return { conversationId: "conversation-1", productId: null };
+  }, async () => {
+    enrichmentAttempts += 1;
+    if (fail) throw new Error("HTTP 400 no produto");
+    enriched = true;
+  }, () => { observedErrors += 1; });
+
+  await cycle(true);
+  assert.equal(persistedMessages.size, 1);
+  assert.equal(observedErrors, 1);
+  assert.equal(enriched, false);
+  await cycle(false);
+  assert.equal(enrichmentAttempts, 2);
+  assert.equal(persistedMessages.size, 1);
+  assert.equal(enriched, true);
+});
+
+test("fluxo real persiste núcleo antes do produto e mantém pendência para retry", () => {
+  const sync = source.slice(source.indexOf("async function syncShopeeCandidates"), source.indexOf("async function loadShopeeConversationSnapshots"));
+  assert.ok(sync.indexOf("persistPreparedShopeeConversation") < sync.indexOf("enrichShopeeConversationProducts"));
+  assert.match(sync, /productLookupErrors \+= 1/);
+  const pending = source.slice(source.indexOf("async function pendingShopeeReconciliationRows"), source.indexOf("async function markMercadoLivreConversationReconciled"));
+  assert.match(pending, /product_id\.is\.null/);
+  assert.match(pending, /listing_id\.not\.is\.null/);
 });
 
 test("cenário de 64 conversas em duas contas reduz GETs para a meta arquitetural", () => {

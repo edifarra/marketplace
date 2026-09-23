@@ -1,5 +1,7 @@
 import { MESSAGE_SNAPSHOT_SELECT } from "./marketplace-message-reconciliation";
 
+export const SHOPEE_POSTGREST_IN_CHUNK_SIZE = 50;
+
 export const SHOPEE_CONVERSATION_SNAPSHOT_FIELDS = [
   "id", "marketplace_account_id", "external_conversation_id", "external_status", "status",
   "requires_response", "unread", "buyer_id", "buyer_name", "product_id", "listing_id",
@@ -29,6 +31,32 @@ export function mapShopeeConversationSnapshots(rows: Array<Record<string, any>>)
 export function uniqueShopeeCandidates<T extends { id: string }>(candidates: T[]) {
   const seen = new Set<string>();
   return candidates.filter(candidate => Boolean(candidate.id) && !seen.has(candidate.id) && Boolean(seen.add(candidate.id)));
+}
+
+export function uniqueStringChunks(values: string[], chunkSize = SHOPEE_POSTGREST_IN_CHUNK_SIZE) {
+  if (!Number.isInteger(chunkSize) || chunkSize < 1) throw new Error("O tamanho do chunk deve ser um inteiro positivo.");
+  const unique = [...new Set(values.filter(Boolean))];
+  const chunks: string[][] = [];
+  for (let index = 0; index < unique.length; index += chunkSize) chunks.push(unique.slice(index, index + chunkSize));
+  return chunks;
+}
+
+export async function loadUniqueValuesInChunks<T>(values: string[], loader: (chunk: string[]) => Promise<T[]>,
+  chunkSize = SHOPEE_POSTGREST_IN_CHUNK_SIZE) {
+  const rows: T[] = [];
+  for (const chunk of uniqueStringChunks(values, chunkSize)) rows.push(...await loader(chunk));
+  return rows;
+}
+
+export async function persistBeforeOptionalEnrichment<T>(persist: () => Promise<T>, enrich: (persisted: T) => Promise<void>,
+  onEnrichmentError: (error: unknown) => void) {
+  const persisted = await persist();
+  try {
+    await enrich(persisted);
+  } catch (error) {
+    onEnrichmentError(error);
+  }
+  return persisted;
 }
 
 export function shopeeProductLookupNeeded(existing: Record<string, any> | null | undefined, itemId: string) {

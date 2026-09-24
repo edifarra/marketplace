@@ -29,6 +29,7 @@ import {
 import {
   mapShopeeConversationSnapshots,
   loadUniqueValuesInChunks,
+  marketplaceConversationProductColumns,
   persistBeforeOptionalEnrichment,
   shopeeProductEnrichment,
   shopeeProductLookupNeeded,
@@ -329,6 +330,7 @@ async function persistMercadoLivreQuestion(question: Record<string, any>, accoun
   const db = supabaseAdmin();
   const listingId = String(question.item_id || "");
   const product = await findProduct(account.id, listingId);
+  const productColumns = marketplaceConversationProductColumns(product);
   const buyerId = String(question.from?.id || question.buyer_id || "");
   let buyerName = String(question.from?.nickname || question.from?.name || "");
   const existingBuyer = buyerId
@@ -355,7 +357,7 @@ async function persistMercadoLivreQuestion(question: Record<string, any>, accoun
     requires_response: !answered && !closed && !removed && !review, unread: !answered && !closed && !removed && !review,
     buyer_id: buyerId || null, buyer_name: buyerName || null, listing_id: listingId || null,
     last_incoming_at: createdAt, last_outgoing_at: isoDate(question.answer?.date_created), last_message_at: isoDate(question.answer?.date_created) || createdAt,
-    last_message_preview: String(question.answer?.text || question.text || "").slice(0, 240), raw_data: { ...question, item_permalink: product.item_permalink || null, marketplace_url: product.item_permalink ? `${product.item_permalink}#questions` : null }, ...product
+    last_message_preview: String(question.answer?.text || question.text || "").slice(0, 240), raw_data: { ...question, item_permalink: product.item_permalink || null, marketplace_url: product.item_permalink ? `${product.item_permalink}#questions` : null }, ...productColumns
   });
   await upsertMessage(conversation.id, String(question.id), "incoming", String(question.text || ""), buyerId, buyerName, createdAt, question);
   if (question.answer) await upsertMessage(conversation.id, `answer:${question.id}`, "outgoing", String(question.answer.text || ""), String(account.seller_id || account.account_id || ""), account.name, isoDate(question.answer.date_created) || createdAt, question.answer);
@@ -387,7 +389,7 @@ async function persistMercadoLivrePostSale(remote: Record<string, any>, account:
     counterparty_id: counterpartyId, messaging_agent: messages.some(message => message.isMessagingAgent),
     last_incoming_at: messages.filter(message => message.direction === "incoming").at(-1)?.sentAt || null,
     last_outgoing_at: messages.filter(message => message.direction === "outgoing").at(-1)?.sentAt || null,
-    last_message_at: latest.sentAt, last_message_preview: latest.text.slice(0, 240), raw_data: remote, ...(order || {})
+    last_message_at: latest.sentAt, last_message_preview: latest.text.slice(0, 240), raw_data: remote, ...marketplaceConversationProductColumns(order)
   });
   const conversation = conversationResult.data;
   const reconciliationStats = emptyReconciliationStats();
@@ -810,7 +812,10 @@ async function enrichShopeeConversationProducts(accountId: string,
     const product = products.get(entry.prepared.itemId);
     if (!product) continue;
     try {
-      await upsertConversationResult({ ...entry.prepared.conversationInput, ...product }, entry.conversation);
+      await upsertConversationResult({
+        ...entry.prepared.conversationInput,
+        ...marketplaceConversationProductColumns(product)
+      }, entry.conversation);
     } catch (error) {
       stats.productLookupErrors += 1;
       console.error("[marketplace-worker] Shopee product enrichment persistence failed", {
@@ -824,7 +829,10 @@ async function enrichShopeeConversationProducts(accountId: string,
       const product = await findOrder("shopee", entry.prepared.orderSn);
       if (!product) continue;
       stats.productLookupsLoaded += 1;
-      await upsertConversationResult({ ...entry.prepared.conversationInput, ...product }, entry.conversation);
+      await upsertConversationResult({
+        ...entry.prepared.conversationInput,
+        ...marketplaceConversationProductColumns(product)
+      }, entry.conversation);
     } catch (error) {
       stats.productLookupErrors += 1;
       console.error("[marketplace-worker] Shopee order product enrichment failed", {

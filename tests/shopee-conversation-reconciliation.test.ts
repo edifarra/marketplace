@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   loadUniqueValuesInChunks,
   mapShopeeConversationSnapshots,
+  marketplaceConversationProductColumns,
   persistBeforeOptionalEnrichment,
   shopeeProductEnrichment,
   shopeeProductLookupNeeded,
@@ -114,6 +115,48 @@ test("produto preservado não gera lookup e produto ausente é enriquecido pela 
   assert.deepEqual({ id: product.product_id, stock: product.available_stock }, { id: "product-1", stock: 7 });
   assert.match(SHOPEE_PRODUCT_LOOKUP_SELECT, /products\(title,price,estoque\(estoque_disponivel\)\)/);
   assert.doesNotMatch(SHOPEE_PRODUCT_LOOKUP_SELECT, /products\(title,price\),estoque\(/);
+});
+
+test("payload de conversa aceita somente colunas reais e mantém permalink fora do top-level", () => {
+  const enrichment = shopeeProductEnrichment({
+    product_id: "product-1", sku: "SKU", titulo_marketplace: "Produto",
+    valor_marketplace: 10, raw_data: { permalink: "https://example.invalid/item" }
+  });
+  const columns = marketplaceConversationProductColumns(enrichment);
+  assert.deepEqual(columns, {
+    product_id: "product-1", sku: "SKU", product_title: "Produto", product_price: 10,
+    available_stock: undefined, product_status: undefined, product_image_url: null
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(columns, "item_permalink"), false);
+  assert.equal(enrichment.item_permalink, "https://example.invalid/item");
+});
+
+test("pergunta ML preserva permalink no raw_data sem enviá-lo como coluna", () => {
+  const persistQuestion = source.slice(source.indexOf("async function persistMercadoLivreQuestion"), source.indexOf("async function persistMercadoLivrePostSale"));
+  assert.match(persistQuestion, /const productColumns = marketplaceConversationProductColumns\(product\)/);
+  assert.match(persistQuestion, /raw_data: \{ \.\.\.question, item_permalink: product\.item_permalink/);
+  assert.match(persistQuestion, /\.\.\.productColumns/);
+  assert.doesNotMatch(persistQuestion, /\.\.\.product\s*[},]/);
+});
+
+test("webhook, reconciliação e retry de perguntas compartilham persistência sanitizada", () => {
+  const consumers = [
+    "syncMercadoLivreAccountIncremental",
+    "processMercadoLivreConversationNotification",
+    "reconcileAnsweredMercadoLivreQuestion"
+  ];
+  for (const consumer of consumers) {
+    const start = source.indexOf(`function ${consumer}`);
+    assert.notEqual(start, -1);
+    const body = source.slice(start, source.indexOf("\n}", start) + 2);
+    assert.match(body, /persistMercadoLivreQuestion/);
+  }
+});
+
+test("enriquecimentos auxiliares Shopee projetam somente colunas permitidas", () => {
+  const enrichment = source.slice(source.indexOf("async function enrichShopeeConversationProducts"), source.indexOf("async function loadShopeeConversationSnapshots"));
+  assert.equal(enrichment.match(/marketplaceConversationProductColumns\(product\)/g)?.length, 2);
+  assert.doesNotMatch(enrichment, /conversationInput, \.\.\.product/);
 });
 
 test("lookup de produto em lote usa chunking e não silencia HTTP 400", () => {

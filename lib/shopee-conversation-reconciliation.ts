@@ -83,3 +83,15 @@ export function shopeeProductEnrichment(row: Record<string, any> | null | undefi
     item_permalink: row.raw_data?.permalink || null
   };
 }
+
+const MARKETPLACE_CONVERSATION_PRODUCT_COLUMNS = [
+  "product_id", "listing_id", "order_id", "sku", "product_title", "product_price",
+  "available_stock", "product_status", "product_image_url", "purchased_at"
+] as const;
+
+export function marketplaceConversationProductColumns(product: Record<string, any> | null | undefined) {
+  if (!product) return {};
+  return Object.fromEntries(MARKETPLACE_CONVERSATION_PRODUCT_COLUMNS
+    .filter(field => Object.prototype.hasOwnProperty.call(product, field))
+    .map(field => [field, product[field]]));
+}

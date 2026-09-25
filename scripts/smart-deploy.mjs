@@ -4,6 +4,7 @@ import process from "node:process";
 import readline from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 import { buildWorkerFileSet, classifyChanges } from "./smart-change-classifier.mjs";
+import { deploymentMode, mayModifyExternalEnvironment } from "./smart-execution-policy.mjs";
 import { changedFiles, git } from "./smart-git.mjs";
 
 const rootDir = process.cwd();
@@ -11,19 +12,20 @@ const statePath = path.join(rootDir, ".smart-deploy-state.json");
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const execute = args.has("--execute");
+const mode = deploymentMode({ execute, dryRun });
 const yes = args.has("--yes");
 const baseArg = process.argv.find((arg) => arg.startsWith("--base="))?.slice(7);
 const savedBase = readState()?.commit;
 const base = baseArg || process.env.SMART_DEPLOY_BASE || savedBase || (dryRun ? "HEAD^" : null);
 
 if (!base) fail("No deployment baseline found. Use --base=<commit> for the first deployment.");
-if (!execute && !dryRun) console.log("Planning mode: no production action will run. Add --execute to deploy.");
+if (mode === "plan") console.log("Planning mode: no production action will run. Add --execute to deploy.");
 
 const files = changedFiles({ base, head: "HEAD", includeWorkingTree: dryRun });
 const classification = classifyChanges(files, { workerFiles: buildWorkerFileSet(rootDir) });
 printPlan(base, classification);
 
-if (dryRun || !execute) process.exit(0);
+if (!mayModifyExternalEnvironment(mode)) process.exit(0);
 if (!classification.frontend && !classification.worker && !classification.migration) {
   console.log("Nothing needs production deployment.");
   process.exit(0);
@@ -61,7 +63,7 @@ function printPlan(selectedBase, result) {
   console.log(result.frontend ? "✓ Deploy frontend to Vercel" : "- Vercel deployment not required");
   console.log(result.worker ? "✓ Update VPS and restart marketplace-worker" : "- VPS update and PM2 restart not required");
   console.log(result.worker && result.dependencies ? "✓ Run npm ci on VPS" : "- npm ci not required");
-  if (dryRun) console.log("\nDRY RUN: no network connection or production change was made.");
+  if (mode === "dry-run") console.log("\nDRY RUN: no network connection or production change was made.");
 }
 
 function assertSafeRepository() {

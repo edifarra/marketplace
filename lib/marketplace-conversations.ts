@@ -19,6 +19,7 @@ import { reconcilePendingMercadoLivreQuestions } from "./mercado-livre-question-
 import { getActiveShopeeAccounts, getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { enqueueOutgoingActivity } from "./outgoing-activities";
+import { mapLocalOrderProducts, marketplaceMessageType, resolveMercadoLivrePackOrder, shopeeConversationReferences } from "./marketplace-special-messages";
 import { supabaseAdmin } from "./supabase-admin";
 import {
   MESSAGE_SNAPSHOT_SELECT,
@@ -420,9 +421,14 @@ async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>
     packId = String(order.pack_id || orderId);
   }
   if (packId && !orderId) {
-    const pack: Record<string, any> = await getMercadoLivrePack(packId, account as any).catch(() => ({}));
-    const orderIds = (Array.isArray(pack.orders) ? pack.orders : []).map((item: any) => String(item.id || item.order_id || "")).filter(Boolean);
-    orderId = await firstLocalMercadoLivreOrder(orderIds) || orderIds[0] || null;
+    orderId = await resolveMercadoLivrePackOrder(packId,
+      () => getMercadoLivrePack(packId, account as any),
+      orderIds => firstLocalMercadoLivreOrderForPack(packId, orderIds),
+      error => {
+        console.warn("[marketplace-worker] Mercado Livre pack resolution failed; trying local fallback", {
+          accountId: account.id, packId, error: safeError(error)
+        });
+      });
   }
   const resolvedSeller = seed.sellerId || sellerId;
   if (!conversationPath && packId && resolvedSeller) conversationPath = `/packs/${packId}/sellers/${resolvedSeller}`;
@@ -616,9 +622,15 @@ async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) 
   return { recentConversations: recent.length, changed: reconciliation.conversationsChanged, rotated, reconciliation };
 }
 
-async function firstLocalMercadoLivreOrder(orderIds: string[]) {
-  if (!orderIds.length) return null;
-  const result = await supabaseAdmin().from("venda").select("order_id").eq("marketplace", "mercado_livre").in("order_id", orderIds).limit(1).maybeSingle();
+async function firstLocalMercadoLivreOrderForPack(packId: string, orderIds: string[]) {
+  const candidates = [...new Set([packId, ...orderIds].filter(Boolean))]
+    .map(value => value.replace(/[^0-9A-Za-z_-]/g, "")).filter(Boolean);
+  if (!candidates.length) return null;
+  const safePackId = packId.replace(/[^0-9A-Za-z_-]/g, "");
+  const result = await supabaseAdmin().from("venda").select("order_id,pack_id")
+    .eq("marketplace", "mercado_livre")
+    .or(`order_id.in.(${candidates.join(",")}),pack_id.eq.${safePackId}`)
+    .limit(1).maybeSingle().throwOnError();
   return result.data?.order_id ? String(result.data.order_id) : null;
 }
 
@@ -691,8 +703,7 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
   const incoming = hasSenderInformation
     ? !isShopeeSellerMessage(latest, account)
     : Number(detail.unread_count ?? seed.unread_count ?? 0) > 0;
-  const itemId = String(latest.content?.item_id || latest.source_content?.item_id || latest.item_id || detail.item_id || seed.latest_message_content?.item_id || "");
-  const orderSn = String(latest.content?.order_sn || latest.order_sn || detail.order_sn || "");
+  const { itemId, orderSn } = shopeeConversationReferences(messages.length ? messages : [latest], detail, seed);
   const sentAt = shopeeDate(latest) || new Date().toISOString();
   const externalStatus = detail.status ? String(detail.status) : "NOT_INFORMED";
   const status = incoming ? "pending" : "answered";
@@ -839,11 +850,12 @@ async function enrichShopeeConversationProducts(accountId: string,
     }
   }
 
+  const orderProducts = await loadOrderProducts("shopee", orderEntries.map(entry => entry.prepared.orderSn));
+  stats.productLookupsLoaded += orderProducts.size;
   for (const entry of orderEntries) {
     try {
-      const product = await findOrder("shopee", entry.prepared.orderSn);
+      const product = orderProducts.get(entry.prepared.orderSn);
       if (!product) continue;
-      stats.productLookupsLoaded += 1;
       await upsertConversationResult({
         ...entry.prepared.conversationInput,
         ...marketplaceConversationProductColumns(product)
@@ -935,7 +947,7 @@ function messageWrite(conversationId: string, externalId: string, direction: str
     conversation_id: conversationId,
     external_message_id: externalId,
     direction,
-    message_type: String(raw.message_type || raw.type || "text"),
+    message_type: marketplaceMessageType(raw),
     text,
     sender_id: senderId || null,
     sender_name: senderName || null,
@@ -982,6 +994,21 @@ async function findOrder(marketplace: string, orderId: string) {
   const product = await supabaseAdmin().from("products").select("id,title,price,estoque(estoque_disponivel)").eq("sku", item.sku).maybeSingle();
   const listingId = String(item.raw_data?.item?.id || item.raw_data?.item_id || (sale.data as any)?.raw_data?.order_items?.[0]?.item?.id || "") || null;
   return { order_id: orderId, listing_id: listingId, purchased_at: (sale.data as any)?.data_venda, product_id: product.data?.id, sku: item.sku, product_title: product.data?.title, product_price: item.valor_unitario || product.data?.price, available_stock: (product.data as any)?.estoque?.estoque_disponivel };
+}
+
+async function loadOrderProducts(marketplace: string, orderIds: string[]) {
+  const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+  if (!uniqueOrderIds.length) return new Map<string, Record<string, any>>();
+  const db = supabaseAdmin();
+  const sales = await db.from("venda")
+    .select("order_id,data_venda,venda_item(sku,valor_unitario,raw_data)")
+    .eq("marketplace", marketplace).in("order_id", uniqueOrderIds).throwOnError();
+  const skus = [...new Set((sales.data || []).flatMap((sale: any) => sale.venda_item || [])
+    .map((item: any) => String(item.sku || "")).filter(Boolean))];
+  const products = skus.length
+    ? await db.from("products").select("id,sku,title,price,estoque(estoque_disponivel)").in("sku", skus).throwOnError()
+    : { data: [] as Array<Record<string, any>> };
+  return mapLocalOrderProducts(sales.data || [], products.data || []);
 }
 
 async function findMercadoLivreAccount(userId: unknown) {

@@ -21,6 +21,7 @@ export type MarketplaceMessageSnapshot = Partial<MarketplaceMessageWrite> & {
   raw_url?: unknown;
   raw_message_type?: unknown;
   raw_type?: unknown;
+  raw_message_attachments?: unknown;
 };
 
 export type MessageReconciliationPlan = {
@@ -41,7 +42,8 @@ export const MESSAGE_SNAPSHOT_SELECT = [
   "id", "conversation_id", "external_message_id", "direction", "message_type", "text", "sender_id", "sender_name", "sent_at", "status",
   "marketplace_account_id", "external_message_key", "raw_content:raw_data->content",
   "raw_source_content:raw_data->source_content", "raw_image_url:raw_data->>image_url",
-  "raw_url:raw_data->>url", "raw_message_type:raw_data->>message_type", "raw_type:raw_data->>type"
+  "raw_url:raw_data->>url", "raw_message_type:raw_data->>message_type", "raw_type:raw_data->>type",
+  "raw_message_attachments:raw_data->message_attachments"
 ].join(",");
 
 export function planMarketplaceMessageWrites(
@@ -106,7 +108,8 @@ export function relevantMessageRawData(raw: Record<string, any> | null | undefin
     image_url: raw?.image_url,
     url: raw?.url,
     message_type: raw?.message_type,
-    type: raw?.type
+    type: raw?.type,
+    message_attachments: raw?.message_attachments
   });
 }
 
@@ -117,7 +120,8 @@ function existingRawProjection(existing: MarketplaceMessageSnapshot) {
     image_url: existing.raw_image_url,
     url: existing.raw_url,
     message_type: existing.raw_message_type,
-    type: existing.raw_type
+    type: existing.raw_type,
+    message_attachments: existing.raw_message_attachments
   });
 }
 

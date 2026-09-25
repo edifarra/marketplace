@@ -102,6 +102,18 @@ export function compareConversationMessages(a: Record<string, any>, b: Record<st
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+export function conversationTimelineSections(row: Record<string, any>) {
+  const messages = row.messages || [];
+  if (row.conversation_type === "post_sale") return { before: [], after: messages, purchase: null, postSaleOnly: true };
+  const purchase = row.purchased_at ? new Date(row.purchased_at).getTime() : null;
+  return {
+    before: purchase ? messages.filter((message: Record<string, any>) => new Date(message.sent_at).getTime() < purchase) : messages,
+    after: purchase ? messages.filter((message: Record<string, any>) => new Date(message.sent_at).getTime() >= purchase) : [],
+    purchase,
+    postSaleOnly: false
+  };
+}
+
 export function rowMatchesConversationView(row: ConversationRow, view: ConversationView, now = Date.now()) {
   const search = view.search.toLocaleUpperCase("pt-BR");
   const attendingSince = now - 24 * 60 * 60 * 1000;

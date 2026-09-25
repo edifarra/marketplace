@@ -107,6 +107,15 @@ export async function getMercadoLivrePostSaleConversation(path: string, account:
   return mlGet(withQuery(messagePath, { tag: "post_sale", mark_as_read: "false" }), accessToken) as Promise<Record<string, any>>;
 }
 
+export async function getMercadoLivreAttachment(attachmentId: string, tag: string, account: MarketplaceAccountConfig) {
+  const accessToken = await getValidMercadoLivreAccessToken(account);
+  const query = new URLSearchParams({ tag: tag || "post_sale", site_id: "MLB" });
+  return fetch(`${ML_API}/messages/attachments/${encodeURIComponent(attachmentId)}?${query}`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+    cache: "no-store"
+  });
+}
+
 export async function sendMercadoLivrePostSaleMessage(input: { packId: string; sellerId: string; recipientId: string; text: string }, account: MarketplaceAccountConfig) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
   const path = `/messages/packs/${encodeURIComponent(input.packId)}/sellers/${encodeURIComponent(input.sellerId)}?tag=post_sale`;

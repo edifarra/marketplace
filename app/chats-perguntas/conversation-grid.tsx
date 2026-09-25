@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { ConversationCursor, mergeConversationDelta, shouldPollConversationChanges } from "@/lib/marketplace-conversation-delta";
-import { ConversationRow, ConversationView } from "@/lib/marketplace-conversation-view";
+import { ConversationRow, ConversationView, conversationTimelineSections } from "@/lib/marketplace-conversation-view";
+import { mercadoLivreAttachments } from "@/lib/marketplace-special-messages";
 import { retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
 
 type Row = ConversationRow;
@@ -148,18 +149,27 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
 function sortByLatest(a: Row, b: Row) { return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime(); }
 
 function Timeline({ row }: { row: Row }) {
-  const purchase = row.purchased_at ? new Date(row.purchased_at).getTime() : null;
-  const before = purchase ? row.messages.filter(message => new Date(message.sent_at).getTime() < purchase) : row.messages;
-  const after = purchase ? row.messages.filter(message => new Date(message.sent_at).getTime() >= purchase) : [];
-  return <div className="conversation-timeline"><Divider label="Pré-venda"/>{before.map(message => <Message key={message.id} message={message} row={row}/>)}{purchase && <><div className="purchase-marker">Compra realizada{row.order_id ? ` — Pedido ${row.order_id}` : ""} — {formatDate(row.purchased_at)}</div><Divider label="Pós-venda"/>{after.map(message => <Message key={message.id} message={message} row={row}/>)}</>}</div>;
+  const { before, after, purchase, postSaleOnly } = conversationTimelineSections(row);
+  return <div className="conversation-timeline">{!postSaleOnly && <Divider label="Pré-venda"/>}{before.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row}/>)}{purchase && <div className="purchase-marker">Compra realizada{row.order_id ? ` — Pedido ${row.order_id}` : ""} — {formatDate(row.purchased_at)}</div>}{(postSaleOnly || purchase) && <Divider label="Pós-venda"/>}{after.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row}/>)}</div>;
 }
 function Divider({ label }: { label: string }) { return <div className="timeline-divider"><span>{label}</span></div>; }
 function Message({ message, row }: { message: Record<string, any>; row: Row }) {
   const type = String(message.message_type || message.raw_data?.message_type || "text").toLowerCase();
   const imageUrl = messageImageUrl(message.raw_data);
+  const attachments = mercadoLivreAttachments(message.raw_data);
   const isItem = type === "item" || Boolean(message.raw_data?.content?.item_id);
+  const isOrder = type === "order" || Boolean(message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn);
   return <div className={`chat-message ${message.direction}`}>
-    {isItem ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Produto</small><strong>{row.product_title || `Produto ${message.raw_data?.content?.item_id || ""}`}</strong>{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div> : imageUrl ? <a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} alt="Imagem enviada no chat"/></a> : <div>{message.text || `[${type || "mensagem"}]`}</div>}
+    {attachments.length ? <div>{attachments.map((attachment, index) => {
+      const url = `/api/chats/attachments/${encodeURIComponent(message.id)}?index=${index}`;
+      return attachment.isImage
+        ? <a key={`${attachment.id}:${index}`} href={url} target="_blank" rel="noreferrer"><img className="chat-attachment" src={url} loading="lazy" alt={attachment.name || "Imagem enviada no chat"}/></a>
+        : <a key={`${attachment.id}:${index}`} className="secondary link-button compact" href={url} target="_blank" rel="noreferrer">Baixar {attachment.name || "anexo"}</a>;
+    })}{message.text && <div>{message.text}</div>}</div>
+      : isOrder ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Pedido {row.order_id || message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn || ""}</small><strong>{row.product_title || "Pedido compartilhado pelo cliente"}</strong>{row.sku && <span>SKU {row.sku}</span>}{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
+      : isItem ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Produto</small><strong>{row.product_title || `Produto ${message.raw_data?.content?.item_id || ""}`}</strong>{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
+      : imageUrl ? <a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} loading="lazy" alt="Imagem enviada no chat"/></a>
+      : <div>{message.text || `[${type || "mensagem"}]`}</div>}
     <small>{message.sender_name || (message.direction === "incoming" ? "Cliente" : "Loja")} · {formatDate(message.sent_at)}{message.direction === "outgoing" && <span className={`message-tick ${message.status === "sent" ? "confirmed" : message.status === "error" ? "failed" : ""}`} title={message.status === "sent" ? "Confirmada pela fila" : message.status === "error" ? "Falha no envio" : "Aguardando confirmação"}>✓</span>}</small>
   </div>;
 }

@@ -22,7 +22,13 @@ test("classifies frontend and worker through a shared module", () => {
 });
 
 test("classifies dependency changes for both runtimes", () => {
-  assert.deepEqual(pick(classify(["package-lock.json"])), [true, true, true, false]);
+  const result = classifyChanges(["package.json"], { workerFiles, dependenciesChanged: true });
+  assert.deepEqual(pick(result), [true, true, true, false]);
+});
+
+test("package scripts-only change does not affect either runtime by itself", () => {
+  const result = classifyChanges(["package.json"], { workerFiles, dependenciesChanged: false });
+  assert.deepEqual(pick(result), [false, false, false, false]);
 });
 
 test("detects migrations without inventing application changes", () => {

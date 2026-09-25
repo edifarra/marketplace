@@ -69,10 +69,10 @@ function resolveLocalImport(rootDir, importer, specifier) {
   return null;
 }
 
-export function classifyChanges(files, { workerFiles = new Set() } = {}) {
+export function classifyChanges(files, { workerFiles = new Set(), dependenciesChanged } = {}) {
   const normalizedFiles = [...new Set(files.map(normalizeFile).filter(Boolean))].sort();
   const productionFiles = normalizedFiles.filter((file) => !isTestFile(file) && !isDocumentationFile(file));
-  const dependencies = normalizedFiles.some((file) => file === "package.json" || file === "package-lock.json");
+  const dependencies = dependenciesChanged ?? normalizedFiles.some((file) => ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"].includes(file));
   const migration = normalizedFiles.some((file) => file.startsWith("supabase/migrations/"));
   const worker = dependencies || productionFiles.some((file) => workerFiles.has(file));
   const frontend = dependencies || productionFiles.some((file) =>

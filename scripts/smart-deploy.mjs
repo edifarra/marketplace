@@ -5,7 +5,7 @@ import readline from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 import { buildWorkerFileSet, classifyChanges } from "./smart-change-classifier.mjs";
 import { deploymentMode, mayModifyExternalEnvironment } from "./smart-execution-policy.mjs";
-import { changedFiles, git } from "./smart-git.mjs";
+import { changedFiles, dependencyFilesChanged, git, workingTreeDirty } from "./smart-git.mjs";
 
 const rootDir = process.cwd();
 const statePath = path.join(rootDir, ".smart-deploy-state.json");
@@ -21,8 +21,12 @@ const base = baseArg || process.env.SMART_DEPLOY_BASE || savedBase || (dryRun ? 
 if (!base) fail("No deployment baseline found. Use --base=<commit> for the first deployment.");
 if (mode === "plan") console.log("Planning mode: no production action will run. Add --execute to deploy.");
 
-const files = changedFiles({ base, head: "HEAD", includeWorkingTree: dryRun });
-const classification = classifyChanges(files, { workerFiles: buildWorkerFileSet(rootDir) });
+const files = changedFiles({ base, head: "HEAD" });
+const dependenciesChanged = dependencyFilesChanged({ base, head: "HEAD" });
+const classification = classifyChanges(files, { workerFiles: buildWorkerFileSet(rootDir), dependenciesChanged });
+if (workingTreeDirty()) {
+  console.warn("WARNING: working tree has local changes; they were not included in this baseline-to-HEAD classification.");
+}
 printPlan(base, classification);
 
 if (!mayModifyExternalEnvironment(mode)) process.exit(0);

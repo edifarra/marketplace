@@ -15,6 +15,7 @@ import {
 } from "./mercado-livre";
 import { canonicalMercadoLivreConversationId, MLB_MESSAGING_AGENT_ID, normalizeMercadoLivrePostSale, parseMercadoLivreConversationPath } from "./mercado-livre-post-sale";
 import { mercadoLivrePostSaleRevision, mercadoLivreQuestionRevision } from "./mercado-livre-conversation-reconciliation";
+import { reconcilePendingMercadoLivreQuestions } from "./mercado-livre-question-reconciliation";
 import { getActiveShopeeAccounts, getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { enqueueOutgoingActivity } from "./outgoing-activities";
@@ -481,18 +482,18 @@ async function syncMercadoLivreAccountIncremental(account: Account) {
   }
 
   const pendingQuestions = await pendingMarketplaceReconciliationRows("mercado_livre", account.id, "question", 5);
-  let checkedQuestions = 0;
-  for (const conversation of pendingQuestions) {
-    if (!questionIds.includes(String(conversation.external_conversation_id))) {
-      const question = await getMercadoLivreResource(`/questions/${encodeURIComponent(String(conversation.external_conversation_id))}?api_version=4`, account as any);
-      if (mercadoLivreQuestionRevision(conversation.raw_data || {}) !== mercadoLivreQuestionRevision(question)) {
-        await persistMercadoLivreQuestion(question, account);
-        changedQuestions += 1;
-      }
+  const pendingQuestionResult = await reconcilePendingMercadoLivreQuestions(
+    pendingQuestions,
+    new Set(questionIds),
+    {
+      loadQuestion: questionId => getMercadoLivreResource(`/questions/${encodeURIComponent(questionId)}?api_version=4`, account as any),
+      persistQuestion: question => persistMercadoLivreQuestion(question, account),
+      markReconciled: markMercadoLivreConversationReconciled,
+      markUnavailable: markMercadoLivreQuestionUnavailable
     }
-    await markMercadoLivreConversationReconciled(String(conversation.id));
-    checkedQuestions += 1;
-  }
+  );
+  changedQuestions += pendingQuestionResult.changedQuestions;
+  const { checkedQuestions } = pendingQuestionResult;
 
   const unread = await getMercadoLivreUnreadPostSaleMessages(account as any);
   const unreadItems = Array.isArray(unread.results) ? unread.results as Array<Record<string, any>> : [];
@@ -560,6 +561,20 @@ async function pendingShopeeReconciliationRows(accountId: string, limit: number)
 async function markMercadoLivreConversationReconciled(conversationId: string) {
   await supabaseAdmin().from("marketplace_conversations")
     .update({ last_reconciled_at: new Date().toISOString() }).eq("id", conversationId).throwOnError();
+}
+
+async function markMercadoLivreQuestionUnavailable(conversationId: string, error: unknown) {
+  const now = new Date().toISOString();
+  const detail = error instanceof Error ? error.message : String(error);
+  await supabaseAdmin().from("marketplace_conversations").update({
+    status: "closed",
+    external_status: "NOT_FOUND / REMOTE_UNAVAILABLE",
+    requires_response: false,
+    unread: false,
+    last_error: detail,
+    last_reconciled_at: now,
+    updated_at: now
+  }).eq("id", conversationId).throwOnError();
 }
 
 async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) {

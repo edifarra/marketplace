@@ -5,6 +5,7 @@ import readline from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 import { buildWorkerFileSet, classifyChanges } from "./smart-change-classifier.mjs";
 import { deploymentMode, mayModifyExternalEnvironment } from "./smart-execution-policy.mjs";
+import { formatSpawnError, spawnCommand } from "./smart-command-runner.mjs";
 import { changedFiles, dependencyFilesChanged, git, workingTreeDirty } from "./smart-git.mjs";
 
 const rootDir = process.cwd();
@@ -79,9 +80,14 @@ function assertSafeRepository() {
 
 function run(command, commandArgs, label) {
   console.log(`\n> ${label}`);
-  const executable = process.platform === "win32" && ["npm", "npx"].includes(command) ? `${command}.cmd` : command;
-  const result = spawnSync(executable, commandArgs, { cwd: rootDir, stdio: "inherit" });
-  if (result.status !== 0) fail(`${label} failed; remaining steps were not executed.`, result.status ?? 1);
+  const result = spawnCommand(command, commandArgs, { cwd: rootDir, stdio: "inherit" });
+  if (result.error) {
+    fail(`${label} failed to start: ${formatSpawnError(result.error)}. Remaining steps were not executed.`);
+  }
+  if (result.status !== 0) {
+    const detail = result.signal ? `signal=${result.signal}` : `exit code=${result.status}`;
+    fail(`${label} failed (${detail}); remaining steps were not executed.`, result.status ?? 1);
+  }
 }
 
 function readState() {

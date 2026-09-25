@@ -6,6 +6,7 @@ import {
   buildCloudinaryImageName,
   cloudinaryDirectDeliveryUrl,
   cloudinaryIncomingTransformation,
+  deleteCloudinaryResourceWithAccounts,
   isCloudinaryQuotaOrBillingError,
   uploadProductImageWithAccount,
   withCloudinaryUploadFallback,
@@ -82,6 +83,34 @@ test("fallback executa a reserva somente para erro de quota", async () => {
   });
   assert.equal(result, "reserve");
   assert.deepEqual(calls, ["main", "reserve"]);
+});
+
+test("cloudName desconhecido nao usa a conta principal como fallback", async () => {
+  const calls: string[] = [];
+  const deleted = await deleteCloudinaryResourceWithAccounts("legacy::produtos/foto", { primary: account("main", false), reserve: account("reserve", true) }, async (_publicId, current) => {
+    calls.push(current.cloudName);
+  });
+  assert.equal(deleted, false);
+  assert.deepEqual(calls, []);
+});
+
+test("conta Cloudinary antiga desativada nao bloqueia o cleanup", async () => {
+  const calls: string[] = [];
+  const deleted = await deleteCloudinaryResourceWithAccounts("legacy::produtos/foto", { primary: account("main", false), reserve: account("legacy", true) }, async (_publicId, current) => {
+    calls.push(current.cloudName);
+    throw new CloudinaryRequestError("cloud_name is disabled", 401, "account_disabled");
+  });
+  assert.equal(deleted, false);
+  assert.deepEqual(calls, ["legacy"]);
+});
+
+test("billing, quota e asset inexistente durante cleanup sao nao criticos", async () => {
+  for (const message of ["billing limit", "quota exceeded", "Resource not found"]) {
+    const deleted = await deleteCloudinaryResourceWithAccounts("main::produtos/foto", { primary: account("main", false), reserve: null }, async () => {
+      throw new Error(message);
+    });
+    assert.equal(deleted, false);
+  }
 });
 
 function account(cloudName: string, reserve: boolean): CloudinaryCredentials {

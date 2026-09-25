@@ -342,14 +342,32 @@ async function getCloudinaryAccounts() {
 }
 
 export async function deleteCloudinaryResource(publicId: string | null | undefined) {
-  if (!publicId) {
-    return;
+  if (!publicId) return;
+  try {
+    await deleteCloudinaryResourceWithAccounts(publicId, await getCloudinaryAccounts());
+  } catch (error) {
+    console.warn("Cleanup Cloudinary ignorado; o salvamento permanece válido.", cloudinaryCleanupErrorMessage(error));
   }
+}
 
-  const accounts = await getCloudinaryAccounts();
+export async function deleteCloudinaryResourceWithAccounts(
+  publicId: string,
+  accounts: { primary: CloudinaryCredentials; reserve: CloudinaryCredentials | null },
+  destroy: (decodedPublicId: string, account: CloudinaryCredentials) => Promise<void> = deleteCloudinaryResourceWithAccount
+) {
   const decoded = decodeCloudinaryPublicId(publicId);
-  const account = [accounts.primary, accounts.reserve].find(item => item?.cloudName === decoded.cloudName) || accounts.primary;
-  await deleteCloudinaryResourceWithAccount(decoded.publicId, account);
+  const account = [accounts.primary, accounts.reserve].find(item => item?.cloudName === decoded.cloudName);
+  if (!account) {
+    console.warn(`Cleanup Cloudinary ignorado: conta '${decoded.cloudName || "não identificada"}' não está configurada.`);
+    return false;
+  }
+  try {
+    await destroy(decoded.publicId, account);
+    return true;
+  } catch (error) {
+    console.warn(`Cleanup Cloudinary ignorado para a conta '${decoded.cloudName}'.`, cloudinaryCleanupErrorMessage(error));
+    return false;
+  }
 }
 
 async function deleteCloudinaryResourceWithAccount(publicId: string, account: CloudinaryCredentials) {
@@ -381,6 +399,10 @@ function encodeCloudinaryPublicId(cloudName: string, publicId: string) { return 
 function decodeCloudinaryPublicId(value: string) {
   const separator = value.indexOf("::");
   return separator > 0 ? { cloudName: value.slice(0, separator), publicId: value.slice(separator + 2) } : { cloudName: "", publicId: value };
+}
+
+function cloudinaryCleanupErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function isCloudinaryQuotaOrBillingError(error: unknown) {

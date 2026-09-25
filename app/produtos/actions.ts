@@ -333,7 +333,7 @@ export async function updateProductDetailsAction(formData: FormData) {
   const keptIds = imageSequence.filter(token => token.startsWith("existing:")).map(token => token.slice("existing:".length));
   const newKeys = imageSequence.filter(token => token.startsWith("new:")).map(token => token.slice("new:".length));
   const remoteKeys = imageSequence.filter(token => token.startsWith("remote:")).map(token => token.slice("remote:".length));
-  const existingImages = (current.data.product_images || []) as Array<{ id: string; original_name: string; url?: string | null; cloudinary_url?: string | null; cloudinary_public_id?: string | null; cloudinary_asset_id?: string | null; position: number; bytes?: number | null; width_px?: number | null; height_px?: number | null }>;
+  const existingImages = (current.data.product_images || []) as Array<{ id: string; original_name: string; url?: string | null; cloudinary_url?: string | null; cloudinary_public_id?: string | null; cloudinary_asset_id?: string | null; cloudinary_cloud_name?: string | null; position: number; bytes?: number | null; width_px?: number | null; height_px?: number | null }>;
   type PreparedImage = { key: string; name: string; url: string; publicId: string; assetId?: string | null; cloudName: string; bytes: number; width: number; height: number; position: number };
   let preparedImages: PreparedImage[] = [];
   try { preparedImages = JSON.parse(text("preparedImages") || "[]") as PreparedImage[]; } catch { redirect(detailError("Os dados das fotos processadas ficaram inconsistentes. Envie as fotos novamente.")); }
@@ -379,6 +379,47 @@ export async function updateProductDetailsAction(formData: FormData) {
     || removed.length > 0
     || imageSequence.some((token, index) => token !== previousImageSequence[index]);
 
+  type PersistedImage = { name: string; url: string; publicId: string; assetId?: string | null; cloudName: string; bytes: number; width: number; height: number };
+  const recoveredUploads = new Map<string, PersistedImage>();
+  const newlyPersistedPublicIds: string[] = [...preparedImages.map(image => image.publicId)];
+  try {
+    for (const [index, token] of imageSequence.entries()) {
+      if (!token.startsWith("remote:")) continue;
+      const key = token.slice("remote:".length);
+      const recovered = remoteImagesByKey.get(key);
+      if (!recovered) throw new Error("Foto recuperada não localizada na sequência final.");
+      const upload = await uploadProductImageToCloudinary({ buffer: recovered.buffer, fileName: recovered.name, sku, typeCode, brandCode, model, boardCode, position: index + 1, source: "marketplace" });
+      recoveredUploads.set(key, { name: recovered.name, url: upload.cloudinaryUrl, publicId: upload.publicId, assetId: upload.assetId,
+        cloudName: upload.cloudName, bytes: upload.bytes, width: upload.width, height: upload.height });
+      newlyPersistedPublicIds.push(upload.publicId);
+    }
+  } catch (error) {
+    await Promise.allSettled(newlyPersistedPublicIds.map(publicId => deleteCloudinaryResource(publicId)));
+    redirect(detailError(`Não foi possível persistir todas as novas fotos. As fotos anteriores foram mantidas: ${error instanceof Error ? error.message : String(error)}`));
+  }
+
+  let replacementImages: Array<Record<string, unknown>> = [];
+  try {
+    replacementImages = imageSequence.map((token, index) => {
+      const position = index + 1;
+      if (token.startsWith("existing:")) return { kind: "existing", id: token.slice("existing:".length), position };
+      const persisted = token.startsWith("new:")
+        ? newImagesByKey.get(token.slice("new:".length))
+        : recoveredUploads.get(token.slice("remote:".length));
+      if (!persisted) throw new Error("Nova foto não localizada na sequência final.");
+      const errors = validateMarketplaceImage(persisted);
+      if (errors.length) throw new Error(`A foto ${persisted.name} não ficou compatível após o tratamento: ${errors.join(" ")}`);
+      return { kind: "new", id: crypto.randomUUID(), position, original_name: persisted.name, url: persisted.url, cloudinary_url: persisted.url,
+        cloudinary_public_id: persisted.publicId, cloudinary_asset_id: persisted.assetId || null, cloudinary_cloud_name: persisted.cloudName,
+        bytes: persisted.bytes, width_px: persisted.width, height_px: persisted.height };
+    });
+  } catch (error) {
+    await Promise.allSettled(newlyPersistedPublicIds.map(publicId => deleteCloudinaryResource(publicId)));
+    redirect(detailError(`Não foi possível validar todas as novas fotos. As fotos anteriores foram mantidas: ${error instanceof Error ? error.message : String(error)}`));
+  }
+
+  let imageReplacementCommitted = !imagesChanged;
+
   try {
     await db.from("products").update({ sku, title, description, model, version, board_code: boardCode || null, price, type_code: typeCode, brand_code: brandCode, special_code: specialCode, product_condition: productCondition, marketplace_categories: marketplaceCategories, marketplace_attributes: marketplaceAttributes, ...measures, updated_at: new Date().toISOString() }).eq("id", productId).throwOnError();
     await db.from("listings").update({ external_sku: sku }).eq("product_id", productId).throwOnError();
@@ -393,36 +434,10 @@ export async function updateProductDetailsAction(formData: FormData) {
       availableStock = Number(adjusted.data ?? availableStock);
     }
 
-    for (const image of existingImages) await db.from("product_images").update({ position: 1000 + image.position }).eq("id", image.id).throwOnError();
-    for (const image of removed) {
-      await db.from("product_images").delete().eq("id", image.id).throwOnError();
-      await deleteCloudinaryResource(image.cloudinary_public_id);
-    }
-
-    const existingById = new Map(existingImages.map(image => [image.id, image]));
-    for (const [index, token] of imageSequence.entries()) {
-      const position = index + 1;
-      if (token.startsWith("new:")) {
-        const entry = newImagesByKey.get(token.slice("new:".length));
-        if (!entry) throw new Error("Nova foto não localizada na sequência final.");
-        const finalImage = entry;
-        const errors = validateMarketplaceImage(finalImage);
-        if (errors.length) throw new Error(`A foto ${entry.name} não ficou compatível após o tratamento: ${errors.join(" ")}`);
-        await db.from("product_images").insert({ product_id: productId, original_name: entry.name, url: finalImage.url, cloudinary_url: finalImage.url,
-          cloudinary_public_id: finalImage.publicId, cloudinary_asset_id: finalImage.assetId || null, cloudinary_cloud_name: finalImage.cloudName, bytes: finalImage.bytes, width_px: finalImage.width, height_px: finalImage.height, position, status: "uploaded" }).throwOnError();
-        continue;
-      }
-      if (token.startsWith("remote:")) {
-        const recovered = remoteImagesByKey.get(token.slice("remote:".length));
-        if (!recovered) throw new Error("Foto recuperada não localizada na sequência final.");
-        const upload = await uploadProductImageToCloudinary({ buffer: recovered.buffer, fileName: recovered.name, sku, typeCode, brandCode, model, boardCode, position, source: "marketplace" });
-        await db.from("product_images").insert({ product_id: productId, original_name: recovered.name, url: upload.cloudinaryUrl, cloudinary_url: upload.cloudinaryUrl, cloudinary_public_id: upload.publicId, cloudinary_asset_id: upload.assetId, cloudinary_cloud_name: upload.cloudName, bytes: upload.bytes, width_px: upload.width, height_px: upload.height, position, status: "uploaded" }).throwOnError();
-        continue;
-      }
-      const id = token.slice("existing:".length);
-      const image = existingById.get(id);
-      if (!image) throw new Error("Foto existente não localizada na sequência final.");
-      await db.from("product_images").update({ position }).eq("id", id).eq("product_id", productId).throwOnError();
+    if (imagesChanged) {
+      await db.rpc("replace_product_images_atomically", { p_product_id: productId, p_images: replacementImages }).throwOnError();
+      imageReplacementCommitted = true;
+      await Promise.allSettled(removed.map(image => deleteCloudinaryResource(image.cloudinary_public_id)));
     }
 
     if (current.data.tiny_product_id) {
@@ -441,6 +456,7 @@ export async function updateProductDetailsAction(formData: FormData) {
     }
     waitUntil(drainOutgoingActivities());
   } catch (error) {
+    if (!imageReplacementCommitted) await Promise.allSettled(newlyPersistedPublicIds.map(publicId => deleteCloudinaryResource(publicId)));
     revalidatePath(`/produtos/${productId}`);
     redirect(detailError(`Os dados foram processados, mas a atualização não foi concluída: ${error instanceof Error ? error.message : String(error)}`));
   }

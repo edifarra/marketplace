@@ -13,7 +13,7 @@
     "test:ml-post-sale": "tsx scripts/regression-mercado-livre-post-sale.ts",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:product-photo-flow": "tsx --test tests/cloudinary-upload-policy.test.ts tests/marketplace-image-recovery.test.ts tests/marketplace-stock-reactivation.test.ts",
+    "test:product-photo-flow": "tsx --test tests/cloudinary-upload-policy.test.ts tests/marketplace-image-recovery.test.ts tests/product-image-replacement.test.ts tests/marketplace-stock-reactivation.test.ts",
     "test:smart-change-classifier": "node --test tests/smart-change-classifier.test.mjs tests/smart-execution-policy.test.mjs",
     "check:smart": "node scripts/smart-check.mjs",
     "deploy:smart": "node scripts/smart-deploy.mjs"

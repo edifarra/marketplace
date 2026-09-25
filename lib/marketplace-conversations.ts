@@ -19,7 +19,16 @@ import { reconcilePendingMercadoLivreQuestions } from "./mercado-livre-question-
 import { getActiveShopeeAccounts, getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { enqueueOutgoingActivity } from "./outgoing-activities";
-import { mapLocalOrderProducts, marketplaceMessageType, resolveMercadoLivrePackOrder, shopeeConversationReferences } from "./marketplace-special-messages";
+import {
+  mapLocalOrderProducts,
+  isShopeeOutOfStockReminder,
+  marketplaceMessageType,
+  resolveMercadoLivrePackOrder,
+  shopeeConversationActivity,
+  shopeeConversationReferences,
+  shopeeMessageDirection,
+  shopeeMessageText
+} from "./marketplace-special-messages";
 import { supabaseAdmin } from "./supabase-admin";
 import {
   MESSAGE_SNAPSHOT_SELECT,
@@ -699,15 +708,26 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
     .sort(compareShopeeMessages);
   const latest = messages[messages.length - 1] || detail.last_message || seed;
   const buyerId = String(detail.to_id || detail.peer_id || detail.buyer_id || latest.from_id || latest.sender_id || "");
-  const hasSenderInformation = hasShopeeSenderInformation(latest);
-  const incoming = hasSenderInformation
-    ? !isShopeeSellerMessage(latest, account)
-    : Number(detail.unread_count ?? seed.unread_count ?? 0) > 0;
+  const activity = shopeeConversationActivity(messages, item => isShopeeSellerMessage(item, account));
+  const stateMessage = activity.latest || latest;
+  const hasSenderInformation = activity.latest ? hasShopeeSenderInformation(activity.latest) : hasShopeeSenderInformation(latest);
+  const incoming = activity.direction
+    ? activity.direction === "incoming"
+    : isShopeeOutOfStockReminder(latest)
+      ? Boolean(existing?.requires_response)
+    : hasSenderInformation
+      ? !isShopeeSellerMessage(stateMessage, account)
+      : existing?.requires_response ?? Number(detail.unread_count ?? seed.unread_count ?? 0) > 0;
+  const onlySystemActivity = !activity.direction && isShopeeOutOfStockReminder(latest);
+  const requiresResponse = onlySystemActivity ? Boolean(existing?.requires_response) : incoming;
+  const unread = onlySystemActivity ? Boolean(existing?.unread) : incoming;
   const { itemId, orderSn } = shopeeConversationReferences(messages.length ? messages : [latest], detail, seed);
-  const sentAt = shopeeDate(latest) || new Date().toISOString();
+  const sentAt = shopeeDate(stateMessage) || shopeeDate(latest) || new Date().toISOString();
   const externalStatus = detail.status ? String(detail.status) : "NOT_INFORMED";
-  const status = incoming ? "pending" : "answered";
-  const preview = messageText(latest).slice(0, 240);
+  const status = onlySystemActivity && existing?.status
+    ? existing.status
+    : incoming ? "pending" : "answered";
+  const preview = shopeeMessageText(stateMessage).slice(0, 240);
   const productIdentityChanged = Boolean(existing && (
     itemId && String(existing.listing_id || "") !== itemId
     || !itemId && orderSn && String(existing.order_id || "") !== orderSn
@@ -723,16 +743,20 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
   } : {};
   const conversationInput = {
     marketplace: "shopee", marketplace_account_id: account.id, external_conversation_id: conversationId, conversation_type: "chat",
-    external_status: externalStatus, status, requires_response: incoming, unread: incoming,
+    external_status: externalStatus, status, requires_response: requiresResponse, unread,
     buyer_id: buyerId || null, buyer_name: String(detail.to_name || detail.peer_name || detail.buyer_username || "") || null,
-    listing_id: itemId || null, order_id: orderSn || null, last_incoming_at: incoming ? sentAt : null, last_outgoing_at: incoming ? null : sentAt,
-    last_message_at: sentAt, last_message_preview: preview, raw_data: { ...detail, marketplace_url: "https://seller.shopee.com.br/webchat" }, ...preservedProduct
+    listing_id: itemId || null, order_id: orderSn || null,
+    last_incoming_at: shopeeDate(activity.latestIncoming || {}) || existing?.last_incoming_at || (incoming ? sentAt : null),
+    last_outgoing_at: shopeeDate(activity.latestOutgoing || {}) || existing?.last_outgoing_at || (!incoming ? sentAt : null),
+    last_message_at: onlySystemActivity && existing?.last_message_at ? existing.last_message_at : sentAt,
+    last_message_preview: onlySystemActivity && existing?.last_message_preview != null ? existing.last_message_preview : preview,
+    raw_data: { ...detail, marketplace_url: "https://seller.shopee.com.br/webchat" }, ...preservedProduct
   };
   const desiredMessages = messages.map((item): MarketplaceMessageWrite => {
-    const direction = isShopeeSellerMessage(item, account) ? "outgoing" : "incoming";
+    const direction = shopeeMessageDirection(item, isShopeeSellerMessage(item, account));
     return messageWrite(String(existing?.id || ""), String(item.message_id || item.id || hash(item)), direction,
-      messageText(item), String(item.from_id || item.sender_id || ""),
-      direction === "outgoing" ? account.name : String(detail.to_name || detail.peer_name || ""),
+      shopeeMessageText(item), direction === "system" ? "" : String(item.from_id || item.sender_id || ""),
+      direction === "system" ? "Shopee" : direction === "outgoing" ? account.name : String(detail.to_name || detail.peer_name || ""),
       shopeeDate(item) || sentAt, item);
   });
   const plan = planMarketplaceMessageWrites(desiredMessages, existing?.marketplace_conversation_messages || []);
@@ -952,7 +976,7 @@ function messageWrite(conversationId: string, externalId: string, direction: str
     sender_id: senderId || null,
     sender_name: senderName || null,
     sent_at: sentAt,
-    status: direction === "incoming" ? "received" : "sent",
+    status: direction === "outgoing" ? "sent" : "received",
     raw_data: raw,
     marketplace_account_id: identity?.accountId || null,
     external_message_key: identity?.externalKey || null
@@ -1039,10 +1063,6 @@ export function validateMarketplaceReply(text: string, conversation?: Record<str
   return { blocked, warnings };
 }
 
-function messageText(message: Record<string, any>) {
-  const value = message.text || message.content?.text || message.message || "";
-  return typeof value === "string" ? value : "";
-}
 function isClosedQuestion(status: unknown) { return /CLOSED|BANNED|DISABLED/.test(String(status || "").toUpperCase()); }
 function isoDate(value: unknown) { if (!value) return null; const date = new Date(String(value)); return Number.isNaN(date.getTime()) ? null : date.toISOString(); }
 function shopeeDate(value: Record<string, any>) {

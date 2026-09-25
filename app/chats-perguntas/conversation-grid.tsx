@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { ConversationCursor, mergeConversationDelta, shouldPollConversationChanges } from "@/lib/marketplace-conversation-delta";
 import { ConversationRow, ConversationView, conversationTimelineSections } from "@/lib/marketplace-conversation-view";
-import { mercadoLivreAttachments } from "@/lib/marketplace-special-messages";
+import { mercadoLivreAttachments, shopeeMessageImageUrl, shopeeOutOfStockReminderContent } from "@/lib/marketplace-special-messages";
 import { retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
 
 type Row = ConversationRow;
@@ -155,12 +155,14 @@ function Timeline({ row }: { row: Row }) {
 function Divider({ label }: { label: string }) { return <div className="timeline-divider"><span>{label}</span></div>; }
 function Message({ message, row }: { message: Record<string, any>; row: Row }) {
   const type = String(message.message_type || message.raw_data?.message_type || "text").toLowerCase();
-  const imageUrl = messageImageUrl(message.raw_data);
+  const imageUrl = shopeeMessageImageUrl(message.raw_data);
+  const reminder = shopeeOutOfStockReminderContent(message.raw_data);
   const attachments = mercadoLivreAttachments(message.raw_data);
   const isItem = type === "item" || Boolean(message.raw_data?.content?.item_id);
   const isOrder = type === "order" || Boolean(message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn);
-  return <div className={`chat-message ${message.direction}`}>
-    {attachments.length ? <div>{attachments.map((attachment, index) => {
+  return <div className={`chat-message ${reminder ? "system shopee-reminder" : message.direction}`}>
+    {reminder ? <div><strong>{reminder.title}</strong><p>{reminder.description}</p>{reminder.productName && <span>{reminder.productName}</span>}{reminder.itemId && <small>Item {reminder.itemId}{reminder.stock != null ? ` · Estoque informado: ${reminder.stock}` : ""}</small>}</div>
+      : attachments.length ? <div>{attachments.map((attachment, index) => {
       const url = `/api/chats/attachments/${encodeURIComponent(message.id)}?index=${index}`;
       return attachment.isImage
         ? <a key={`${attachment.id}:${index}`} href={url} target="_blank" rel="noreferrer"><img className="chat-attachment" src={url} loading="lazy" alt={attachment.name || "Imagem enviada no chat"}/></a>
@@ -168,12 +170,11 @@ function Message({ message, row }: { message: Record<string, any>; row: Row }) {
     })}{message.text && <div>{message.text}</div>}</div>
       : isOrder ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Pedido {row.order_id || message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn || ""}</small><strong>{row.product_title || "Pedido compartilhado pelo cliente"}</strong>{row.sku && <span>SKU {row.sku}</span>}{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
       : isItem ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Produto</small><strong>{row.product_title || `Produto ${message.raw_data?.content?.item_id || ""}`}</strong>{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
-      : imageUrl ? <a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} loading="lazy" alt="Imagem enviada no chat"/></a>
+      : imageUrl ? <div><a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} loading="lazy" alt="Imagem enviada no chat"/></a>{message.text && <div className="chat-image-text">{message.text}</div>}</div>
       : <div>{message.text || `[${type || "mensagem"}]`}</div>}
-    <small>{message.sender_name || (message.direction === "incoming" ? "Cliente" : "Loja")} · {formatDate(message.sent_at)}{message.direction === "outgoing" && <span className={`message-tick ${message.status === "sent" ? "confirmed" : message.status === "error" ? "failed" : ""}`} title={message.status === "sent" ? "Confirmada pela fila" : message.status === "error" ? "Falha no envio" : "Aguardando confirmação"}>✓</span>}</small>
+    <small>{reminder ? "Shopee" : message.sender_name || (message.direction === "incoming" ? "Cliente" : "Loja")} · {formatDate(message.sent_at)}{message.direction === "outgoing" && <span className={`message-tick ${message.status === "sent" ? "confirmed" : message.status === "error" ? "failed" : ""}`} title={message.status === "sent" ? "Confirmada pela fila" : message.status === "error" ? "Falha no envio" : "Aguardando confirmação"}>✓</span>}</small>
   </div>;
 }
-function messageImageUrl(raw: Record<string, any> | null | undefined) { const value = raw?.content?.image_url || raw?.content?.url || raw?.image_url || raw?.url || raw?.content?.image?.url; return typeof value === "string" ? value : ""; }
 function relativeTime(value: string) { const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000)); if (minutes < 60) return `Há ${minutes} minuto${minutes === 1 ? "" : "s"}`; const hours = Math.floor(minutes / 60), rest = minutes % 60; return rest ? `Há ${hours}h e ${rest} min` : `Há ${hours}h`; }
 function formatDate(value: string) { return value ? new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"; }
 function mask(value: string) { return value.length <= 4 ? value : `${value.slice(0, 2)}•••${value.slice(-2)}`; }

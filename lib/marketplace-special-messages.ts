@@ -31,6 +31,61 @@ export function marketplaceMessageType(raw: Record<string, any>, fallback = "tex
   return String(raw.message_type || raw.type || fallback || "text");
 }
 
+export function shopeeMessageText(raw: Record<string, any> | null | undefined) {
+  const value = raw?.text ?? raw?.content?.text ?? raw?.message ?? "";
+  return typeof value === "string" ? value : "";
+}
+
+export function shopeeMessageImageUrl(raw: Record<string, any> | null | undefined) {
+  const value = raw?.content?.image_url || raw?.content?.url || raw?.image_url || raw?.url || raw?.content?.image?.url;
+  return typeof value === "string" ? value : "";
+}
+
+export function isShopeeOutOfStockReminder(raw: Record<string, any> | null | undefined) {
+  return String(raw?.message_type || raw?.type || "").toLowerCase() === "out_of_stock_reminder_card"
+    && String(raw?.source || "").toLowerCase() === "server"
+    && Boolean(raw?.content?.seller_user_id && raw?.content?.product_info?.item_id);
+}
+
+export function shopeeMessageDirection(raw: Record<string, any>, sellerMessage: boolean): "incoming" | "outgoing" | "system" {
+  if (isShopeeOutOfStockReminder(raw)) return "system";
+  return sellerMessage ? "outgoing" : "incoming";
+}
+
+export function shopeeConversationActivity(
+  messages: Array<Record<string, any>>,
+  isSellerMessage: (message: Record<string, any>) => boolean
+) {
+  const actionable = messages.filter(message => !isShopeeOutOfStockReminder(message));
+  const latest = actionable.at(-1) || null;
+  const latestIncoming = [...actionable].reverse().find(message => shopeeMessageDirection(message, isSellerMessage(message)) === "incoming") || null;
+  const latestOutgoing = [...actionable].reverse().find(message => shopeeMessageDirection(message, isSellerMessage(message)) === "outgoing") || null;
+  const direction = latest ? shopeeMessageDirection(latest, isSellerMessage(latest)) : null;
+  return {
+    latest,
+    latestIncoming,
+    latestOutgoing,
+    direction,
+    requiresResponse: direction === "incoming",
+    unread: direction === "incoming"
+  };
+}
+
+export function shopeeOutOfStockReminderContent(raw: Record<string, any> | null | undefined) {
+  if (!isShopeeOutOfStockReminder(raw)) return null;
+  const product = raw?.content?.product_info;
+  const stocks = Array.isArray(product?.models)
+    ? product.models.map((model: Record<string, any>) => Number(model.model_stock)).filter(Number.isFinite)
+    : [];
+  return {
+    title: "Lembrete da Shopee",
+    description: "Seu produto pode estar sem estoque, por favor atualize o estoque caso necessário.",
+    productName: typeof product?.name === "string" ? product.name : "",
+    itemId: product?.item_id == null ? "" : String(product.item_id),
+    stock: stocks.length ? stocks.reduce((total: number, value: number) => total + value, 0) : null
+  };
+}
+
 export function shopeeConversationReferences(
   messages: Array<Record<string, any>>,
   detail: Record<string, any> = {},

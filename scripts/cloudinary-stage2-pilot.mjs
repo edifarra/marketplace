@@ -545,8 +545,7 @@ async function main() {
   env(path.join(ROOT, ".env.local"));
   env(path.join(ROOT, ".env.vercel.local"));
   const dbKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
     db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, dbKey, {
       auth: { persistSession: false },
     });

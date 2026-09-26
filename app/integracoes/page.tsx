@@ -1,15 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import { Sidebar } from "../components/sidebar";
 import { removeMarketplaceAccountAction, saveIntegrationModeAction, syncMarketplaceAccountAction } from "./actions";
 import { listMarketplaceAccountViews } from "@/lib/marketplace-accounts-view";
 import { unstable_noStore as noStore } from "next/cache";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 type IntegracoesPageProps = {
   searchParams?: {
@@ -20,9 +15,10 @@ type IntegracoesPageProps = {
 
 export default async function IntegracoesPage({ searchParams }: IntegracoesPageProps) {
   noStore();
+  const supabase = supabaseAdmin();
 
   const [{ data: settings }, marketplaces] = await Promise.all([
-    supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "ENVIAR_PRODUTOS_AUTOMATICO", "TINY_TOKEN", "OLIST_TINY_COOKIE"]),
+    supabase.from("settings").select("key,value").in("key", ["PRODUCT_SEND_TARGET", "ENVIAR_PRODUTOS_AUTOMATICO"]),
     listMarketplaceAccountViews()
   ]);
 

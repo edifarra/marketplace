@@ -12,7 +12,7 @@ const defaultPartnerKey = String(process.env.SHOPEE_PARTNER_KEY || "");
 const baseUrl = String(process.env.SHOPEE_API_BASE_URL || "https://partner.shopeemobile.com").replace(/\/+$/, "");
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 const { data: accounts, error: accountsError } = await db

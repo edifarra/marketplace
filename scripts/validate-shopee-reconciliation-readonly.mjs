@@ -256,7 +256,7 @@ function approximateBytes(value) {
 export async function runValidation() {
   loadEnvConfig(process.cwd());
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !supabaseKey) throw new Error("Variáveis Supabase ausentes no ambiente do worker.");
   const counters = { total: 0, supabase: 0, shopee: 0 };
   const shopeeOrigin = process.env.SHOPEE_API_BASE_URL || DEFAULT_SHOPEE_BASE_URL;

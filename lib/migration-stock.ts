@@ -9,7 +9,6 @@ import {
   getActiveShopeeAccounts,
   listShopeeInventory
 } from "./shopee";
-import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "./supabase-admin";
 import { findTinyProductBySku } from "./tiny";
 
@@ -631,7 +630,7 @@ async function getActiveMarketplaceAccounts() {
 }
 
 async function getMarketplaceLinks() {
-  const supabase = marketplaceReadClient();
+  const supabase = supabaseAdmin();
   const [marketplaceRows, listingRows] = await Promise.all([
     readAllRows((from, to) => supabase
       .from("product_marketplaces")
@@ -699,17 +698,6 @@ async function readAllRows<T>(loader: (from: number, to: number) => PromiseLike<
   }
 
   return rows;
-}
-
-function marketplaceReadClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Supabase nao configurado.");
-
-  return createClient(url, key, {
-    auth: { persistSession: false },
-    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) }
-  });
 }
 
 async function getMarketplaceLinksBySku(sku: string) {

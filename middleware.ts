@@ -105,7 +105,7 @@ function isConfigured() {
   return Boolean(
     process.env.AUTH_SESSION_SECRET &&
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 }
 
@@ -115,7 +115,7 @@ function isUnder(pathname: string, paths: string[]) {
 
 async function loadActiveUser(payload: SessionPayload) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   const response = await fetch(
     `${url}/rest/v1/app_users?id=eq.${encodeURIComponent(payload.sub)}&select=id,name,is_master,active,session_version`,

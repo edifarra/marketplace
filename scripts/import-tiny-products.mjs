@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY);
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const batches=(a,n)=>Array.from({length:Math.ceil(a.length/n)},(_,i)=>a.slice(i*n,(i+1)*n));
 const {data:tokenRow,error:tokenError}=await db.from("settings").select("value").eq("key","TINY_TOKEN").single();

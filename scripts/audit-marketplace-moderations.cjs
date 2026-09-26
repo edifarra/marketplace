@@ -12,7 +12,7 @@ const { createClient } = require("@supabase/supabase-js");
 async function runMarketplaceModerationAudit() {
   const sqlFile = process.env.AUDIT_SQL_FILE || "";
   const statements = [];
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, sqlFile ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const cutoff = new Date(Date.now() - 30 * 86400000);
   const accounts = await allRows(db.from("config_marketplace_accounts").select("id,name,nickname,marketplace,seller_id,shop_id,access_token").eq("active", true));
   const links = await allRows(db.from("product_marketplaces").select("*").eq("existe_no_marketplace", true));

@@ -41,7 +41,7 @@ const state = loadState();
 if (args[0] === "--status") { show(state); process.exit(0); }
 env(path.join(ROOT, ".env.local")); env(path.join(ROOT, ".env.vercel.local"));
 async function configuration() {
-  const dbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const dbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !dbKey) throw new SystemicStage2Error("credencial Supabase ausente");
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, dbKey, { auth: { persistSession: false } });
   const settings = await db.from("settings").select("key,value").in("key", ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"]);

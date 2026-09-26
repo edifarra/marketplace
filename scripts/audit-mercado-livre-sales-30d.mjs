@@ -5,7 +5,7 @@ const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 const until = new Date();

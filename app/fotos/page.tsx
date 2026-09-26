@@ -1,14 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
 import { Sidebar } from "../components/sidebar";
 import { listCloudinaryProductImages } from "@/lib/cloudinary";
 import { PhotosSelection } from "./photos-selection";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 type ImageRelation = {
   cloudinary_public_id?: string | null;
@@ -103,6 +98,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 async function getImageRelations() {
+  const supabase = supabaseAdmin();
   const { data, error } = await supabase
     .from("product_images")
     .select(`

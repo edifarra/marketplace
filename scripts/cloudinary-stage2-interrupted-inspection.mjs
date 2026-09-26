@@ -228,8 +228,7 @@ function backupFor(item) {
 loadEnv(path.join(ROOT, ".env.local"));
 loadEnv(path.join(ROOT, ".env.vercel.local"));
 const dbKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !dbKey)
   throw new Error("Supabase sem credenciais de leitura.");
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, dbKey, {

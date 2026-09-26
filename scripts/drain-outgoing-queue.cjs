@@ -6,7 +6,7 @@ const { createClient } = require("@supabase/supabase-js");
   });
   const processing = await response.json();
   if (!response.ok) throw new Error(JSON.stringify(processing));
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY,
     { auth: { persistSession: false } });
   const { data, error } = await db.from("outgoing_marketplace_activities").select("status");
   if (error) throw error;

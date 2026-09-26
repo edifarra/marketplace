@@ -84,8 +84,10 @@ revoke execute on function public.replace_product_images_atomically(uuid, jsonb)
 grant execute on function public.replace_product_images_atomically(uuid, jsonb) to service_role;
 
 -- Funcoes internas de triggers nao devem ser invocaveis pela API.
+-- Assinaturas conferidas contra o estado final das migrations 009-091.
+-- set_estoque_disponivel() nao faz parte desta lista: a migration 019 removeu
+-- definitivamente a funcao e seu trigger ao separar estoque fisico e reserva.
 revoke execute on function public.ensure_product_inventory() from public, anon, authenticated;
-revoke execute on function public.set_estoque_disponivel() from public, anon, authenticated;
 revoke execute on function public.mirror_available_stock_to_product() from public, anon, authenticated;
 revoke execute on function public.increment_stock_version() from public, anon, authenticated;
 revoke execute on function public.prevent_linked_product_category_change() from public, anon, authenticated;

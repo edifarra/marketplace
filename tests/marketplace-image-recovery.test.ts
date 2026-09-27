@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
-import { extractMarketplaceImageUrls } from "../lib/marketplace-image-recovery";
+import { extractMarketplaceImageUrls, extractMercadoLivreImageUrls, selectBestMercadoLivrePictureUrl } from "../lib/marketplace-image-recovery";
+import { validateMarketplaceImage } from "../lib/marketplace-image-validation";
 import { orderMarketplaceAccounts } from "../lib/marketplace-temporary-images";
+
+const recoverySource = fs.readFileSync(new URL("../lib/marketplace-image-recovery.ts", import.meta.url), "utf8");
 
 test("prioriza as duas contas ML e depois as duas contas Shopee", () => {
   const ordered = orderMarketplaceAccounts([
@@ -19,4 +23,68 @@ test("preserva a ordem da primeira origem e remove apenas URLs repetidas", () =>
     { secure_url: "https://img/2.jpg" }, { secure_url: "https://img/1.jpg" }
   ] });
   assert.deepEqual(urls, ["https://img/3.jpg", "https://img/1.jpg", "https://img/2.jpg"]);
+});
+
+test("Mercado Livre escolhe a maior variacao pelos metadados", () => {
+  const selected = selectBestMercadoLivrePictureUrl({ variations: [
+    { size: "500x280", secure_url: "https://http2.mlstatic.com/D_NQ_NP_123-MLB456-O.jpg" },
+    { size: "1200x672", secure_url: "https://http2.mlstatic.com/D_NQ_NP_123-MLB456-F.jpg" },
+    { size: "400x400", secure_url: "https://http2.mlstatic.com/D_NQ_NP_123-MLB456-C.jpg" }
+  ] });
+  assert.equal(selected, "https://http2.mlstatic.com/D_NQ_NP_123-MLB456-F.jpg");
+});
+
+test("Mercado Livre troca thumbnail O pela versao maxima F", () => {
+  const selected = selectBestMercadoLivrePictureUrl({
+    secure_url: "https://http2.mlstatic.com/D_938331-MLB45268824993_032021-O.jpg",
+    size: "500x341",
+    max_size: "1200x820"
+  });
+  assert.equal(selected, "https://http2.mlstatic.com/D_938331-MLB45268824993_032021-F.jpg");
+});
+
+test("Mercado Livre desempata URLs sem dimensao pela semantica oficial F", () => {
+  const selected = selectBestMercadoLivrePictureUrl({ variations: [
+    { secure_url: "https://http2.mlstatic.com/D_NQ_NP_123-MLB456-O.jpg" },
+    { secure_url: "https://http2.mlstatic.com/D_NQ_NP_123-MLB456-F.jpg" }
+  ] });
+  assert.equal(selected, "https://http2.mlstatic.com/D_NQ_NP_123-MLB456-F.jpg");
+});
+
+test("Mercado Livre preserva versao pequena quando ela e a unica resolucao real", () => {
+  const selected = selectBestMercadoLivrePictureUrl({
+    secure_url: "https://http2.mlstatic.com/D_123-MLB456-O.jpg",
+    size: "320x240",
+    max_size: "320x240"
+  });
+  assert.equal(selected, "https://http2.mlstatic.com/D_123-MLB456-O.jpg");
+  assert.deepEqual(validateMarketplaceImage({ width: 320, height: 240, bytes: 50_000 }), [
+    "Tamanho mínimo: pelo menos um dos lados deve ter 500 px."
+  ]);
+});
+
+test("Mercado Livre preserva ordem das fotos e ignora entradas invalidas", () => {
+  const urls = extractMercadoLivreImageUrls({ pictures: [
+    { secure_url: "https://http2.mlstatic.com/D_1-MLB1-O.jpg", size: "500x400", max_size: "1200x960" },
+    { secure_url: "javascript:alert(1)" },
+    { variations: [{ size: "800x600", secure_url: "https://http2.mlstatic.com/D_2-MLB2-F.jpg" }] }
+  ] });
+  assert.deepEqual(urls, [
+    "https://http2.mlstatic.com/D_1-MLB1-F.jpg",
+    "https://http2.mlstatic.com/D_2-MLB2-F.jpg"
+  ]);
+});
+
+test("Shopee continua usando o extrator generico sem reescrever URL", () => {
+  const url = "https://cf.shopee.com.br/file/photo-1";
+  assert.deepEqual(extractMarketplaceImageUrls({ image: { image_url_list: [url] } }), [url]);
+});
+
+test("nenhuma imagem valida preserva o fallback vazio", () => {
+  assert.deepEqual(extractMercadoLivreImageUrls({ pictures: [{ secure_url: "data:image/jpeg;base64,abc" }, {}] }), []);
+});
+
+test("recuperacao automatica persiste somente no produto e nao altera anuncio", () => {
+  assert.match(recoverySource, /from\("product_images"\)\.insert/);
+  assert.doesNotMatch(recoverySource, /updateMercadoLivre|updateShopee|enqueueOutgoingActivity|enqueueDirectListingUpdates/);
 });

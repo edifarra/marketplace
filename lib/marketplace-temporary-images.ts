@@ -1,5 +1,5 @@
 import { readImageDimensions } from "./marketplace-image-validation";
-import { extractMarketplaceImageUrls } from "./marketplace-image-recovery";
+import { extractMarketplaceImageUrls, extractMercadoLivreImageUrls } from "./marketplace-image-recovery";
 import { getMercadoLivreAccountById, getMercadoLivreItem } from "./mercado-livre";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { getValidShopeeAccessToken, type ShopeeAccountConfig } from "./shopee";
@@ -59,7 +59,9 @@ export async function recoverTemporaryImagesWhenCloudinaryIsUnavailable(
     if (!accountId || !listingId) continue;
     try {
       let urls = await fetchCurrentMarketplaceImageUrls(marketplace, accountId, listingId);
-      if (!urls.length) urls = extractMarketplaceImageUrls((link.raw_data || {}) as Record<string, unknown>);
+      if (!urls.length) urls = marketplace === "mercado_livre"
+        ? extractMercadoLivreImageUrls((link.raw_data || {}) as Record<string, unknown>)
+        : extractMarketplaceImageUrls((link.raw_data || {}) as Record<string, unknown>);
       if (!urls.length) continue;
       const images = await Promise.all(urls.slice(0, MAX_IMAGES).map((url, index) => inspectRemoteImage(url, index + 1)));
       return { images, marketplace, accountId, listingId, totalRemoteImages: urls.length };
@@ -92,7 +94,7 @@ export async function resolveMarketplaceRecoveryImageUrls(input: {
 async function fetchCurrentMarketplaceImageUrls(marketplace: Marketplace, accountId: string, listingId: string) {
   if (marketplace === "mercado_livre") {
     const account = await getMercadoLivreAccountById(accountId);
-    return extractMarketplaceImageUrls(await getMercadoLivreItem(listingId, account));
+    return extractMercadoLivreImageUrls(await getMercadoLivreItem(listingId, account));
   }
   const accountResult = await supabaseAdmin().from("config_marketplace_accounts")
     .select("id,name,marketplace,active,shop_id,account_id,access_token,refresh_token,token_expires_at,status")

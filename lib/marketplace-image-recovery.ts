@@ -6,9 +6,12 @@ const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 
 export async function recoverProductImagesFromMarketplaceListing(
   productId: string,
-  rawData: Record<string, unknown>
+  rawData: Record<string, unknown>,
+  marketplace?: "mercado_livre" | "shopee"
 ) {
-  const imageUrls = extractMarketplaceImageUrls(rawData).slice(0, MAX_IMAGES);
+  const imageUrls = (marketplace === "mercado_livre"
+    ? extractMercadoLivreImageUrls(rawData)
+    : extractMarketplaceImageUrls(rawData)).slice(0, MAX_IMAGES);
   if (!imageUrls.length) return 0;
 
   const db = supabaseAdmin();
@@ -74,6 +77,79 @@ export function extractMarketplaceImageUrls(rawData: Record<string, unknown>) {
     imageInfo.image_url
   ];
   return [...new Set(candidates.map((value) => normalizeImageUrl(String(value || "").trim())).filter(isHttpUrl))];
+}
+
+type ImageCandidate = { url: string; width: number; height: number; semanticRank: number; order: number };
+
+/**
+ * Selects one master URL per Mercado Livre picture while preserving picture order.
+ * Mercado Livre documents the `F` CDN variation as the maximum-size image and the
+ * item endpoint commonly exposes the smaller `O` variation in `secure_url`.
+ */
+export function extractMercadoLivreImageUrls(rawData: Record<string, unknown>) {
+  const pictures = Array.isArray(rawData.pictures) ? rawData.pictures : [];
+  const selected = pictures.map((picture) => selectBestMercadoLivrePictureUrl(picture)).filter(isHttpUrl);
+  return [...new Set(selected)];
+}
+
+export function selectBestMercadoLivrePictureUrl(picture: unknown) {
+  const value = asRecord(picture);
+  const variations = Array.isArray(value.variations) ? value.variations : [];
+  let order = 0;
+  const candidates: ImageCandidate[] = [];
+  const add = (urlValue: unknown, sizeValue?: unknown, semanticRank = 0) => {
+    const url = normalizeImageUrl(String(urlValue || "").trim());
+    if (!isHttpUrl(url)) return;
+    const { width, height } = parseImageSize(sizeValue);
+    candidates.push({ url, width, height, semanticRank: Math.max(semanticRank, mercadoLivreUrlRank(url)), order: order++ });
+  };
+
+  for (const variation of variations) {
+    const candidate = asRecord(variation);
+    add(candidate.secure_url || candidate.url, candidate.size);
+  }
+
+  const itemUrl = value.secure_url || value.url;
+  add(itemUrl, value.size);
+  const currentSize = parseImageSize(value.size);
+  const maximumSize = parseImageSize(value.max_size);
+  const hasMaximumMetadata = maximumSize.width > 0 && maximumSize.height > 0;
+  const maximumIsLarger = maximumSize.width * maximumSize.height > currentSize.width * currentSize.height;
+  const maximumUrl = mercadoLivreMaximumImageUrl(String(itemUrl || ""));
+  if (maximumUrl && (!hasMaximumMetadata || maximumIsLarger)) add(maximumUrl, value.max_size, 3);
+
+  return candidates.sort(compareImageCandidates)[0]?.url || "";
+}
+
+function compareImageCandidates(left: ImageCandidate, right: ImageCandidate) {
+  const leftArea = left.width * left.height;
+  const rightArea = right.width * right.height;
+  return rightArea - leftArea
+    || Math.max(right.width, right.height) - Math.max(left.width, left.height)
+    || right.semanticRank - left.semanticRank
+    || left.order - right.order;
+}
+
+function parseImageSize(value: unknown) {
+  const match = String(value || "").trim().match(/^(\d+)x(\d+)$/i);
+  return match ? { width: Number(match[1]), height: Number(match[2]) } : { width: 0, height: 0 };
+}
+
+function mercadoLivreMaximumImageUrl(value: string) {
+  const url = normalizeImageUrl(value.trim());
+  if (!isMercadoLivreCdnUrl(url)) return "";
+  return url.replace(/-[A-Z](\.[a-z0-9]+)(\?.*)?$/i, "-F$1$2");
+}
+
+function mercadoLivreUrlRank(value: string) {
+  if (/-F\.[a-z0-9]+(?:\?.*)?$/i.test(value)) return 3;
+  if (/-O\.[a-z0-9]+(?:\?.*)?$/i.test(value)) return 2;
+  return 1;
+}
+
+function isMercadoLivreCdnUrl(value: string) {
+  try { return /(^|\.)mlstatic\.com$/i.test(new URL(value).hostname); }
+  catch { return false; }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -462,7 +462,7 @@ export async function upsertMarketplaceItem(item: {
       const { reconcileProductMarketplaceMetadata } = await import("./marketplace-attributes");
       await reconcileProductMarketplaceMetadata(String(product.data.id), item.marketplace, item.rawData);
       const { recoverProductImagesFromMarketplaceListing } = await import("./marketplace-image-recovery");
-      await recoverProductImagesFromMarketplaceListing(String(product.data.id), item.rawData);
+      await recoverProductImagesFromMarketplaceListing(String(product.data.id), item.rawData, item.marketplace);
     } catch (error) {
       console.error("Nao foi possivel recuperar as imagens do anuncio durante a sincronizacao.", {
         productId: product.data.id,

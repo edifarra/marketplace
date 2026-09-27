@@ -39,6 +39,7 @@ import {
 } from "./marketplace-message-reconciliation";
 import {
   mapShopeeConversationSnapshots,
+  extractShopeeConversationId,
   loadUniqueValuesInChunks,
   marketplaceConversationProductColumns,
   persistBeforeOptionalEnrichment,
@@ -172,7 +173,11 @@ export async function processShopeeConversationNotification(payload: Record<stri
   const accounts = await getActiveShopeeAccounts();
   const account = accounts.find(item => String(item.shop_id || item.account_id || "") === shopId);
   if (!account) throw new Error(`Conta Shopee ${shopId || "não informada"} não encontrada.`);
-  const conversationId = String(payload.data?.conversation_id || payload.data?.conversationid || payload.conversation_id || "");
+  const { conversationId, path: conversationIdPath } = extractShopeeConversationId(payload);
+  console.info("[marketplace-worker] Shopee webhook conversation routing", {
+    conversationIdExtracted: Boolean(conversationId),
+    conversationIdPath
+  });
   if (conversationId) {
     const context = await shopeeContext(account);
     const snapshots = await loadShopeeConversationSnapshots(account.id, [conversationId]);

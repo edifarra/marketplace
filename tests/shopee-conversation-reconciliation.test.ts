@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
+  extractShopeeConversationId,
   loadUniqueValuesInChunks,
   mapShopeeConversationSnapshots,
   marketplaceConversationProductColumns,
@@ -24,6 +25,45 @@ import {
 } from "../lib/marketplace-message-reconciliation";
 
 const source = fs.readFileSync(path.join(process.cwd(), "lib/marketplace-conversations.ts"), "utf8");
+
+test("webchat_push extrai conversation_id dos formatos documentados e preserva precedência", () => {
+  assert.deepEqual(extractShopeeConversationId({
+    data: { type: "message", content: { conversation_id: " message-123 " } }
+  }), { conversationId: "message-123", path: "data.content.conversation_id" });
+  assert.deepEqual(extractShopeeConversationId({
+    data: { type: "notification", content: { conversation_id: 456 } }
+  }), { conversationId: "456", path: "data.content.conversation_id" });
+  assert.deepEqual(extractShopeeConversationId({
+    data: { type: "notification", content: { content: { conversation_id: "nested-789" } } }
+  }), { conversationId: "nested-789", path: "data.content.content.conversation_id" });
+  assert.deepEqual(extractShopeeConversationId({
+    conversation_id: "top", data: { conversation_id: "legacy", content: { conversation_id: "documented" } }
+  }), { conversationId: "documented", path: "data.content.conversation_id" });
+});
+
+test("webchat_push mantém caminhos legados, rejeita IDs vazios e conserva o fallback sem ID", () => {
+  assert.deepEqual(extractShopeeConversationId({ data: { conversation_id: "legacy-data" } }),
+    { conversationId: "legacy-data", path: "data.conversation_id" });
+  assert.deepEqual(extractShopeeConversationId({ data: { conversationid: "legacy-compact" } }),
+    { conversationId: "legacy-compact", path: "data.conversationid" });
+  assert.deepEqual(extractShopeeConversationId({ conversation_id: "legacy-top" }),
+    { conversationId: "legacy-top", path: "conversation_id" });
+  assert.deepEqual(extractShopeeConversationId({
+    data: { type: "notification", content: { conversation_id: "   ", content: { conversation_id: null } } }
+  }), { conversationId: "", path: null });
+
+  const handler = source.slice(source.indexOf("export async function processShopeeConversationNotification"), source.indexOf("export async function queueConversationReply"));
+  assert.match(handler, /if \(conversationId\)[\s\S]*syncShopeeCandidates[\s\S]*return \{ description: "Conversa atualizada\.", conversationId \};/);
+  assert.match(handler, /const count = await syncShopeeConversationList\(account\)/);
+});
+
+test("retries do mesmo webchat_push mantêm roteamento determinístico e reconciliação idempotente", () => {
+  const payload = { code: 10, data: { type: "message", content: { conversation_id: "same-conversation" } } };
+  assert.deepEqual(extractShopeeConversationId(payload), extractShopeeConversationId(payload));
+  const handler = source.slice(source.indexOf("export async function processShopeeConversationNotification"), source.indexOf("export async function queueConversationReply"));
+  assert.match(handler, /loadShopeeConversationSnapshots\(account\.id, \[conversationId\]\)/);
+  assert.match(source, /onConflict: "conversation_id,external_message_id", ignoreDuplicates: true/);
+});
 
 test("uma conta cria um único contexto e reutiliza-o em todas as conversas", () => {
   const incremental = source.slice(source.indexOf("async function syncShopeeConversationsIncremental"), source.indexOf("async function firstLocalMercadoLivreOrder"));

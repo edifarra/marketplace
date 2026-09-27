@@ -17,6 +17,38 @@ export const SHOPEE_CONVERSATION_SNAPSHOT_SELECT =
 export const SHOPEE_PRODUCT_LOOKUP_SELECT =
   "marketplace_product_id,product_id,sku,titulo_marketplace,valor_marketplace,estoque_marketplace,status_anuncio,raw_data,products(title,price,estoque(estoque_disponivel))";
 
+export type ShopeeConversationIdPath =
+  | "data.content.conversation_id"
+  | "data.content.content.conversation_id"
+  | "data.conversation_id"
+  | "data.conversationid"
+  | "conversation_id";
+
+export type ShopeeConversationIdExtraction = {
+  conversationId: string;
+  path: ShopeeConversationIdPath | null;
+};
+
+function normalizedShopeeConversationId(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") return "";
+  return String(value).trim();
+}
+
+export function extractShopeeConversationId(payload: Record<string, any>): ShopeeConversationIdExtraction {
+  const candidates: Array<[ShopeeConversationIdPath, unknown]> = [
+    ["data.content.conversation_id", payload.data?.content?.conversation_id],
+    ["data.content.content.conversation_id", payload.data?.content?.content?.conversation_id],
+    ["data.conversation_id", payload.data?.conversation_id],
+    ["data.conversationid", payload.data?.conversationid],
+    ["conversation_id", payload.conversation_id]
+  ];
+  for (const [path, value] of candidates) {
+    const conversationId = normalizedShopeeConversationId(value);
+    if (conversationId) return { conversationId, path };
+  }
+  return { conversationId: "", path: null };
+}
+
 export function shopeeSnapshotKey(accountId: string, externalConversationId: string) {
   return `${accountId}:${externalConversationId}`;
 }

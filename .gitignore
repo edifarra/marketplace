@@ -16,3 +16,5 @@ artifacts/cloudinary-stage2-pilot/backups/
 artifacts/cloudinary-stage2-batch/backups/
 supabase/.temp/
 .smart-deploy-state.json
+
+.env*

@@ -68,7 +68,7 @@ test("retries do mesmo webchat_push mantêm roteamento determinístico e reconci
 test("uma conta cria um único contexto e reutiliza-o em todas as conversas", () => {
   const incremental = source.slice(source.indexOf("async function syncShopeeConversationsIncremental"), source.indexOf("async function firstLocalMercadoLivreOrder"));
   assert.equal(incremental.match(/shopeeContext\(account\)/g)?.length, 1);
-  assert.match(incremental, /syncShopeeCandidates\(account, context, candidates, snapshots\)/);
+  assert.match(incremental, /syncShopeeCandidates\(account, context, candidates, snapshots(?:, 1, cache)?\)/);
   const prepare = source.slice(source.indexOf("async function prepareShopeeConversation"), source.indexOf("async function persistPreparedShopeeConversation"));
   assert.doesNotMatch(prepare, /shopeeContext\(/);
 });
@@ -201,7 +201,7 @@ test("enriquecimentos auxiliares Shopee projetam somente colunas permitidas", ()
 
 test("lookup de produto em lote usa chunking e não silencia HTTP 400", () => {
   const loader = source.slice(source.indexOf("async function loadShopeeProducts"), source.indexOf("async function upsertConversation"));
-  assert.match(loader, /loadUniqueValuesInChunks\(itemIds/);
+  assert.match(loader, /loadUniqueValuesInChunks\((?:itemIds|missingItemIds)/);
   assert.match(loader, /\.in\("marketplace_product_id", ids\)\.throwOnError\(\)/);
   assert.doesNotMatch(loader, /catch\s*\(/);
 });

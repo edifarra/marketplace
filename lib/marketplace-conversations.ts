@@ -15,7 +15,7 @@ import {
 } from "./mercado-livre";
 import { canonicalMercadoLivreConversationId, MLB_MESSAGING_AGENT_ID, normalizeMercadoLivrePostSale, parseMercadoLivreConversationPath } from "./mercado-livre-post-sale";
 import { mercadoLivrePostSaleRevision, mercadoLivreQuestionRevision } from "./mercado-livre-conversation-reconciliation";
-import { reconcilePendingMercadoLivreQuestions } from "./mercado-livre-question-reconciliation";
+import { reconcilePendingMercadoLivreQuestions, PendingMercadoLivreQuestion } from "./mercado-livre-question-reconciliation";
 import { getActiveShopeeAccounts, getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { enqueueOutgoingActivity } from "./outgoing-activities";
@@ -31,6 +31,7 @@ import {
 } from "./marketplace-special-messages";
 import { supabaseAdmin } from "./supabase-admin";
 import { validateMarketplaceReply } from "./marketplace-reply-validation";
+import { cachedRoundLookup, createReconciliationRoundCache, ReconciliationRoundCache } from "./marketplace-reconciliation-cache";
 export { validateMarketplaceReply } from "./marketplace-reply-validation";
 import {
   MESSAGE_SNAPSHOT_SELECT,
@@ -122,10 +123,14 @@ export async function syncMercadoLivreUnreadPostSaleConversations() {
 }
 
 export async function syncMercadoLivreConversationsIncremental() {
+  return syncMercadoLivreConversationsIncrementalWithCache(createReconciliationRoundCache());
+}
+
+async function syncMercadoLivreConversationsIncrementalWithCache(cache: ReconciliationRoundCache) {
   const results = [];
   for (const account of await getActiveMercadoLivreAccounts()) {
     try {
-      results.push({ account: account.name, ...(await syncMercadoLivreAccountIncremental(account)), ok: true });
+      results.push({ account: account.name, ...(await syncMercadoLivreAccountIncremental(account, cache)), ok: true });
     } catch (error) {
       results.push({ account: account.name, ok: false, error: safeError(error) });
     }
@@ -134,11 +139,12 @@ export async function syncMercadoLivreConversationsIncremental() {
 }
 
 export async function syncMarketplaceConversationsSafetyNet() {
-  const mercadoLivre = await syncMercadoLivreConversationsIncremental();
+  const cache = createReconciliationRoundCache();
+  const mercadoLivre = await syncMercadoLivreConversationsIncrementalWithCache(cache);
   const shopee = [];
   for (const account of await getActiveShopeeAccounts()) {
     try {
-      shopee.push({ account: account.name, ...(await syncShopeeConversationsIncremental(account)), ok: true });
+      shopee.push({ account: account.name, ...(await syncShopeeConversationsIncremental(account, cache)), ok: true });
     } catch (error) {
       shopee.push({ account: account.name, ok: false, error: safeError(error) });
     }
@@ -344,25 +350,23 @@ async function finalizeConversationReply(input: {
   return (result.data || { reconciled: false }) as { reconciled: boolean };
 }
 
-async function persistMercadoLivreQuestion(question: Record<string, any>, account: Account) {
+async function persistMercadoLivreQuestion(question: Record<string, any>, account: Account, cache?: ReconciliationRoundCache) {
   const db = supabaseAdmin();
   const listingId = String(question.item_id || "");
-  const product = await findProduct(account.id, listingId);
+  const product = await findProduct(account.id, listingId, cache);
   const productColumns = marketplaceConversationProductColumns(product);
   const buyerId = String(question.from?.id || question.buyer_id || "");
   let buyerName = String(question.from?.nickname || question.from?.name || "");
-  const existingBuyer = buyerId
-    ? await db.from("marketplace_conversations").select("buyer_name").eq("marketplace", "mercado_livre").eq("marketplace_account_id", account.id).eq("buyer_id", buyerId).not("buyer_name", "is", null).order("updated_at", { ascending: false }).limit(1).maybeSingle()
-    : { data: null };
-  if (buyerId) {
+  const buyerIdentity = buyerId ? await loadMercadoLivreBuyer(account, buyerId, cache) : null;
+  if (buyerIdentity?.remote) {
     try {
-      const buyer = await getMercadoLivreResource(`/users/${buyerId}`, account as any);
+      const buyer = buyerIdentity.remote;
       const nickname = String(buyer.nickname || buyerName || "");
       const realName = [buyer.first_name, buyer.last_name].map(value => String(value || "").trim()).filter(Boolean).join(" ");
       buyerName = realName ? `${titleCase(realName)}${nickname ? ` (${nickname})` : ""}` : nickname;
     } catch { /* dado pode estar protegido */ }
   }
-  if (isRicherBuyerName(String(existingBuyer.data?.buyer_name || ""), buyerName)) buyerName = String(existingBuyer.data?.buyer_name);
+  if (isRicherBuyerName(buyerIdentity?.existingName || "", buyerName)) buyerName = buyerIdentity?.existingName || buyerName;
   const externalStatus = String(question.status || "UNANSWERED").toUpperCase();
   const answered = Boolean(question.answer);
   const closed = isClosedQuestion(externalStatus);
@@ -382,7 +386,7 @@ async function persistMercadoLivreQuestion(question: Record<string, any>, accoun
   return conversation;
 }
 
-async function persistMercadoLivrePostSale(remote: Record<string, any>, account: Account, context: Record<string, any> = {}) {
+async function persistMercadoLivrePostSale(remote: Record<string, any>, account: Account, context: Record<string, any> = {}, cache?: ReconciliationRoundCache) {
   const db = supabaseAdmin();
   const sellerId = String(context.sellerId || account.seller_id || account.account_id || "");
   const messages = normalizeMercadoLivrePostSale(remote, sellerId, account.id).sort((a, b) => a.sentAt.localeCompare(b.sentAt));
@@ -393,7 +397,7 @@ async function persistMercadoLivrePostSale(remote: Record<string, any>, account:
   const conversationPath = String(context.conversationPath || latest.conversationPath || "") || null;
   const conversationType = String(latest.conversationType || "post_sale");
   const externalId = canonicalMercadoLivreConversationId({ conversationPath, packId, orderId, conversationType });
-  const order = orderId ? await findOrder("mercado_livre", orderId) : null;
+  const order = orderId ? await findOrder("mercado_livre", orderId, cache) : null;
   const incoming = latest.direction === "incoming";
   const status = String(remote.conversation_status?.status || remote.status || "active");
   const blocked = status.toLowerCase() === "blocked";
@@ -424,7 +428,7 @@ async function persistMercadoLivrePostSale(remote: Record<string, any>, account:
   return { ...conversation, reconciliationStats };
 }
 
-async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>, account: Account) {
+async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>, account: Account, cache?: ReconciliationRoundCache) {
   const sellerId = String(account.seller_id || account.account_id || "");
   let normalized = normalizeMercadoLivrePostSale(remote, sellerId, account.id);
   if (!normalized.length) throw new Error("Detalhe da mensagem pós-compra não retornou message_id.");
@@ -453,7 +457,7 @@ async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>
     const detailed = normalizeMercadoLivrePostSale(conversation, sellerId, account.id);
     if (detailed.length) { remote = conversation; normalized = detailed; }
   }
-  return persistMercadoLivrePostSale(remote, account, { orderId, packId, sellerId: resolvedSeller, conversationPath });
+  return persistMercadoLivrePostSale(remote, account, { orderId, packId, sellerId: resolvedSeller, conversationPath }, cache);
 }
 
 async function syncMercadoLivreUnreadPostSale(account: Account) {
@@ -470,7 +474,7 @@ async function syncMercadoLivreUnreadPostSale(account: Account) {
   return count;
 }
 
-async function syncMercadoLivreAccountIncremental(account: Account) {
+async function syncMercadoLivreAccountIncremental(account: Account, cache: ReconciliationRoundCache) {
   const sellerId = String(account.seller_id || account.account_id || "");
   if (!sellerId) throw new Error(`Seller ID não configurado para ${account.name}.`);
   const reconciliation = emptyReconciliationStats();
@@ -499,17 +503,17 @@ async function syncMercadoLivreAccountIncremental(account: Account) {
     const hasIncoming = conversationId ? questionMessageKeys.has(`${conversationId}:${id}`) : false;
     const hasAnswer = !question.answer || (conversationId ? questionMessageKeys.has(`${conversationId}:answer:${id}`) : false);
     if (!id || (revisions.get(id) === mercadoLivreQuestionRevision(question) && hasIncoming && hasAnswer)) continue;
-    await persistMercadoLivreQuestion(question, account);
+    await persistMercadoLivreQuestion(question, account, cache);
     changedQuestions += 1;
   }
 
   const pendingQuestions = await pendingMarketplaceReconciliationRows("mercado_livre", account.id, "question", 5);
   const pendingQuestionResult = await reconcilePendingMercadoLivreQuestions(
-    pendingQuestions,
+    pendingQuestions as PendingMercadoLivreQuestion[],
     new Set(questionIds),
     {
       loadQuestion: questionId => getMercadoLivreResource(`/questions/${encodeURIComponent(questionId)}?api_version=4`, account as any),
-      persistQuestion: question => persistMercadoLivreQuestion(question, account),
+      persistQuestion: question => persistMercadoLivreQuestion(question, account, cache),
       markReconciled: markMercadoLivreConversationReconciled,
       markUnavailable: markMercadoLivreQuestionUnavailable
     }
@@ -526,7 +530,7 @@ async function syncMercadoLivreAccountIncremental(account: Account) {
     if (!path || checkedPaths.has(path)) continue;
     checkedPaths.add(path);
     const remote = await getMercadoLivrePostSaleConversation(path, account as any);
-    const persisted = await resolveAndPersistMercadoLivrePostSale(remote, account);
+    const persisted = await resolveAndPersistMercadoLivrePostSale(remote, account, cache);
     mergeReconciliationStats(reconciliation, persisted.reconciliationStats);
     changedPostSale += 1;
   }
@@ -538,7 +542,7 @@ async function syncMercadoLivreAccountIncremental(account: Account) {
     if (path && !checkedPaths.has(path)) {
       const remote = await getMercadoLivrePostSaleConversation(path, account as any);
       if (await mercadoLivrePostSaleNeedsPersistence(conversation, remote, sellerId)) {
-        const persisted = await persistMercadoLivrePostSale(remote, account, conversation);
+        const persisted = await persistMercadoLivrePostSale(remote, account, conversation, cache);
         mergeReconciliationStats(reconciliation, persisted.reconciliationStats);
         changedPostSale += 1;
       }
@@ -561,18 +565,21 @@ async function mercadoLivrePostSaleNeedsPersistence(conversation: Record<string,
 }
 
 async function pendingMarketplaceReconciliationRows(marketplace: "mercado_livre" | "shopee", accountId: string, conversationType: "question" | "post_sale" | "chat", limit: number) {
+  const columns = conversationType === "post_sale"
+    ? "id,conversation_path,pack_id,seller_id,raw_data"
+    : "id,external_conversation_id,raw_data";
   const result = await supabaseAdmin().from("marketplace_conversations")
-    .select("id,external_conversation_id,external_status,conversation_path,pack_id,seller_id,raw_data,last_message_at,last_reconciled_at")
+    .select(columns)
     .eq("marketplace", marketplace).eq("marketplace_account_id", accountId)
     .eq("conversation_type", conversationType).eq("requires_response", true)
     .order("last_reconciled_at", { ascending: true, nullsFirst: true }).order("last_message_at", { ascending: false })
     .limit(limit).throwOnError();
-  return result.data || [];
+  return (result.data || []) as Array<Record<string, any>>;
 }
 
 async function pendingShopeeReconciliationRows(accountId: string, limit: number) {
   const result = await supabaseAdmin().from("marketplace_conversations")
-    .select("id,external_conversation_id,external_status,raw_data,last_message_at,last_reconciled_at,listing_id,order_id,product_id")
+    .select("id,external_conversation_id,raw_data")
     .eq("marketplace", "shopee").eq("marketplace_account_id", accountId).eq("conversation_type", "chat")
     .or("requires_response.eq.true,and(product_id.is.null,listing_id.not.is.null),and(product_id.is.null,order_id.not.is.null)")
     .order("last_reconciled_at", { ascending: true, nullsFirst: true }).order("last_message_at", { ascending: false })
@@ -599,7 +606,7 @@ async function markMercadoLivreQuestionUnavailable(conversationId: string, error
   }).eq("id", conversationId).throwOnError();
 }
 
-async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) {
+async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig, cache: ReconciliationRoundCache) {
   const context = await shopeeContext(account);
   const { client, token, shopId } = context;
   const payload = await client.getConversationList(token, shopId, "", 50);
@@ -629,7 +636,7 @@ async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig) 
     .filter(candidate => candidate.id && !recentIds.has(candidate.id));
   const candidates = uniqueShopeeCandidates([...recentCandidates, ...pendingCandidates]);
   const snapshots = await loadShopeeConversationSnapshots(account.id, candidates.map(candidate => candidate.id));
-  const reconciliation = await syncShopeeCandidates(account, context, candidates, snapshots);
+  const reconciliation = await syncShopeeCandidates(account, context, candidates, snapshots, 1, cache);
   let rotated = 0;
   for (const conversation of pending) {
     await markMercadoLivreConversationReconciled(String(conversation.id));
@@ -811,7 +818,7 @@ async function persistPreparedShopeeConversation(prepared: PreparedShopeeConvers
 }
 
 async function syncShopeeCandidates(account: ShopeeAccountConfig, context: ShopeeContext, candidates: ShopeeCandidate[],
-  snapshots: Map<string, Record<string, any>>, concurrency = 1) {
+  snapshots: Map<string, Record<string, any>>, concurrency = 1, cache?: ReconciliationRoundCache) {
   const prepared: PreparedShopeeConversation[] = [];
   for (let index = 0; index < candidates.length; index += concurrency) {
     const batch = candidates.slice(index, index + concurrency);
@@ -835,7 +842,7 @@ async function syncShopeeCandidates(account: ShopeeAccountConfig, context: Shope
     }
     return persisted;
   }, async persisted => {
-    await enrichShopeeConversationProducts(account.id, persisted, reconciliation);
+    await enrichShopeeConversationProducts(account.id, persisted, reconciliation, cache);
   }, error => {
     reconciliation.productLookupErrors += 1;
     console.error("[marketplace-worker] Unexpected Shopee product enrichment failure", {
@@ -847,7 +854,8 @@ async function syncShopeeCandidates(account: ShopeeAccountConfig, context: Shope
 }
 
 async function enrichShopeeConversationProducts(accountId: string,
-  persisted: Array<{ prepared: PreparedShopeeConversation; conversation: Record<string, any> }>, stats: ReconciliationStats) {
+  persisted: Array<{ prepared: PreparedShopeeConversation; conversation: Record<string, any> }>, stats: ReconciliationStats,
+  cache?: ReconciliationRoundCache) {
   const itemEntries = persisted.filter(({ prepared, conversation }) =>
     shopeeProductLookupNeeded(conversation, prepared.itemId));
   const itemIds = [...new Set(itemEntries.map(({ prepared }) => prepared.itemId).filter(Boolean))];
@@ -858,7 +866,7 @@ async function enrichShopeeConversationProducts(accountId: string,
   let products = new Map<string, Record<string, any>>();
   if (itemIds.length) {
     try {
-      products = await loadShopeeProducts(accountId, itemIds);
+      products = await loadShopeeProducts(accountId, itemIds, cache);
       stats.productLookupsLoaded += products.size;
     } catch (error) {
       stats.productLookupErrors += 1;
@@ -884,7 +892,7 @@ async function enrichShopeeConversationProducts(accountId: string,
     }
   }
 
-  const orderProducts = await loadOrderProducts("shopee", orderEntries.map(entry => entry.prepared.orderSn));
+  const orderProducts = await loadOrderProducts("shopee", orderEntries.map(entry => entry.prepared.orderSn), cache);
   stats.productLookupsLoaded += orderProducts.size;
   for (const entry of orderEntries) {
     try {
@@ -914,16 +922,31 @@ async function loadShopeeConversationSnapshots(accountId: string, externalConver
   return mapShopeeConversationSnapshots(rows);
 }
 
-async function loadShopeeProducts(accountId: string, itemIds: string[]) {
-  const rows = await loadUniqueValuesInChunks(itemIds, async ids => {
+async function loadShopeeProducts(accountId: string, itemIds: string[], cache?: ReconciliationRoundCache) {
+  const products = new Map<string, Record<string, any>>();
+  if (cache) {
+    for (const itemId of itemIds) {
+      const cached = cache.productsByListing.get(`${accountId}:${itemId}`);
+      if (cached) {
+        const product = await cached;
+        if (Object.keys(product).length) products.set(itemId, product);
+      }
+    }
+  }
+  const missingItemIds = cache ? itemIds.filter(itemId => !cache.productsByListing.has(`${accountId}:${itemId}`)) : itemIds;
+  const rows = await loadUniqueValuesInChunks(missingItemIds, async ids => {
     const result = await supabaseAdmin().from("product_marketplaces")
       .select(SHOPEE_PRODUCT_LOOKUP_SELECT)
       .eq("marketplace_account_id", accountId).in("marketplace_product_id", ids).throwOnError();
     return (result.data || []) as Array<Record<string, any>>;
   });
-  return new Map(rows.map(row => [
-    String(row.marketplace_product_id), shopeeProductEnrichment(row)
-  ]));
+  const loaded = new Map(rows.map(row => [String(row.marketplace_product_id), shopeeProductEnrichment(row)]));
+  for (const itemId of missingItemIds) {
+    const product = loaded.get(itemId) || {};
+    if (cache) cache.productsByListing.set(`${accountId}:${itemId}`, Promise.resolve(product));
+    if (Object.keys(product).length) products.set(itemId, product);
+  }
+  return products;
 }
 
 async function upsertConversation(input: Record<string, any>) {
@@ -1013,36 +1036,96 @@ function mergeReconciliationStats(target: ReconciliationStats, source: Reconcili
   target.productLookupErrors += source.productLookupErrors;
 }
 
-async function findProduct(accountId: string, listingId: string) {
+const MERCADO_LIVRE_PRODUCT_LOOKUP_SELECT =
+  "marketplace_product_id,product_id,sku,titulo_marketplace,valor_marketplace,status_anuncio,raw_data,products(title,price,estoque(estoque_disponivel))";
+
+async function findProduct(accountId: string, listingId: string, cache?: ReconciliationRoundCache) {
   if (!listingId) return {};
-  const db = supabaseAdmin();
-  const link = await db.from("product_marketplaces").select(SHOPEE_PRODUCT_LOOKUP_SELECT)
-    .eq("marketplace_account_id", accountId).eq("marketplace_product_id", listingId).maybeSingle().throwOnError();
-  return shopeeProductEnrichment(link.data as Record<string, any> | null);
+  const key = `${accountId}:${listingId}`;
+  const load = async () => {
+    const link = await supabaseAdmin().from("product_marketplaces").select(MERCADO_LIVRE_PRODUCT_LOOKUP_SELECT)
+      .eq("marketplace_account_id", accountId).eq("marketplace_product_id", listingId).maybeSingle().throwOnError();
+    return shopeeProductEnrichment(link.data as Record<string, any> | null);
+  };
+  if (!cache) return load();
+  return cachedRoundLookup(cache.productsByListing, key, load);
 }
 
-async function findOrder(marketplace: string, orderId: string) {
-  const sale = await supabaseAdmin().from("venda").select("order_id,data_venda,raw_data,venda_item(sku,valor_unitario,raw_data)").eq("marketplace", marketplace).eq("order_id", orderId).maybeSingle();
-  const item: any = (sale.data as any)?.venda_item?.[0];
-  if (!item) return null;
-  const product = await supabaseAdmin().from("products").select("id,title,price,estoque(estoque_disponivel)").eq("sku", item.sku).maybeSingle();
-  const listingId = String(item.raw_data?.item?.id || item.raw_data?.item_id || (sale.data as any)?.raw_data?.order_items?.[0]?.item?.id || "") || null;
-  return { order_id: orderId, listing_id: listingId, purchased_at: (sale.data as any)?.data_venda, product_id: product.data?.id, sku: item.sku, product_title: product.data?.title, product_price: item.valor_unitario || product.data?.price, available_stock: (product.data as any)?.estoque?.estoque_disponivel };
+async function findOrder(marketplace: string, orderId: string, cache?: ReconciliationRoundCache) {
+  const key = `${marketplace}:${orderId}`;
+  const load = async () => {
+    const sale = await supabaseAdmin().from("venda").select("order_id,data_venda,raw_data,venda_item(sku,valor_unitario,raw_data)").eq("marketplace", marketplace).eq("order_id", orderId).maybeSingle();
+    const item: any = (sale.data as any)?.venda_item?.[0];
+    if (!item) return null;
+    const product = await findProductBySku(String(item.sku || ""), cache);
+    const listingId = String(item.raw_data?.item?.id || item.raw_data?.item_id || (sale.data as any)?.raw_data?.order_items?.[0]?.item?.id || "") || null;
+    return { order_id: orderId, listing_id: listingId, purchased_at: (sale.data as any)?.data_venda, product_id: product?.id, sku: item.sku, product_title: product?.title, product_price: item.valor_unitario || product?.price, available_stock: product?.estoque?.estoque_disponivel };
+  };
+  if (!cache) return load();
+  return cachedRoundLookup(cache.orders, key, load);
 }
 
-async function loadOrderProducts(marketplace: string, orderIds: string[]) {
+async function findProductBySku(sku: string, cache?: ReconciliationRoundCache) {
+  if (!sku) return null;
+  const load = async () => {
+    const result = await supabaseAdmin().from("products").select("id,sku,title,price,estoque(estoque_disponivel)").eq("sku", sku).maybeSingle();
+    return result.data as Record<string, any> | null;
+  };
+  if (!cache) return load();
+  return cachedRoundLookup(cache.productsBySku, sku, load);
+}
+
+async function loadOrderProducts(marketplace: string, orderIds: string[], cache?: ReconciliationRoundCache) {
   const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
   if (!uniqueOrderIds.length) return new Map<string, Record<string, any>>();
+  const cachedOrders = new Map<string, Record<string, any>>();
+  if (cache) {
+    for (const orderId of uniqueOrderIds) {
+      const cached = cache.orders.get(`${marketplace}:${orderId}`);
+      if (cached) {
+        const order = await cached;
+        if (order) cachedOrders.set(orderId, order);
+      }
+    }
+  }
+  const missingOrderIds = cache ? uniqueOrderIds.filter(orderId => !cache.orders.has(`${marketplace}:${orderId}`)) : uniqueOrderIds;
+  if (!missingOrderIds.length) return cachedOrders;
   const db = supabaseAdmin();
   const sales = await db.from("venda")
-    .select("order_id,data_venda,venda_item(sku,valor_unitario,raw_data)")
-    .eq("marketplace", marketplace).in("order_id", uniqueOrderIds).throwOnError();
+    .select("order_id,data_venda,venda_item(sku,valor_unitario)")
+    .eq("marketplace", marketplace).in("order_id", missingOrderIds).throwOnError();
   const skus = [...new Set((sales.data || []).flatMap((sale: any) => sale.venda_item || [])
     .map((item: any) => String(item.sku || "")).filter(Boolean))];
-  const products = skus.length
-    ? await db.from("products").select("id,sku,title,price,estoque(estoque_disponivel)").in("sku", skus).throwOnError()
+  const cachedProducts = cache
+    ? (await Promise.all(skus.filter(sku => cache.productsBySku.has(sku)).map(sku => cache.productsBySku.get(sku)!))).filter((row): row is Record<string, any> => Boolean(row))
+    : [];
+  const missingSkus = cache ? skus.filter(sku => !cache.productsBySku.has(sku)) : skus;
+  const productResult = missingSkus.length
+    ? await db.from("products").select("id,sku,title,price,estoque(estoque_disponivel)").in("sku", missingSkus).throwOnError()
     : { data: [] as Array<Record<string, any>> };
-  return mapLocalOrderProducts(sales.data || [], products.data || []);
+  const loadedProducts = (productResult.data || []) as Array<Record<string, any>>;
+  if (cache) {
+    const loadedBySku = new Map(loadedProducts.map(row => [String(row.sku), row]));
+    for (const sku of missingSkus) cache.productsBySku.set(sku, Promise.resolve(loadedBySku.get(sku) || null));
+  }
+  const products = [...cachedProducts, ...loadedProducts];
+  const mapped = mapLocalOrderProducts(sales.data || [], products);
+  if (cache) for (const orderId of missingOrderIds) cache.orders.set(`${marketplace}:${orderId}`, Promise.resolve(mapped.get(orderId) || null));
+  return new Map([...cachedOrders, ...mapped]);
+}
+
+async function loadMercadoLivreBuyer(account: Account, buyerId: string, cache?: ReconciliationRoundCache) {
+  const key = `${account.id}:${buyerId}`;
+  const load = async () => {
+    const existing = await supabaseAdmin().from("marketplace_conversations").select("buyer_name")
+      .eq("marketplace", "mercado_livre").eq("marketplace_account_id", account.id).eq("buyer_id", buyerId)
+      .not("buyer_name", "is", null).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    let remote: Record<string, any> | null = null;
+    try { remote = await getMercadoLivreResource(`/users/${buyerId}`, account as any); } catch { /* dado pode estar protegido */ }
+    return { existingName: String(existing.data?.buyer_name || ""), remote };
+  };
+  if (!cache) return load();
+  return cachedRoundLookup(cache.mercadoLivreBuyers, key, load);
 }
 
 async function findMercadoLivreAccount(userId: unknown) {
@@ -1055,7 +1138,7 @@ async function findMercadoLivreAccount(userId: unknown) {
 async function shopeeContext(account: ShopeeAccountConfig) {
   const shopId = account.shop_id || account.account_id;
   if (!shopId) throw new Error(`Shop ID não configurado para ${account.name}.`);
-  return { client: createShopeeClient(await getShopeeOAuthConfig(account.id)), token: await getValidShopeeAccessToken(account), shopId };
+  return { client: createShopeeClient(await getShopeeOAuthConfig(account)), token: await getValidShopeeAccessToken(account), shopId };
 }
 
 function isClosedQuestion(status: unknown) { return /CLOSED|BANNED|DISABLED/.test(String(status || "").toUpperCase()); }

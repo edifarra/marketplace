@@ -149,7 +149,7 @@ test("performance: fallback de pack é por conversa e pedidos Shopee são consul
   assert.match(packFallback, /select\("order_id,pack_id"\)/);
   assert.equal(packFallback.match(/supabaseAdmin\(\)/g)?.length, 1);
   const orderLoader = source.slice(source.indexOf("async function loadOrderProducts"), source.indexOf("async function findMercadoLivreAccount"));
-  assert.match(orderLoader, /\.in\("order_id", uniqueOrderIds\)/);
-  assert.match(orderLoader, /\.in\("sku", skus\)/);
-  assert.doesNotMatch(orderLoader, /for\s*\([^)]*order/);
+  assert.match(orderLoader, /\.in\("order_id", (?:uniqueOrderIds|missingOrderIds)\)/);
+  assert.match(orderLoader, /\.in\("sku", (?:skus|missingSkus)\)/);
+  assert.equal(orderLoader.match(/from\("venda"\)/g)?.length, 1);
 });

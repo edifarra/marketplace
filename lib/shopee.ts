@@ -13,6 +13,10 @@ export type ShopeeAccountConfig = {
   refresh_token?: string | null;
   token_expires_at?: string | null;
   status?: string | null;
+  client_id?: string | null;
+  client_secret?: string | null;
+  redirect_uri?: string | null;
+  api_base_url?: string | null;
 };
 
 export type ShopeeInventoryItem = {
@@ -30,7 +34,7 @@ export type ShopeeInventoryItem = {
 
 export async function getActiveShopeeAccounts() {
   const data = await selectMarketplaceAccounts(
-    "id,name,marketplace,active,shop_id,account_id,access_token,refresh_token,token_expires_at,status"
+    "id,name,marketplace,active,shop_id,account_id,access_token,refresh_token,token_expires_at,status,client_id,client_secret,redirect_uri,api_base_url"
   );
 
   return ((data ?? []) as unknown as ShopeeAccountConfig[])

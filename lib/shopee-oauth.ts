@@ -5,7 +5,7 @@ import { supabaseAdmin } from "./supabase-admin";
 
 const DEFAULT_SHOPEE_BASE_URL = "https://partner.shopeemobile.com";
 
-type ShopeeOAuthAccount = {
+export type ShopeeOAuthAccount = {
   id: string;
   name?: string | null;
   client_id?: string | null;
@@ -14,11 +14,13 @@ type ShopeeOAuthAccount = {
   api_base_url?: string | null;
 };
 
-export async function getShopeeOAuthConfig(accountId?: string | null) {
+export async function getShopeeOAuthConfig(accountOrId?: string | ShopeeOAuthAccount | null) {
   let account: ShopeeOAuthAccount | null = null;
 
-  if (accountId) {
-    account = await getShopeeAccount(accountId);
+  if (typeof accountOrId === "string") {
+    account = await getShopeeAccount(accountOrId);
+  } else if (accountOrId) {
+    account = accountOrId;
   }
 
   const partnerId = account?.client_id || process.env.SHOPEE_PARTNER_ID || "";

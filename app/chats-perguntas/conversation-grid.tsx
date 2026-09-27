@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { ConversationCursor, mergeConversationDelta, shouldPollConversationChanges } from "@/lib/marketplace-conversation-delta";
 import { ConversationRow, ConversationView, conversationTimelineSections } from "@/lib/marketplace-conversation-view";
 import { mercadoLivreAttachments, shopeeMessageImageUrl, shopeeOutOfStockReminderContent } from "@/lib/marketplace-special-messages";
+import { messagesWithVisibleShopeeProductCards } from "@/lib/shopee-message-product-cards";
 import { retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
 
 type Row = ConversationRow;
@@ -150,10 +151,11 @@ function sortByLatest(a: Row, b: Row) { return new Date(b.last_message_at || 0).
 
 function Timeline({ row }: { row: Row }) {
   const { before, after, purchase, postSaleOnly } = conversationTimelineSections(row);
-  return <div className="conversation-timeline">{!postSaleOnly && <Divider label="Pré-venda"/>}{before.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row}/>)}{purchase && <div className="purchase-marker">Compra realizada{row.order_id ? ` — Pedido ${row.order_id}` : ""} — {formatDate(row.purchased_at)}</div>}{(postSaleOnly || purchase) && <Divider label="Pós-venda"/>}{after.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row}/>)}</div>;
+  const messagesWithProductCard = messagesWithVisibleShopeeProductCards(row.messages);
+  return <div className="conversation-timeline">{!postSaleOnly && <Divider label="Pré-venda"/>}{before.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row} showItemCard={messagesWithProductCard.has(message)}/>)}{purchase && <div className="purchase-marker">Compra realizada{row.order_id ? ` — Pedido ${row.order_id}` : ""} — {formatDate(row.purchased_at)}</div>}{(postSaleOnly || purchase) && <Divider label="Pós-venda"/>}{after.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row} showItemCard={messagesWithProductCard.has(message)}/>)}</div>;
 }
 function Divider({ label }: { label: string }) { return <div className="timeline-divider"><span>{label}</span></div>; }
-function Message({ message, row }: { message: Record<string, any>; row: Row }) {
+function Message({ message, row, showItemCard }: { message: Record<string, any>; row: Row; showItemCard: boolean }) {
   const type = String(message.message_type || message.raw_data?.message_type || "text").toLowerCase();
   const imageUrl = shopeeMessageImageUrl(message.raw_data);
   const reminder = shopeeOutOfStockReminderContent(message.raw_data);
@@ -169,10 +171,15 @@ function Message({ message, row }: { message: Record<string, any>; row: Row }) {
     : isOrder ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Pedido {row.order_id || message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn || ""}</small><strong>{row.product_title || "Pedido compartilhado pelo cliente"}</strong>{row.sku && <span>SKU {row.sku}</span>}{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
     : imageUrl ? <div><a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} loading="lazy" alt="Imagem enviada no chat"/></a>{message.text && <div className="chat-image-text">{message.text}</div>}</div>
     : message.text ? <div>{message.text}</div> : !itemCard ? <div>{`[${type || "mensagem"}]`}</div> : null;
-  return <div className={`chat-message ${reminder ? "system shopee-reminder" : message.direction}`}>
+  const bubble = <div className={`chat-message ${reminder ? "system shopee-reminder" : message.direction}`}>
     {reminder ? <div><strong>{reminder.title}</strong><p>{reminder.description}</p>{reminder.productName && <span>{reminder.productName}</span>}{reminder.itemId && <small>Item {reminder.itemId}{reminder.stock != null ? ` · Estoque informado: ${reminder.stock}` : ""}</small>}</div>
-      : <>{ordinaryContent}{itemCard && <div className="chat-product-card message-item-card">{itemCard.image_url && <img src={itemCard.image_url} alt=""/>}<div><small>O cliente está perguntando sobre este anúncio/produto</small><strong>{itemCard.title || `Anúncio ${itemCard.item_id}`}</strong>{itemCard.sku && <span>SKU {itemCard.sku}</span>}{itemCard.price != null && <span>{Number(itemCard.price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}{!itemCard.found && <span>Anúncio não localizado no catálogo local</span>}</div></div>}</>}
+      : ordinaryContent}
     <small>{reminder ? "Shopee" : message.sender_name || (message.direction === "incoming" ? "Cliente" : "Loja")} · {formatDate(message.sent_at)}{message.direction === "outgoing" && <span className={`message-tick ${message.status === "sent" ? "confirmed" : message.status === "error" ? "failed" : ""}`} title={message.status === "sent" ? "Confirmada pela fila" : message.status === "error" ? "Falha no envio" : "Aguardando confirmação"}>✓</span>}</small>
+  </div>;
+  if (!showItemCard || !itemCard) return bubble;
+  return <div className="chat-message-group incoming">
+    <div className="chat-product-card message-item-card">{itemCard.image_url && <img src={itemCard.image_url} alt=""/>}<div><small>O cliente está perguntando sobre este anúncio/produto</small><strong>{itemCard.title || `Anúncio ${itemCard.item_id}`}</strong>{itemCard.sku && <span>SKU {itemCard.sku}</span>}{itemCard.price != null && <span>{Number(itemCard.price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}{!itemCard.found && <span>Anúncio não localizado no catálogo local</span>}</div></div>
+    {bubble}
   </div>;
 }
 function relativeTime(value: string) { const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000)); if (minutes < 60) return `Há ${minutes} minuto${minutes === 1 ? "" : "s"}`; const hours = Math.floor(minutes / 60), rest = minutes % 60; return rest ? `Há ${hours}h e ${rest} min` : `Há ${hours}h`; }

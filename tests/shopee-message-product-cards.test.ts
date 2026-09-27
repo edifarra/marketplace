@@ -3,7 +3,8 @@ import test from "node:test";
 import fs from "node:fs";
 import {
   attachShopeeMessageProductCards,
-  explicitShopeeMessageItemId
+  explicitShopeeMessageItemId,
+  messagesWithVisibleShopeeProductCards
 } from "../lib/shopee-message-product-cards";
 
 const accountId = "account-shopee";
@@ -66,11 +67,35 @@ test("item_id não localizado preserva a referência mínima sem inventar produt
   assert.equal(result.listing_id, originalConversation.listing_id);
 });
 
+test("cards visíveis seguem apenas as trocas de item explícitas das mensagens incoming", () => {
+  const incoming = (id: string, itemId?: string) => ({
+    id,
+    direction: "incoming",
+    ...(itemId ? { shopee_item_card: { item_id: itemId, found: true } } : {})
+  });
+  const messages = [
+    incoming("a", "X"),
+    incoming("b", "X"),
+    { id: "seller", direction: "outgoing", shopee_item_card: { item_id: "Y", found: true } },
+    incoming("c", "X"),
+    incoming("d", "Y"),
+    incoming("e", "Y"),
+    incoming("no-item"),
+    incoming("f", "Y"),
+    incoming("g", "X")
+  ];
+
+  const visible = messagesWithVisibleShopeeProductCards(messages);
+  assert.deepEqual(messages.filter(message => visible.has(message)).map(message => message.id), ["a", "d", "g"]);
+});
+
 test("UI usa exclusivamente o card transitório da mensagem e não o cabeçalho para anúncio citado", () => {
   const source = fs.readFileSync(new URL("../app/chats-perguntas/conversation-grid.tsx", import.meta.url), "utf8");
   const messageRenderer = source.slice(source.indexOf("function Message("), source.indexOf("function relativeTime("));
   assert.match(messageRenderer, /message\.shopee_item_card/);
   assert.match(messageRenderer, /O cliente está perguntando sobre este anúncio\/produto/);
+  assert.match(messageRenderer, /message-item-card[\s\S]*\{bubble\}/);
+  assert.match(messageRenderer, /if \(!showItemCard \|\| !itemCard\) return bubble/);
   assert.doesNotMatch(messageRenderer, /isItem/);
 });
 

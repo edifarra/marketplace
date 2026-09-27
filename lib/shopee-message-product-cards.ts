@@ -13,6 +13,21 @@ export type ShopeeMessageProductCard = {
   permalink?: string | null;
 };
 
+export function messagesWithVisibleShopeeProductCards(messages: Array<Record<string, any>>) {
+  const visible = new Set<Record<string, any>>();
+  let lastExplicitIncomingItemId = "";
+
+  for (const message of messages) {
+    if (message.direction !== "incoming") continue;
+    const itemId = String(message.shopee_item_card?.item_id || "").trim();
+    if (!itemId) continue;
+    if (itemId !== lastExplicitIncomingItemId) visible.add(message);
+    lastExplicitIncomingItemId = itemId;
+  }
+
+  return visible;
+}
+
 export function explicitShopeeMessageItemId(raw: Record<string, any> | null | undefined) {
   if (!raw) return "";
   const sourceItemId = raw.source_content?.item_id;

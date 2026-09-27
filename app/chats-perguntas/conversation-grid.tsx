@@ -5,6 +5,7 @@ import { ConversationCursor, mergeConversationDelta, shouldPollConversationChang
 import { ConversationRow, ConversationView, conversationTimelineSections } from "@/lib/marketplace-conversation-view";
 import { mercadoLivreAttachments, shopeeMessageImageUrl, shopeeOutOfStockReminderContent } from "@/lib/marketplace-special-messages";
 import { messagesWithVisibleShopeeProductCards } from "@/lib/shopee-message-product-cards";
+import { validateMarketplaceReply } from "@/lib/marketplace-reply-validation";
 import { retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
 
 type Row = ConversationRow;
@@ -85,7 +86,10 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
     <div className="conversation-list">{liveRows.map(row => {
       const isOpen = open.has(row.id);
       const draft = drafts[row.id] ?? row.messages.find(message => message.status === "error" && message.direction === "outgoing")?.text ?? "";
-      const validation = validate(draft);
+      const validation = draft ? validateMarketplaceReply(draft, {
+        marketplace: row.marketplace,
+        conversation_type: row.conversation_type
+      }).blocked[0] || "" : "";
       const maximumLength = row.marketplace === "mercado_livre" && row.conversation_type === "post_sale" ? 350 : 2000;
       const canReply = row.marketplace === "shopee" || row.requires_response && !["closed", "review", "blocked"].includes(row.status);
       const listingUrl = productListingUrl(row);
@@ -186,7 +190,6 @@ function relativeTime(value: string) { const minutes = Math.max(0, Math.floor((D
 function formatDate(value: string) { return value ? new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"; }
 function mask(value: string) { return value.length <= 4 ? value : `${value.slice(0, 2)}•••${value.slice(-2)}`; }
 function statusLabel(value: string) { return ({ answered: "Respondida", closed: "Encerrada", review: "Em revisão", blocked: "Bloqueada", error: "Erro", pending: "Pendente" } as Record<string, string>)[value] || value; }
-function validate(text: string) { if (!text) return ""; if (/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(text)) return "E-mails não são permitidos."; if (/(?:https?:\/\/|www\.|\b(?:bit\.ly|tinyurl\.com|wa\.me)\b)/i.test(text)) return "Links externos não são permitidos."; if (/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?(?:9\s*)?\d{4}[-.\s]?\d{4}/.test(text) || /whats(?:app)?/i.test(text)) return "Telefone ou WhatsApp não são permitidos."; if (/\b(?:pix|chave\s+pix|instagram|facebook|telegram)\b/i.test(text)) return "Contato ou pagamento externo não é permitido."; return ""; }
 function conversationUrl(row: Row) { if (row.raw_data?.marketplace_url) return String(row.raw_data.marketplace_url); if (row.marketplace === "mercado_livre") return row.raw_data?.item_permalink || "https://www.mercadolivre.com.br/perguntas"; if (row.marketplace === "shopee") return "https://seller.shopee.com.br/webchat"; return null; }
 function productListingUrl(row: Row) { const explicitUrl = row.raw_data?.item_permalink || row.raw_data?.permalink || row.raw_data?.product_url; if (explicitUrl) return String(explicitUrl); if (!row.listing_id) return null; if (row.marketplace === "mercado_livre") { const digits = String(row.listing_id).replace(/^MLB/i, ""); return `https://produto.mercadolivre.com.br/MLB-${digits}-_JM`; } if (row.marketplace === "shopee") { const shopId = row.config_marketplace_accounts?.shop_id; return shopId ? `https://shopee.com.br/product/${encodeURIComponent(shopId)}/${encodeURIComponent(row.listing_id)}` : `https://shopee.com.br/search?keyword=${encodeURIComponent(row.listing_id)}`; } return null; }
 function originalStatus(row: Row) { if (row.raw_data?.deleted_from_listing) return `${row.external_status || "UNANSWERED"} · Removida do anúncio`; if (row.external_status === "NOT_INFORMED") return "Não informado pelo marketplace"; return row.external_status || "Não informado pelo marketplace"; }

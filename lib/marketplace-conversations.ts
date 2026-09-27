@@ -30,6 +30,8 @@ import {
   shopeeMessageText
 } from "./marketplace-special-messages";
 import { supabaseAdmin } from "./supabase-admin";
+import { validateMarketplaceReply } from "./marketplace-reply-validation";
+export { validateMarketplaceReply } from "./marketplace-reply-validation";
 import {
   MESSAGE_SNAPSHOT_SELECT,
   MarketplaceMessageWrite,
@@ -1054,21 +1056,6 @@ async function shopeeContext(account: ShopeeAccountConfig) {
   const shopId = account.shop_id || account.account_id;
   if (!shopId) throw new Error(`Shop ID não configurado para ${account.name}.`);
   return { client: createShopeeClient(await getShopeeOAuthConfig(account.id)), token: await getValidShopeeAccessToken(account), shopId };
-}
-
-export function validateMarketplaceReply(text: string, conversation?: Record<string, any>) {
-  const blocked: string[] = [];
-  const warnings: string[] = [];
-  if (!text) blocked.push("Digite uma resposta.");
-  const maximum = conversation?.marketplace === "mercado_livre" && conversation?.conversation_type === "post_sale" ? 350 : 2000;
-  if (text.length > maximum) blocked.push(`A resposta deve ter no máximo ${maximum.toLocaleString("pt-BR")} caracteres.`);
-  if (/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(text)) blocked.push("Não informe ou solicite e-mails.");
-  if (/(?:https?:\/\/|www\.|\b(?:bit\.ly|tinyurl\.com|wa\.me)\b)/i.test(text)) blocked.push("Não informe links externos.");
-  if (/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?(?:9\s*)?\d{4}[-.\s]?\d{4}/.test(text) || /whats(?:app)?/i.test(text)) blocked.push("Não informe ou solicite telefone/WhatsApp.");
-  if (/\b(?:pix|chave\s+pix|instagram|facebook|telegram)\b/i.test(text)) blocked.push("Não direcione o contato ou pagamento para fora do marketplace.");
-  if (/\b(?:senha|pin|c[oó]digo\s+de\s+seguran[cç]a|cpf|cnpj)\b/i.test(text)) warnings.push("Revise a menção a dados pessoais ou de segurança.");
-  if (/\b(?:reclama[cç][aã]o|endere[cç]o|pagamento\s+por\s+fora)\b/i.test(text)) warnings.push("Revise o conteúdo antes de enviar.");
-  return { blocked, warnings };
 }
 
 function isClosedQuestion(status: unknown) { return /CLOSED|BANNED|DISABLED/.test(String(status || "").toUpperCase()); }

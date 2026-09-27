@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { latestConversationCursor, takeConversationChangeBatch } from "@/lib/marketplace-conversation-delta";
 import { prepareConversationRows } from "@/lib/marketplace-conversation-view";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { enrichShopeeMessageProductCards } from "@/lib/shopee-message-product-cards";
 
 export const dynamic = "force-dynamic";
 
@@ -75,8 +76,9 @@ export async function GET(request: NextRequest) {
       const parsed = Number(value);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
     };
+    const enrichedConversations = await enrichShopeeMessageProductCards(db, conversations.data || []);
     const changes = prepareConversationRows(
-      conversations.data || [],
+      enrichedConversations,
       setting("CHAT_SLA_WITH_PRODUCT_HOURS", 1),
       setting("CHAT_SLA_WITHOUT_PRODUCT_HOURS", 6)
     );

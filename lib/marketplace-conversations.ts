@@ -726,7 +726,10 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
   const onlySystemActivity = !activity.direction && isShopeeOutOfStockReminder(latest);
   const requiresResponse = onlySystemActivity ? Boolean(existing?.requires_response) : incoming;
   const unread = onlySystemActivity ? Boolean(existing?.unread) : incoming;
-  const { itemId, orderSn } = shopeeConversationReferences(messages.length ? messages : [latest], detail, seed);
+  const { orderSn } = shopeeConversationReferences(messages.length ? messages : [latest], detail, seed);
+  // Referências de anúncio em mensagens pertencem somente ao card daquela mensagem.
+  // Apenas o contexto próprio da conversa pode definir ou trocar seu produto principal.
+  const itemId = String(detail.item_id || seed.item_id || "");
   const sentAt = shopeeDate(stateMessage) || shopeeDate(latest) || new Date().toISOString();
   const externalStatus = detail.status ? String(detail.status) : "NOT_INFORMED";
   const status = onlySystemActivity && existing?.status
@@ -750,7 +753,7 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
     marketplace: "shopee", marketplace_account_id: account.id, external_conversation_id: conversationId, conversation_type: "chat",
     external_status: externalStatus, status, requires_response: requiresResponse, unread,
     buyer_id: buyerId || null, buyer_name: String(detail.to_name || detail.peer_name || detail.buyer_username || "") || null,
-    listing_id: itemId || null, order_id: orderSn || null,
+    listing_id: itemId || existing?.listing_id || null, order_id: orderSn || existing?.order_id || null,
     last_incoming_at: shopeeDate(activity.latestIncoming || {}) || existing?.last_incoming_at || (incoming ? sentAt : null),
     last_outgoing_at: shopeeDate(activity.latestOutgoing || {}) || existing?.last_outgoing_at || (!incoming ? sentAt : null),
     last_message_at: onlySystemActivity && existing?.last_message_at ? existing.last_message_at : sentAt,

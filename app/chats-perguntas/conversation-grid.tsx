@@ -158,20 +158,20 @@ function Message({ message, row }: { message: Record<string, any>; row: Row }) {
   const imageUrl = shopeeMessageImageUrl(message.raw_data);
   const reminder = shopeeOutOfStockReminderContent(message.raw_data);
   const attachments = mercadoLivreAttachments(message.raw_data);
-  const isItem = type === "item" || Boolean(message.raw_data?.content?.item_id);
+  const itemCard = message.shopee_item_card;
   const isOrder = type === "order" || Boolean(message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn);
+  const ordinaryContent = attachments.length ? <div>{attachments.map((attachment, index) => {
+    const url = `/api/chats/attachments/${encodeURIComponent(message.id)}?index=${index}`;
+    return attachment.isImage
+      ? <a key={`${attachment.id}:${index}`} href={url} target="_blank" rel="noreferrer"><img className="chat-attachment" src={url} loading="lazy" alt={attachment.name || "Imagem enviada no chat"}/></a>
+      : <a key={`${attachment.id}:${index}`} className="secondary link-button compact" href={url} target="_blank" rel="noreferrer">Baixar {attachment.name || "anexo"}</a>;
+  })}{message.text && <div>{message.text}</div>}</div>
+    : isOrder ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Pedido {row.order_id || message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn || ""}</small><strong>{row.product_title || "Pedido compartilhado pelo cliente"}</strong>{row.sku && <span>SKU {row.sku}</span>}{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
+    : imageUrl ? <div><a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} loading="lazy" alt="Imagem enviada no chat"/></a>{message.text && <div className="chat-image-text">{message.text}</div>}</div>
+    : message.text ? <div>{message.text}</div> : !itemCard ? <div>{`[${type || "mensagem"}]`}</div> : null;
   return <div className={`chat-message ${reminder ? "system shopee-reminder" : message.direction}`}>
     {reminder ? <div><strong>{reminder.title}</strong><p>{reminder.description}</p>{reminder.productName && <span>{reminder.productName}</span>}{reminder.itemId && <small>Item {reminder.itemId}{reminder.stock != null ? ` · Estoque informado: ${reminder.stock}` : ""}</small>}</div>
-      : attachments.length ? <div>{attachments.map((attachment, index) => {
-      const url = `/api/chats/attachments/${encodeURIComponent(message.id)}?index=${index}`;
-      return attachment.isImage
-        ? <a key={`${attachment.id}:${index}`} href={url} target="_blank" rel="noreferrer"><img className="chat-attachment" src={url} loading="lazy" alt={attachment.name || "Imagem enviada no chat"}/></a>
-        : <a key={`${attachment.id}:${index}`} className="secondary link-button compact" href={url} target="_blank" rel="noreferrer">Baixar {attachment.name || "anexo"}</a>;
-    })}{message.text && <div>{message.text}</div>}</div>
-      : isOrder ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Pedido {row.order_id || message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn || ""}</small><strong>{row.product_title || "Pedido compartilhado pelo cliente"}</strong>{row.sku && <span>SKU {row.sku}</span>}{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
-      : isItem ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Produto</small><strong>{row.product_title || `Produto ${message.raw_data?.content?.item_id || ""}`}</strong>{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
-      : imageUrl ? <div><a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} loading="lazy" alt="Imagem enviada no chat"/></a>{message.text && <div className="chat-image-text">{message.text}</div>}</div>
-      : <div>{message.text || `[${type || "mensagem"}]`}</div>}
+      : <>{ordinaryContent}{itemCard && <div className="chat-product-card message-item-card">{itemCard.image_url && <img src={itemCard.image_url} alt=""/>}<div><small>O cliente está perguntando sobre este anúncio/produto</small><strong>{itemCard.title || `Anúncio ${itemCard.item_id}`}</strong>{itemCard.sku && <span>SKU {itemCard.sku}</span>}{itemCard.price != null && <span>{Number(itemCard.price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}{!itemCard.found && <span>Anúncio não localizado no catálogo local</span>}</div></div>}</>}
     <small>{reminder ? "Shopee" : message.sender_name || (message.direction === "incoming" ? "Cliente" : "Loja")} · {formatDate(message.sent_at)}{message.direction === "outgoing" && <span className={`message-tick ${message.status === "sent" ? "confirmed" : message.status === "error" ? "failed" : ""}`} title={message.status === "sent" ? "Confirmada pela fila" : message.status === "error" ? "Falha no envio" : "Aguardando confirmação"}>✓</span>}</small>
   </div>;
 }

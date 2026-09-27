@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { latestConversationCursor } from "@/lib/marketplace-conversation-delta";
 import { ConversationView, prepareConversationRows, rowMatchesConversationView, sortConversationRows } from "@/lib/marketplace-conversation-view";
 import { ConversationGrid } from "./conversation-grid";
+import { enrichShopeeMessageProductCards } from "@/lib/shopee-message-product-cards";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 25;
@@ -28,7 +29,8 @@ export default async function ChatsQuestionsPage({ searchParams }: { searchParam
   ]);
   const setting = (key: string, fallback: number) => { const value = settings.data?.find(row => row.key === key)?.value; const number = Number(value); return Number.isFinite(number) && number > 0 ? number : fallback; };
   const withProduct = setting("CHAT_SLA_WITH_PRODUCT_HOURS", 1), withoutProduct = setting("CHAT_SLA_WITHOUT_PRODUCT_HOURS", 6);
-  const allRows = prepareConversationRows(conversations.data || [], withProduct, withoutProduct);
+  const enrichedConversations = await enrichShopeeMessageProductCards(db, conversations.data || []);
+  const allRows = prepareConversationRows(enrichedConversations, withProduct, withoutProduct);
   const view: ConversationView = { ...filters, tab };
   const filtered = allRows.filter(row => rowMatchesConversationView(row, view)).sort(sortConversationRows);
   const total = filtered.length, pages = Math.max(1, Math.ceil(total / PAGE_SIZE)), currentPage = Math.min(page, pages), from = (currentPage - 1) * PAGE_SIZE;

@@ -2,16 +2,22 @@ import { loadEnvConfig } from "@next/env";
 import { processMarketplaceQueue } from "../lib/marketplace-queue-worker";
 import { syncMarketplaceConversationsSafetyNet } from "../lib/marketplace-conversations";
 import { processOutgoingActivities } from "../lib/outgoing-activities";
+import workerDefaults from "./marketplace-worker-defaults.json";
 
 loadEnvConfig(process.cwd());
 
 const batchSize = integerEnv("MARKETPLACE_WORKER_BATCH_SIZE", 5, 1, 50);
 const idleDelayMinMs = integerEnv("MARKETPLACE_WORKER_IDLE_MIN_MS", 2_000, 250, 60_000);
-const idleDelayMaxMs = integerEnv("MARKETPLACE_WORKER_IDLE_MAX_MS", 30_000, idleDelayMinMs, 300_000);
+const idleDelayMaxMs = integerEnv("MARKETPLACE_WORKER_IDLE_MAX_MS", workerDefaults.idleDelayMaxMs, idleDelayMinMs, 300_000);
 const errorDelayMinMs = integerEnv("MARKETPLACE_WORKER_ERROR_MIN_MS", 5_000, 1_000, 300_000);
 const errorDelayMaxMs = integerEnv("MARKETPLACE_WORKER_ERROR_MAX_MS", 60_000, errorDelayMinMs, 600_000);
 const validateOnly = process.env.MARKETPLACE_WORKER_VALIDATE_ONLY === "1";
-const conversationSyncIntervalMs = integerEnv("MARKETPLACE_CONVERSATION_RECONCILIATION_INTERVAL_MS", 10 * 60_000, 60_000, 60 * 60_000);
+const conversationSyncIntervalMs = integerEnv(
+  "MARKETPLACE_CONVERSATION_RECONCILIATION_INTERVAL_MS",
+  workerDefaults.conversationSyncIntervalMs,
+  60_000,
+  60 * 60_000
+);
 
 let running = true;
 let wakeSleep: (() => void) | null = null;

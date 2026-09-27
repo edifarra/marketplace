@@ -1,3 +1,5 @@
+const workerDefaults = require("./scripts/marketplace-worker-defaults.json");
+
 module.exports = {
   apps: [
     {
@@ -18,7 +20,8 @@ module.exports = {
         NODE_ENV: "production",
         MARKETPLACE_WORKER_BATCH_SIZE: "5",
         MARKETPLACE_WORKER_IDLE_MIN_MS: "2000",
-        MARKETPLACE_WORKER_IDLE_MAX_MS: "30000",
+        MARKETPLACE_WORKER_IDLE_MAX_MS: String(workerDefaults.idleDelayMaxMs),
+        MARKETPLACE_CONVERSATION_RECONCILIATION_INTERVAL_MS: String(workerDefaults.conversationSyncIntervalMs),
         MARKETPLACE_WORKER_ERROR_MIN_MS: "5000",
         MARKETPLACE_WORKER_ERROR_MAX_MS: "60000"
       }

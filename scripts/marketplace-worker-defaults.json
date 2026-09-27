@@ -1,0 +1,4 @@
+{
+  "idleDelayMaxMs": 60000,
+  "conversationSyncIntervalMs": 900000
+}

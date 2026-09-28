@@ -8,6 +8,7 @@ import { buildMercadoLivreStockRequests, buildMercadoLivreVariationStockPayload,
 import { executeConversationReply, markConversationReplyError } from "./marketplace-conversations";
 import { normalizeMercadoLivrePackageAttributes } from "./effective-product";
 import { prepareManagedTitleRetry } from "./mercado-livre-managed-title";
+import { compareMercadoLivrePictures, hasProcessingMercadoLivrePictures, requestedMercadoLivrePictureSources } from "./mercado-livre-picture-confirmation";
 
 export type OutgoingActivityInput = {
   destination: "mercado_livre" | "shopee" | "tiny";
@@ -329,8 +330,12 @@ async function updateAndConfirmListing(activity: Record<string, any>) {
     const account = await getMercadoLivreAccountById(String(activity.marketplace_account_id));
     const token = await getValidMercadoLivreAccessToken(account);
     await executePendingMercadoLivreManagedTitle(activity, token);
+    let itemUpdateResponse: Record<string, any> | null = null;
+    let immediateRemote: Record<string, any> | null = null;
+    let requestedPictureSources: string[] = [];
     if (activity.requested_data?.payload && Object.keys(activity.requested_data.payload).length > 0) {
       const payload = structuredClone(activity.requested_data.payload);
+      requestedPictureSources = requestedMercadoLivrePictureSources(payload);
       if (Array.isArray(payload.attributes) && activity.product_id) {
         const product = await supabaseAdmin().from("products").select("height,width,length,weight_gross")
           .eq("id", activity.product_id).single().throwOnError();
@@ -340,18 +345,59 @@ async function updateAndConfirmListing(activity: Record<string, any>) {
           .update({ requested_data: activity.requested_data, updated_at: new Date().toISOString() })
           .eq("id", activity.id).throwOnError();
       }
-      await mlApi(`/items/${listingId}`, token, "PUT", payload);
+      const updateResult = await mlApiResponse(`/items/${listingId}`, token, "PUT", payload);
+      await history(String(activity.id), Number(activity.attempt_count), "mercado_livre_item_update_response",
+        updateResult.ok ? "completed" : "error", {
+          request: { method: "PUT", path: `/items/${listingId}`, pictureSources: requestedPictureSources },
+          response: updateResult
+        });
+      assertMercadoLivreResponse(updateResult);
+      itemUpdateResponse = updateResult.body;
+      if (requestedPictureSources.length) {
+        immediateRemote = await mlApi(`/items/${listingId}`, token, "GET");
+        await history(String(activity.id), Number(activity.attempt_count), "mercado_livre_picture_immediate_get", "completed", {
+          listingId, pictures: immediateRemote.pictures || []
+        });
+      }
     }
     if (activity.requested_data?.description !== undefined) await mlApi(`/items/${listingId}/description`, token, "PUT", { plain_text: htmlToPlainText(String(activity.requested_data.description || "")) });
-    let remote = await mlApi(`/items/${listingId}`, token, "GET");
+    let remote = immediateRemote || await mlApi(`/items/${listingId}`, token, "GET");
     if (shouldReactivateMercadoLivreListing(activity.requested_data, remote.status)) {
       await mlApi(`/items/${listingId}`, token, "PUT", { status: "active" });
       await mlApi(`/items/${listingId}`, token, "PUT", { available_quantity: Number(activity.requested_data.stock) });
       remote = await mlApi(`/items/${listingId}`, token, "GET");
       if (String(remote.status) !== "active") throw new Error(`Mercado Livre confirmou status ${remote.status}, esperado active apos reposicao de estoque.`);
     }
+    let pictureConfirmation: Record<string, any> | undefined;
+    if (requestedPictureSources.length) {
+      // Confirma novamente depois de description/status/stock para detectar qualquer
+      // chamada posterior que tenha alterado o conjunto de imagens.
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+        remote = await mlApi(`/items/${listingId}`, token, "GET");
+        pictureConfirmation = compareMercadoLivrePictures(requestedPictureSources, itemUpdateResponse?.pictures, remote.pictures);
+        if (pictureConfirmation.matches && !hasProcessingMercadoLivrePictures(remote.pictures)) break;
+      }
+      const processingPending = hasProcessingMercadoLivrePictures(remote.pictures);
+      pictureConfirmation = { ...pictureConfirmation,
+        processingPending, immediatePictures: immediateRemote?.pictures || [], finalGet: { pictures: remote.pictures || [] } };
+      if (!pictureConfirmation.matches || processingPending) {
+        const pictureDiagnostics = await diagnoseMercadoLivrePictures(token, [
+          ...(pictureConfirmation.updatePictures || []), ...(pictureConfirmation.finalPictures || [])
+        ]);
+        pictureConfirmation = { ...pictureConfirmation, pictureDiagnostics };
+        await history(String(activity.id), Number(activity.attempt_count), "mercado_livre_picture_confirmation", "error", pictureConfirmation);
+        const missing = pictureConfirmation.missingPositions
+          .map((picture: Record<string, any>) => `${picture.position} (${picture.source})`).join(", ") || "nao identificadas";
+        throw new Error(processingPending
+          ? `Mercado Livre ainda nao concluiu o processamento das fotos do anuncio ${listingId}. Esperadas: ${pictureConfirmation.expectedCount}; recebidas: ${pictureConfirmation.finalCount}.`
+          : `Mercado Livre confirmou ${pictureConfirmation.finalCount} de ${pictureConfirmation.expectedCount} fotos no anuncio ${listingId}. Posicoes ausentes: ${missing}.`);
+      }
+      await history(String(activity.id), Number(activity.attempt_count), "mercado_livre_picture_confirmation", "completed", pictureConfirmation);
+    }
     await synchronizeMercadoLivreManagedProduct(activity, remote);
-    return { listingId, status: remote.status, title: remote.title, price: remote.price };
+    return { listingId, status: remote.status, title: remote.title, price: remote.price,
+      ...(pictureConfirmation ? { pictureConfirmation } : {}) };
   }
   if (activity.destination === "shopee") {
     const { client, token, shopId } = await shopeeContext(activity);
@@ -737,11 +783,29 @@ async function mlRequest(listingId: string, token: string, method: "GET" | "PUT"
 }
 
 async function mlApi(path: string, token: string, method: "GET" | "POST" | "PUT", body?: Record<string, unknown>) {
+  const result = await mlApiResponse(path, token, method, body);
+  assertMercadoLivreResponse(result);
+  return result.body;
+}
+
+async function mlApiResponse(path: string, token: string, method: "GET" | "POST" | "PUT", body?: Record<string, unknown>) {
   const response = await fetch(`https://api.mercadolibre.com${path}`, { method,
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   const json = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Mercado Livre (${response.status}): ${JSON.stringify(json)}`);
-  return json as Record<string, any>;
+  return { ok: response.ok, status: response.status, statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries()), body: json as Record<string, any> };
+}
+
+function assertMercadoLivreResponse(result: Awaited<ReturnType<typeof mlApiResponse>>) {
+  if (!result.ok) throw new Error(`Mercado Livre (${result.status}): ${JSON.stringify(result.body)}`);
+}
+
+async function diagnoseMercadoLivrePictures(token: string, pictures: Array<Record<string, any>>) {
+  const ids = [...new Set(pictures.map((picture) => String(picture.id || "")).filter(Boolean))];
+  return Promise.all(ids.map(async (pictureId) => {
+    const result = await mlApiResponse(`/pictures/${encodeURIComponent(pictureId)}/errors`, token, "GET");
+    return { pictureId, ...result };
+  }));
 }
 
 async function history(activityId: string, attempt: number, stage: string, status: string, details: Record<string, unknown>) {

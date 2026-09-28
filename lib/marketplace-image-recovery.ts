@@ -115,7 +115,7 @@ export function selectBestMercadoLivrePictureUrl(picture: unknown) {
   const maximumSize = parseImageSize(value.max_size);
   const hasMaximumMetadata = maximumSize.width > 0 && maximumSize.height > 0;
   const maximumIsLarger = maximumSize.width * maximumSize.height > currentSize.width * currentSize.height;
-  const maximumUrl = mercadoLivreMaximumImageUrl(String(itemUrl || ""));
+  // Melhor versão da imagem disponível no ML CDN\n  const maximumUrl = mercadoLivreMaximumImageUrl(String(itemUrl || ""));
   if (maximumUrl && (!hasMaximumMetadata || maximumIsLarger)) add(maximumUrl, value.max_size, 3);
 
   return candidates.sort(compareImageCandidates)[0]?.url || "";

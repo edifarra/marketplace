@@ -137,4 +137,4 @@ export function orderMarketplaceAccounts<T extends { marketplace?: unknown; name
     || String(left.name || "").localeCompare(String(right.name || ""), "pt-BR"));
 }
 
-function marketplacePriority(marketplace: string) { return marketplace === "mercado_livre" ? 0 : marketplace === "shopee" ? 1 : 2; }
+function marketplacePriority(marketplace: string) { return marketplace === "shopee" ? 0 : marketplace === "mercado_livre" ? 1 : 2; }

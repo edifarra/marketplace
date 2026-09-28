@@ -6,15 +6,37 @@ import { validateMarketplaceImage } from "../lib/marketplace-image-validation";
 import { orderMarketplaceAccounts } from "../lib/marketplace-temporary-images";
 
 const recoverySource = fs.readFileSync(new URL("../lib/marketplace-image-recovery.ts", import.meta.url), "utf8");
+const temporaryRecoverySource = fs.readFileSync(new URL("../lib/marketplace-temporary-images.ts", import.meta.url), "utf8");
 
-test("prioriza as duas contas ML e depois as duas contas Shopee", () => {
+test("produto com Shopee e ML tenta todas as contas Shopee antes do ML", () => {
   const ordered = orderMarketplaceAccounts([
     { id: "s2", marketplace: "shopee", name: "Shopee 2", created_at: "2025-04-01" },
     { id: "m2", marketplace: "mercado_livre", name: "Mercado Livre 2", created_at: "2025-02-01" },
     { id: "s1", marketplace: "shopee", name: "Shopee 1", created_at: "2025-03-01" },
     { id: "m1", marketplace: "mercado_livre", name: "Mercado Livre 1", created_at: "2025-01-01" }
   ]);
-  assert.deepEqual(ordered.map(account => account.id), ["m1", "m2", "s1", "s2"]);
+  assert.deepEqual(ordered.map(account => account.id), ["s1", "s2", "m1", "m2"]);
+});
+
+test("apenas ML continua funcionando", () => {
+  const ordered = orderMarketplaceAccounts([{ id: "m1", marketplace: "mercado_livre" }]);
+  assert.deepEqual(ordered.map(account => account.id), ["m1"]);
+});
+
+test("apenas Shopee continua funcionando", () => {
+  const ordered = orderMarketplaceAccounts([{ id: "s1", marketplace: "shopee" }]);
+  assert.deepEqual(ordered.map(account => account.id), ["s1"]);
+});
+
+test("Cloudinary valido continua sendo usado antes dos marketplaces", () => {
+  assert.match(temporaryRecoverySource, /if \(!unavailable\) return null;/);
+  assert.ok(temporaryRecoverySource.indexOf("if (!unavailable) return null;") < temporaryRecoverySource.indexOf('from("product_marketplaces")'));
+});
+
+test("falha ou ausencia de imagem Shopee cai para ML e nenhuma fonte preserva o fallback", () => {
+  assert.match(temporaryRecoverySource, /if \(!urls\.length\) continue;/);
+  assert.match(temporaryRecoverySource, /catch \{[\s\S]*tentar a proxima conta vinculada/);
+  assert.match(temporaryRecoverySource, /return null;\s*\}/);
 });
 
 test("preserva a ordem da primeira origem e remove apenas URLs repetidas", () => {

@@ -15,54 +15,44 @@ export type MarketplaceQueueInput = {
 };
 
 export async function enqueueMarketplaceActivity(input: MarketplaceQueueInput) {
-  const db = supabaseAdmin();
+  return enqueueMarketplaceActivityWithClient(supabaseAdmin(), input);
+}
+
+export async function enqueueMarketplaceActivityWithClient(
+  db: ReturnType<typeof supabaseAdmin>,
+  input: MarketplaceQueueInput,
+  recordHistory: typeof appendActivityHistory = appendActivityHistory
+) {
   const externalEventId = input.externalEventId || marketplaceEventId(input.marketplace, input.payload);
   const status = input.status || "queued";
-  const insert = await db.from("marketplace_activities").insert({
-    marketplace: input.marketplace,
-    event_type: input.eventType,
-    external_event_id: externalEventId,
-    order_id: input.orderId || null,
-    description: input.description,
-    status,
-    source_key: input.sourceKey || null,
-    raw_payload: input.payload,
-    processing_error: input.processingError || null,
-    next_attempt_at: new Date().toISOString(),
-    processed_at: status === "error" ? new Date().toISOString() : null
-  }).select("id,status").single();
+  const now = new Date().toISOString();
+  const result = await db.rpc("enqueue_marketplace_activity_idempotently", {
+    p_marketplace: input.marketplace,
+    p_event_type: input.eventType,
+    p_external_event_id: externalEventId,
+    p_order_id: input.orderId || null,
+    p_description: input.description,
+    p_status: status,
+    p_source_key: input.sourceKey || null,
+    p_raw_payload: input.payload,
+    p_processing_error: input.processingError || null,
+    p_next_attempt_at: now,
+    p_processed_at: status === "error" ? now : null
+  }).single().throwOnError();
+  const activity = result.data as { id: string; status: string; duplicated: boolean } | null;
 
-  if (!insert.error && insert.data) {
-    await appendActivityHistory(String(insert.data.id), "received", status === "error" ? "error" : "success", {
+  if (!activity) throw new Error("Falha ao registrar atividade do marketplace.");
+  if (!activity.duplicated) {
+    await recordHistory(String(activity.id), "received", status === "error" ? "error" : "success", {
       externalEventId,
       eventType: input.eventType,
       sourceKey: input.sourceKey || null
     });
-    return { id: String(insert.data.id), duplicated: false, status };
+    return { id: String(activity.id), duplicated: false, status };
   }
 
-  if (!insert.error || !/duplicate|unique/i.test(insert.error.message)) {
-    throw new Error(insert.error?.message || "Falha ao registrar atividade do marketplace.");
-  }
-
-  const existing = await db.from("marketplace_activities")
-    .select("id,status")
-    .eq("marketplace", input.marketplace)
-    .eq("external_event_id", externalEventId)
-    .maybeSingle()
-    .throwOnError();
-  if (!existing.data) throw new Error("Evento duplicado nao localizado apos o conflito.");
-
-  if (["error", "retry"].includes(String(existing.data.status)) && status === "queued") {
-    await db.from("marketplace_activities").update({
-      status: "queued",
-      processing_error: null,
-      next_attempt_at: new Date().toISOString(),
-      processed_at: null
-    }).eq("id", existing.data.id).throwOnError();
-  }
-  await appendActivityHistory(String(existing.data.id), "redelivery", "success", { externalEventId });
-  return { id: String(existing.data.id), duplicated: true, status: String(existing.data.status) };
+  await recordHistory(String(activity.id), "redelivery", "success", { externalEventId });
+  return { id: String(activity.id), duplicated: true, status: String(activity.status) };
 }
 
 export async function completeQueuedActivity(
@@ -121,4 +111,3 @@ export function marketplaceEventId(marketplace: Marketplace, payload: Record<str
   if (explicit) return String(explicit);
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
-

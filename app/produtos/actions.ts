@@ -258,6 +258,7 @@ export async function updateProductDetailsAction(formData: FormData) {
   }
   const db = supabaseAdmin();
   const current = await db.from("products").select("*,product_images(id,original_name,url,cloudinary_url,cloudinary_public_id,cloudinary_asset_id,position,bytes,width_px,height_px)").eq("id", productId).single().throwOnError();
+  const awaitingPrice = ["pending_price", "manual_price"].includes(String(current.data.status));
   const titleChanged = String(current.data.title || "") !== title;
   const requestedInternalCategory = text("marketplaceCategory");
   const typeConfiguration = await db.from("config_types").select("marketplace_category,marketplace_active_attributes").eq("code", typeCode).maybeSingle().throwOnError();
@@ -421,7 +422,18 @@ export async function updateProductDetailsAction(formData: FormData) {
   let imageReplacementCommitted = !imagesChanged;
 
   try {
-    await db.from("products").update({ sku, title, description, model, version, board_code: boardCode || null, price, type_code: typeCode, brand_code: brandCode, special_code: specialCode, product_condition: productCondition, marketplace_categories: marketplaceCategories, marketplace_attributes: marketplaceAttributes, ...measures, updated_at: new Date().toISOString() }).eq("id", productId).throwOnError();
+    await db.from("products").update({
+      sku, title, description, model, version, board_code: boardCode || null, price,
+      ...(awaitingPrice && price > 0 ? {
+        status: "draft",
+        price_evaluation_status: "MANUAL",
+        price_evaluated_at: new Date().toISOString(),
+        price_evaluation_error: null
+      } : {}),
+      type_code: typeCode, brand_code: brandCode, special_code: specialCode,
+      product_condition: productCondition, marketplace_categories: marketplaceCategories,
+      marketplace_attributes: marketplaceAttributes, ...measures, updated_at: new Date().toISOString()
+    }).eq("id", productId).throwOnError();
     await db.from("listings").update({ external_sku: sku }).eq("product_id", productId).throwOnError();
     await db.from("product_marketplaces").update({ sku, updated_at: new Date().toISOString() }).eq("product_id", productId).throwOnError();
     await db.from("estoque").update({ sku }).eq("product_id", productId).throwOnError();

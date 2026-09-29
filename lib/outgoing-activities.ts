@@ -101,37 +101,7 @@ export async function processOutgoingActivities(limit = 10) {
       if (activity.activity_type === "listing_create" && activity.product_id) {
         await markProductSentWhenAllMarketplacesAreLinked(String(activity.product_id));
       }
-      if (activity.activity_type === "stock_update") {
-        const confirmedStock = Number(confirmed.stock || 0);
-        const confirmedStatus = String(confirmed.status || (confirmedStock <= 0 ? "paused" : "active"));
-        await Promise.all([
-          db.from("listings").update({ stock: confirmedStock, status: confirmedStatus === "active" ? "active" : "paused",
-            paused_by_stock_control: activity.destination === "mercado_livre" ? confirmedStatus !== "active" : false,
-            last_sync_at: new Date().toISOString(), error_message: null })
-            .eq("marketplace_account_id", activity.marketplace_account_id).eq("external_listing_id", activity.listing_id),
-          db.from("product_marketplaces").update({ estoque_marketplace: confirmedStock, status_anuncio: confirmedStatus,
-            updated_at: new Date().toISOString() })
-            .eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", activity.listing_id)
-        ]);
-      }
-      if (activity.activity_type === "listing_update" && ["mercado_livre", "shopee"].includes(String(activity.destination))) {
-        const confirmedPrice = Number(confirmed.price);
-        const confirmedStock = Number(confirmed.stock);
-        const now = new Date().toISOString();
-        await Promise.all([
-          db.from("listings").update({
-            ...(Number.isFinite(confirmedPrice) ? { price: confirmedPrice } : {}),
-            ...(Number.isFinite(confirmedStock) ? { stock: confirmedStock } : {}),
-            ...(String(confirmed.status) === "active" ? { paused_by_stock_control: false } : {}),
-            last_sync_at: now, error_message: null
-          }).eq("marketplace_account_id", activity.marketplace_account_id).eq("external_listing_id", activity.listing_id),
-          db.from("product_marketplaces").update({
-            ...(Number.isFinite(confirmedPrice) ? { valor_marketplace: confirmedPrice } : {}),
-            ...(Number.isFinite(confirmedStock) ? { estoque_marketplace: confirmedStock } : {}),
-            status_anuncio: String(confirmed.status || ""), updated_at: now
-          }).eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", activity.listing_id)
-        ]);
-      }
+      await postProcessMarketplaceConfirmation(db, activity, confirmed);
       await history(String(activity.id), Number(activity.attempt_count), "confirmation", "completed", confirmed);
       results.push({ id: activity.id, ok: true });
     } catch (error) {
@@ -786,6 +756,49 @@ async function mlApi(path: string, token: string, method: "GET" | "POST" | "PUT"
   const result = await mlApiResponse(path, token, method, body);
   assertMercadoLivreResponse(result);
   return result.body;
+}
+
+export async function postProcessMarketplaceConfirmation(
+  db: ReturnType<typeof supabaseAdmin>,
+  activity: Record<string, any>,
+  confirmed: Record<string, any>
+) {
+  if (!["mercado_livre", "shopee"].includes(String(activity.destination))) return;
+  if (!["stock_update", "listing_update"].includes(String(activity.activity_type))) return;
+  if (!activity.marketplace_account_id) throw new Error("Conta do marketplace ausente no pos-processamento da atividade.");
+  if (!activity.listing_id) throw new Error("Anuncio do marketplace ausente no pos-processamento da atividade.");
+
+  const now = new Date().toISOString();
+  if (activity.activity_type === "stock_update") {
+    const confirmedStock = Number(confirmed.stock || 0);
+    const confirmedStatus = String(confirmed.status || (confirmedStock <= 0 ? "paused" : "active"));
+    await Promise.all([
+      db.from("listings").update({ stock: confirmedStock, status: confirmedStatus === "active" ? "active" : "paused",
+        paused_by_stock_control: activity.destination === "mercado_livre" ? confirmedStatus !== "active" : false,
+        last_sync_at: now, error_message: null })
+        .eq("marketplace_account_id", activity.marketplace_account_id).eq("external_listing_id", activity.listing_id).throwOnError(),
+      db.from("product_marketplaces").update({ estoque_marketplace: confirmedStock, status_anuncio: confirmedStatus,
+        updated_at: now })
+        .eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", activity.listing_id).throwOnError()
+    ]);
+    return;
+  }
+
+  const confirmedPrice = Number(confirmed.price);
+  const confirmedStock = Number(confirmed.stock);
+  await Promise.all([
+    db.from("listings").update({
+      ...(Number.isFinite(confirmedPrice) ? { price: confirmedPrice } : {}),
+      ...(Number.isFinite(confirmedStock) ? { stock: confirmedStock } : {}),
+      ...(String(confirmed.status) === "active" ? { paused_by_stock_control: false } : {}),
+      last_sync_at: now, error_message: null
+    }).eq("marketplace_account_id", activity.marketplace_account_id).eq("external_listing_id", activity.listing_id).throwOnError(),
+    db.from("product_marketplaces").update({
+      ...(Number.isFinite(confirmedPrice) ? { valor_marketplace: confirmedPrice } : {}),
+      ...(Number.isFinite(confirmedStock) ? { estoque_marketplace: confirmedStock } : {}),
+      status_anuncio: String(confirmed.status || ""), updated_at: now
+    }).eq("marketplace_account_id", activity.marketplace_account_id).eq("marketplace_product_id", activity.listing_id).throwOnError()
+  ]);
 }
 
 async function mlApiResponse(path: string, token: string, method: "GET" | "POST" | "PUT", body?: Record<string, unknown>) {

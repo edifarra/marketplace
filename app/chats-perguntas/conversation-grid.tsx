@@ -159,13 +159,13 @@ function Timeline({ row }: { row: Row }) {
   return <div className="conversation-timeline">{!postSaleOnly && <Divider label="Pré-venda"/>}{before.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row} showItemCard={messagesWithProductCard.has(message)}/>)}{purchase && <div className="purchase-marker">Compra realizada{row.order_id ? ` — Pedido ${row.order_id}` : ""} — {formatDate(row.purchased_at)}</div>}{(postSaleOnly || purchase) && <Divider label="Pós-venda"/>}{after.map((message: Record<string, any>) => <Message key={message.id} message={message} row={row} showItemCard={messagesWithProductCard.has(message)}/>)}</div>;
 }
 function Divider({ label }: { label: string }) { return <div className="timeline-divider"><span>{label}</span></div>; }
-function Message({ message, row, showItemCard }: { message: Record<string, any>; row: Row; showItemCard: boolean }) {
+export function Message({ message, row, showItemCard }: { message: Record<string, any>; row: Row; showItemCard: boolean }) {
   const type = String(message.message_type || message.raw_data?.message_type || "text").toLowerCase();
   const imageUrl = shopeeMessageImageUrl(message.raw_data);
   const reminder = shopeeOutOfStockReminderContent(message.raw_data);
   const attachments = mercadoLivreAttachments(message.raw_data);
   const itemCard = message.shopee_item_card;
-  const isOrder = type === "order" || Boolean(message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn);
+  const isOrder = type === "order";
   const ordinaryContent = attachments.length ? <div>{attachments.map((attachment, index) => {
     const url = `/api/chats/attachments/${encodeURIComponent(message.id)}?index=${index}`;
     return attachment.isImage

@@ -55,13 +55,14 @@ test("exatamente 25 registros produzem uma página e contagem exata", () => {
   assert.equal(result.after.length, 25);
 });
 
-test("aba hoje mantém apenas as últimas 24 horas", () => {
+test("aba hoje mantém conversas recentes e pendências antigas", () => {
   const rows = [
     conversation(1, { last_message_at: new Date(NOW - 23 * 3600_000).toISOString() }),
-    conversation(2, { last_message_at: new Date(NOW - 25 * 3600_000).toISOString() })
+    conversation(2, { last_message_at: new Date(NOW - 25 * 3600_000).toISOString() }),
+    conversation(3, { requires_response: true, status: "pending", last_message_at: new Date(NOW - 48 * 3600_000).toISOString() })
   ];
   const result = compareOldAndHydrated(rows, { ...allView, tab: "today" });
-  assert.deepEqual(result.after.map(row => row.id), [uuid(1)]);
+  assert.deepEqual(result.after.map(row => row.id), [uuid(1), uuid(3)]);
 });
 
 test("status, marketplace e conta preservam a seleção anterior", () => {

@@ -11,6 +11,7 @@ const FRONTEND_FILES = new Set([
   ".eslintrc.json",
   "scripts/smart-vercel-ignore.mjs",
   "scripts/smart-deploy-support.mjs",
+  "scripts/smart-deploy-metadata.mjs",
   "scripts/smart-change-classifier.mjs",
   "scripts/smart-git.mjs",
   "vercel.json"

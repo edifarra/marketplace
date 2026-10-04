@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "base": "cddadbfd94e387d38966003409777afc159138f4",
+  "files": [
+    ".gitignore",
+    ".smart-deploy-plan.json",
+    "README.md",
+    "next-env.d.ts",
+    "package.json",
+    "scripts/smart-change-classifier.mjs",
+    "scripts/smart-check.mjs",
+    "scripts/smart-command-runner.mjs",
+    "scripts/smart-deploy-flow.mjs",
+    "scripts/smart-deploy-metadata.mjs",
+    "scripts/smart-deploy-prepare.mjs",
+    "scripts/smart-deploy-support.mjs",
+    "scripts/smart-deploy.mjs",
+    "scripts/smart-git.mjs",
+    "scripts/smart-vercel-ignore.mjs",
+    "scripts/smart-vercel.mjs",
+    "scripts/smart-worker-command.mjs",
+    "tests/smart-change-classifier.test.mjs",
+    "tests/smart-command-runner.test.mjs",
+    "tests/smart-deploy-flow.test.mjs",
+    "tests/smart-deploy-support.test.mjs",
+    "tests/smart-execution-policy.test.mjs",
+    "tests/smart-git.test.mjs",
+    "tests/smart-vercel-ignore.test.mjs",
+    "tests/smart-vercel.test.mjs",
+    "vercel.json"
+  ],
+  "dependenciesChanged": false
+}

@@ -5,7 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { atomicJson, readJson, migrationsConfirmed, classifyRange } from '../scripts/smart-deploy-support.mjs';
+import { atomicJson, readJson, migrationsConfirmed, classifyRange, assertCommitPlan } from '../scripts/smart-deploy-support.mjs';
+import { PLAN_FILE, planDigest } from '../scripts/smart-deploy-metadata.mjs';
 import { workerCommand } from '../scripts/smart-worker-command.mjs';
 test('migration confirmation requires exact local and remote histories', () => {
   assert.equal(migrationsConfirmed('001 | 001 | date\n002 | 002 | date', ['001','002']), true);
@@ -51,8 +52,16 @@ for (const frontend of [false, true]) test(`Vercel ignore uses same cumulative c
   fs.writeFileSync(path.join(root, frontend ? 'app/page.tsx' : 'supabase/migrations/001_new.sql'), 'new');
   git(['add','.']); git(['commit','-m','first change']);
   // Last commit is docs-only: using HEAD^ would miss a frontend change in the batch.
-  fs.writeFileSync(path.join(root, 'README.md'), 'final'); git(['add','.']); git(['commit','-m',`docs\n\nSmart-Deploy-Base: ${base}`]);
+  fs.writeFileSync(path.join(root, 'README.md'), 'final'); git(['add','.']);
+  execFileSync(process.execPath, [fileURLToPath(new URL('../scripts/smart-deploy-prepare.mjs', import.meta.url)), `--base=${base}`], { cwd: root, encoding: 'utf8' });
+  const plan = readJson(path.join(root, PLAN_FILE));
+  const message = `docs\n\nSmart-Deploy-Base: ${base}\nSmart-Deploy-Plan: ${planDigest(plan)}`;
+  git(['commit','-m', message]);
   assert.equal(classifyRange(root, base, 'HEAD').frontend, frontend);
-  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/smart-vercel-ignore.mjs', import.meta.url))], { cwd: root, encoding: 'utf8' });
+  assertCommitPlan(root, 'HEAD', base, classifyRange(root, base, 'HEAD'));
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/smart-vercel-ignore.mjs', import.meta.url))], { cwd: root, encoding: 'utf8', env: { ...process.env, VERCEL_GIT_COMMIT_SHA: git(['rev-parse', 'HEAD']), VERCEL_GIT_COMMIT_MESSAGE: message } });
   assert.equal(result.status, frontend ? 1 : 0, result.stderr);
+  fs.mkdirSync(path.join(root, 'app'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'app/changed.tsx'), 'unplanned'); git(['add','.']); git(['commit','-m', message]);
+  assert.throws(() => assertCommitPlan(root, 'HEAD', base, classifyRange(root, base, 'HEAD')), /actual baseline/);
 });

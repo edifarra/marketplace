@@ -16,7 +16,8 @@
     "test:product-photo-flow": "tsx --test tests/cloudinary-upload-policy.test.ts tests/marketplace-image-recovery.test.ts tests/product-image-replacement.test.ts tests/marketplace-stock-reactivation.test.ts",
     "test:smart-change-classifier": "node --test tests/smart-*.test.mjs",
     "check:smart": "node scripts/smart-check.mjs",
-    "deploy:smart": "node scripts/smart-deploy.mjs"
+    "deploy:smart": "node scripts/smart-deploy.mjs",
+    "deploy:prepare": "node scripts/smart-deploy-prepare.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

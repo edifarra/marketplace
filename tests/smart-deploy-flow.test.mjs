@@ -18,9 +18,10 @@ function fixture(c, failAt, options = {}) {
     isPublished: async () => published,
     push: async () => { step('push'); published = true; },
     waitVercel: async () => { step('waitVercel'); return 'deployment'; },
-    complete: async state => { step('complete'); assert.equal(state.commit, 'target'); }
+    complete: async state => { step('complete'); assert.equal(state.commit, 'target'); },
+    canSupersede: async () => { step('canSupersede'); return options.canSupersede ?? true; }
   });
-  const plan = { mode: options.mode ?? 'execute', target: 'target', base: 'base', classification: c };
+  const plan = { mode: options.mode ?? 'execute', target: 'target', base: 'base', classification: c, supersedeFrontend: options.supersedeFrontend };
   return { calls, io, plan, progress: () => progress };
 }
 for (const frontend of [false, true]) for (const migration of [false, true]) for (const worker of [false, true]) {
@@ -77,4 +78,29 @@ test('resume after Vercel failure does not repeat migration or push', async () =
 test('unrelated partial deployment blocks execution', async () => {
   const f = fixture({ frontend: true }, null, { progress: { target: 'other', base: 'base' } });
   await assert.rejects(executeDeployment(f.plan, f.io), /another target/);
+});
+test('explicit frontend-only correction supersedes canceled target, preserving baseline until READY', async () => {
+  const progress = { target: '364b312', base: 'base', pushed: true };
+  const f = fixture({ frontend: true, worker: false, migration: false }, null, { progress, supersedeFrontend: '364b312' });
+  await executeDeployment(f.plan, f.io);
+  assert.deepEqual(f.progress().superseded, progress);
+  assert.equal(f.calls.includes('migrate'), false);
+  assert.equal(f.calls.includes('updateWorker'), false);
+  assert.ok(f.calls.indexOf('complete') > f.calls.indexOf('waitVercel'));
+});
+for (const classification of [{ frontend: true, migration: true }, { frontend: true, worker: true }]) test('supersession cannot bypass migration/worker recovery', async () => {
+  const f = fixture(classification, null, { progress: { target: 'old', base: 'base' }, supersedeFrontend: 'old' });
+  await assert.rejects(executeDeployment(f.plan, f.io), /another target/);
+  assert.equal(f.calls.includes('push'), false);
+});
+test('non-ancestor/unsafe previous target cannot be superseded', async () => {
+  const f = fixture({ frontend: true }, null, { progress: { target: 'old', base: 'base' }, supersedeFrontend: 'old', canSupersede: false });
+  await assert.rejects(executeDeployment(f.plan, f.io), /another target/);
+});
+test('failed corrective deployment preserves baseline and superseded progress', async () => {
+  const progress = { target: 'old', base: 'base', pushed: true };
+  const f = fixture({ frontend: true }, 'waitVercel', { progress, supersedeFrontend: 'old' });
+  await assert.rejects(executeDeployment(f.plan, f.io));
+  assert.equal(f.calls.includes('complete'), false);
+  assert.deepEqual(f.progress().superseded, progress);
 });

@@ -1,3 +1,7 @@
+export function assertVercelProject(info) {
+  if (info.link?.productionBranch !== 'main') throw new Error('Vercel Git production branch must be main.');
+  if (info.autoExposeSystemEnvs !== true) throw new Error('Vercel must explicitly expose system environment variables before pushing this commit.');
+}
 export function selectDeployment(deployments, target, projectId) {
   return deployments.filter(d => d.projectId === projectId && d.target === 'production' &&
     (d.meta?.githubCommitSha ?? d.meta?.gitlabCommitSha ?? d.meta?.bitbucketCommitSha) === target)

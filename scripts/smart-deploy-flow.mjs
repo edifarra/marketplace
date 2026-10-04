@@ -8,8 +8,13 @@ export async function executeDeployment(plan, io) {
   if (await io.confirm() !== 'DEPLOY') throw new Error('Deployment cancelled: DEPLOY is required.');
   await io.revalidate();
   const progress = await io.loadProgress();
-  if (progress && (progress.target !== target || progress.base !== base)) throw new Error('Unfinished deployment belongs to another target/baseline. Reconcile it first.');
-  const journal = progress ?? { target, base };
+  let journal = progress ?? { target, base };
+  if (progress && (progress.target !== target || progress.base !== base)) {
+    if (plan.supersedeFrontend !== progress.target || progress.base !== base || !c.frontend || c.migration || c.worker || progress.migration || !await io.canSupersede(progress))
+      throw new Error('Unfinished deployment belongs to another target/baseline. Reconcile it first.');
+    journal = { target, base, superseded: progress };
+    await io.saveProgress(journal);
+  }
   if (c.migration) {
     if (await io.isPublished() && !journal.migration) throw new Error('Migration SHA already published without controlled migration confirmation. Reconcile first.');
     const applied = await io.confirmMigrations();

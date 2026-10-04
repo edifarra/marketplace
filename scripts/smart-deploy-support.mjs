@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { git, changedFiles, dependencyFilesChanged } from './smart-git.mjs';
 import { classifyChanges, buildWorkerFileSet } from './smart-change-classifier.mjs';
+import { PLAN_FILE, parseTrailer, normalizePlan, verifyPlanMessage } from './smart-deploy-metadata.mjs';
 
 export const IGNORE_COMMAND = 'node scripts/smart-vercel-ignore.mjs';
 export function classifyRange(root, base, target) {
@@ -12,9 +13,15 @@ export function classifyRange(root, base, target) {
 }
 export function commitBaseline(root, target) {
   const message = git(['show', '-s', '--format=%B', target], { cwd: root });
-  const matches = [...message.matchAll(/^Smart-Deploy-Base:\s*([a-f0-9]{40})\s*$/gm)];
-  if (matches.length !== 1) throw new Error('Commit needs exactly one Smart-Deploy-Base: <full baseline SHA> trailer.');
-  return matches[0][1];
+  return parseTrailer(message, 'Smart-Deploy-Base', 40);
+}
+export function assertCommitPlan(root, target, base, classification) {
+  const plan = normalizePlan(JSON.parse(git(['show', `${target}:${PLAN_FILE}`], { cwd: root })));
+  verifyPlanMessage(plan, git(['show', '-s', '--format=%B', target], { cwd: root }));
+  if (plan.base !== base || JSON.stringify(plan.files) !== JSON.stringify(classification.files) ||
+      plan.dependenciesChanged !== classification.dependencies)
+    throw new Error('Committed plan differs from the actual baseline-to-target diff; prepare it again.');
+  return plan;
 }
 export function atomicJson(file, value) {
   const temporary = `${file}.${process.pid}.tmp`;

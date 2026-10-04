@@ -7,8 +7,8 @@ import { git, assertDeploymentRepository } from './smart-git.mjs';
 import { workerCommand } from './smart-worker-command.mjs';
 import { findRelatedTests } from './smart-change-classifier.mjs';
 import { executeDeployment } from './smart-deploy-flow.mjs';
-import { IGNORE_COMMAND, classifyRange, commitBaseline, atomicJson, readJson, migrationVersions, migrationsConfirmed } from './smart-deploy-support.mjs';
-import { waitForVercel } from './smart-vercel.mjs';
+import { IGNORE_COMMAND, classifyRange, commitBaseline, assertCommitPlan, atomicJson, readJson, migrationVersions, migrationsConfirmed } from './smart-deploy-support.mjs';
+import { waitForVercel, assertVercelProject } from './smart-vercel.mjs';
 
 const root = process.cwd();
 const args = new Set(process.argv.slice(2));
@@ -71,10 +71,13 @@ try {
       // No force, merge or rebase. A normal push remains the final race guard.
     };
     const versions = classification.migration ? migrationVersions(root) : [];
-    await executeDeployment({ mode, target, base, classification }, {
+    const supersedeArg = process.argv.find(a => a.startsWith('--supersede-frontend='))?.slice(21);
+    const supersedeFrontend = supersedeArg ? git(['rev-parse', `${supersedeArg}^{commit}`]) : null;
+    await executeDeployment({ mode, target, base, classification, supersedeFrontend }, {
       preflight: async () => {
         assertLocal();
         if (commitBaseline(root, target) !== base) throw new Error('Commit trailer must match selected baseline.');
+        assertCommitPlan(root, target, base, classification);
         if (JSON.parse(fs.readFileSync('vercel.json', 'utf8')).ignoreCommand !== IGNORE_COMMAND) throw new Error('Shared Vercel ignore command required.');
         refresh();
         if (classification.migration) {
@@ -91,7 +94,7 @@ try {
           if (!project?.projectId || !process.env.VERCEL_TOKEN) throw new Error('Linked Vercel project and VERCEL_TOKEN required.');
           console.log(`Vercel project: ${project.projectId}`);
           const info = await request(`/v9/projects/${project.projectId}`);
-          if (info.link?.productionBranch !== 'main') throw new Error('Vercel Git production branch must be main.');
+          assertVercelProject(info);
         }
       },
       validate: async () => {
@@ -107,6 +110,14 @@ try {
       },
       revalidate: refresh,
       loadProgress: () => readJson(progressPath),
+      canSupersede: progress => {
+        try {
+          git(['merge-base', '--is-ancestor', progress.target, target]);
+          const previous = classifyRange(root, progress.base, progress.target);
+          return previous.frontend && !previous.migration && !previous.worker;
+        }
+        catch { return false; }
+      },
       saveProgress: progress => atomicJson(progressPath, progress),
       confirmMigrations: () => {
         assertLinkedProject();

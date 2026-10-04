@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectDeployment, waitForVercel } from '../scripts/smart-vercel.mjs';
+import { selectDeployment, waitForVercel, assertVercelProject } from '../scripts/smart-vercel.mjs';
+test('Vercel preflight requires system metadata exposure and main integration', () => {
+  assertVercelProject({ link: { productionBranch: 'main' }, autoExposeSystemEnvs: true });
+  for (const info of [{}, { link: { productionBranch: 'main' }, autoExposeSystemEnvs: false }, { link: { productionBranch: 'main' } }, { link: { productionBranch: 'other' }, autoExposeSystemEnvs: true }]) assert.throws(() => assertVercelProject(info));
+});
 const deployment = state => ({ uid: 'deployment', projectId: 'project', target: 'production', meta: { githubCommitSha: 'sha' }, state, created: 10 });
 test('select exact project, environment and SHA', () => {
   const correct = deployment('READY');

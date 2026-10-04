@@ -46,17 +46,24 @@ escrita de estado. O plano informa que a situação remota não foi verificada.
 
 Para executar, é necessário estar em `main`, com árvore limpa, ferramentas já
 instaladas e baseline ancestral do alvo e de `origin/main`. O commit alvo precisa
-conter exatamente um trailer `Smart-Deploy-Base: <SHA completo do baseline>`.
-Exemplo ao criar um novo commit (não altera commits já publicados):
+conter um plano versionado `.smart-deploy-plan.json` e os dois trailers emitidos
+por `deploy:prepare`. Prepare o plano depois de colocar todas as alterações no
+índice; o comando altera/stageia apenas esse arquivo local e não publica nada:
 
 ```bash
-git commit -m "Descrição da alteração" --trailer "Smart-Deploy-Base: <SHA completo>"
+git add <arquivos da alteração>
+npm run deploy:prepare -- --base=<SHA completo do último deploy concluído>
+git commit -m "Descrição da alteração" --trailer "Smart-Deploy-Base: <SHA completo>" --trailer "Smart-Deploy-Plan: <hash emitido>"
 npm run deploy:smart -- --execute --base=<mesmo SHA>
 ```
 
 O baseline padrão vem de `.smart-deploy-state.json`; `--base` e
 `SMART_DEPLOY_BASE` podem selecioná-lo explicitamente, mas precisam corresponder
-ao trailer. Nenhum push deve ser feito antes de executar o fluxo com migration.
+ao trailer e ao plano. Antes do push, o deploy recalcula arquivos e dependências
+desde o baseline até o SHA congelado e rejeita qualquer diferença do plano
+versionado. Se alterar o índice depois de preparar, prepare novamente. Mensagens
+de commit devem ter menos de 2048 bytes (limite documentado pela Vercel).
+Nenhum push deve ser feito antes de executar o fluxo com migration.
 `--yes` não elimina a entrada obrigatória `DEPLOY`.
 
 O script congela o SHA, classifica o intervalo inteiro, valida testes relacionados,
@@ -80,14 +87,54 @@ produção. Erro, cancelamento, bloqueio, falha de API ou timeout de 20 minutos
 interrompem o fluxo antes da VPS e preservam o baseline.
 
 `vercel.json` usa `node scripts/smart-vercel-ignore.mjs` como `ignoreCommand`.
-Esse script usa o mesmo `classifyRange`/`classifyChanges` e o mesmo trailer,
-incluindo todos os commits desde o baseline. Frontend=false retorna 0 e ignora o
-build; frontend=true retorna 1 e permite o build. Em clone raso, tenta obter o
-histórico. Trailer ausente, inválido ou histórico indisponível bloqueiam o build
-(retorno 0), nunca autorizam publicação por suposição. Isso também afeta previews:
-commits sem trailer não são construídos. Falhas da regra precisam ser corrigidas
-antes de uma nova tentativa. A Vercel pode criar um registro cancelado/ignorado,
-mas não publica um novo frontend. Não se usa `HEAD^` como segunda fonte de verdade.
+O Ignored Build Step não depende de `.git`, não executa Git e não acessa a rede.
+Lê o plano versionado e verifica o hash SHA-256 contra `Smart-Deploy-Plan` em
+`VERCEL_GIT_COMMIT_MESSAGE`, além de exigir um `VERCEL_GIT_COMMIT_SHA` completo.
+As variáveis são documentadas em
+https://vercel.com/docs/environment-variables/system-environment-variables;
+a mensagem pode ser truncada em 2048 bytes, por isso tamanho, presença e trailers
+são verificados estritamente. Habilite "Automatically Expose System Environment
+Variables" nas configurações Vercel; variáveis ausentes bloqueiam o build.
+O preflight local exige `autoExposeSystemEnvs=true` no projeto antes do push.
+
+O plano armazena os dados de entrada (arquivos do intervalo completo e mudança
+semântica de dependências), nunca um booleano frontend independente. A Vercel usa
+o mesmo `classifyChanges` que o deploy local para decidir frontend=true/false.
+O hash usa JSON canônico, evitando diferença de CRLF/LF no checkout. O local prova
+que o plano corresponde ao diff real do SHA alvo antes de publicar; os metadados
+Vercel vinculam o plano ao commit recebido. O SHA alvo não é embutido no arquivo
+para evitar autorreferência: um arquivo não pode conter o hash do próprio commit.
+
+Frontend=false retorna 0 (ignorar); frontend=true verificado retorna 1 (construir).
+Plano ausente, inválido, hash incorreto, metadados ausentes/truncados e até falhas
+de importação dos auxiliares retornam 0 (fail-closed). Isso também afeta previews:
+commits sem plano/trailers válidos não são construídos. Não há fallback em HEAD^,
+VERCEL_GIT_PREVIOUS_SHA ou deploy manual. A `.vercelignore` continua excluindo `.git`:
+incluir histórico Git aumentaria o upload e exporia dados desnecessários, sem
+garantir disponibilidade nesse estágio. O plano permanece no upload e não contém
+credenciais. Vercel pode registrar o deployment ignorado como CANCELED, sem publicar.
+
+### Bootstrap após o deployment CANCELED de 364b312
+
+O baseline de produção continua no último SHA realmente concluído, não em 364b312.
+O commit corretivo deve ser descendente de 364b312 e conter plano/trailers preparados
+desde esse baseline antigo; a classificação cumulativa deve confirmar frontend=true,
+migration=false, worker=false e dependencies=false. O caminho autorizado posteriormente
+é executar `deploy:smart --execute` no commit corretivo: valida, exige DEPLOY, faz o
+push fast-forward e acompanha somente o deployment do novo SHA até READY/alias.
+Não refaz o deployment cancelado de 364b312 e não toca Supabase/VPS. Somente então
+grava o novo SHA no baseline. Nunca avance o baseline manualmente para o commit cancelado.
+
+Se existir `.smart-deploy-progress.json` do commit cancelado, use adicionalmente
+`--supersede-frontend=364b312`. Essa opção exige que o alvo anterior seja ancestral,
+tenha o mesmo baseline e que ambos os intervalos sejam frontend-only (sem migration
+nem worker). Exige DEPLOY e preserva o registro antigo em `superseded` no novo
+progresso. Sem a opção, progresso de outro SHA continua bloqueando. Se já houve um
+push autorizado do corretivo fora do script, `deploy:smart --execute` verifica o SHA
+remoto e o READY correspondente, sem repetir push ou criar deployment; o baseline
+continua condicionado ao sucesso. Durante o bootstrap, variáveis de sistema ausentes
+ou plano inválido cancelam de novo o build; corrija a configuração/dados antes de
+uma nova tentativa autorizada. Nenhum desses passos de produção faz parte dos testes locais.
 
 Worker=false nunca usa SSH/PM2/npm ci. Worker=true verifica árvore limpa, branch
 main e ancestralidade na VPS, exige origin/main no SHA alvo, avança a branch usando

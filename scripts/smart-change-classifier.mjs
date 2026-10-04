@@ -7,6 +7,12 @@ const FRONTEND_FILES = new Set([
   "middleware.ts",
   "next.config.mjs",
   "next-env.d.ts",
+  "tsconfig.json",
+  ".eslintrc.json",
+  "scripts/smart-vercel-ignore.mjs",
+  "scripts/smart-deploy-support.mjs",
+  "scripts/smart-change-classifier.mjs",
+  "scripts/smart-git.mjs",
   "vercel.json"
 ]);
 const PROJECT_CONFIG_FILES = new Set([
@@ -91,7 +97,7 @@ export function classifyChanges(files, { workerFiles = new Set(), dependenciesCh
     migration,
     documentationOnly: normalizedFiles.length > 0 && productionFiles.length === 0 && normalizedFiles.every((file) => isDocumentationFile(file) || isTestFile(file)),
     typecheck: sourceChanged || dependencies || normalizedFiles.includes("tsconfig.json"),
-    build: dependencies || configChanged,
+    build: frontend || dependencies || configChanged,
     testFiles: normalizedFiles.filter(isTestFile)
   };
 }

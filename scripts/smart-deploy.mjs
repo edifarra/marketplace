@@ -1,98 +1,137 @@
-import fs from "node:fs";
-import path from "node:path";
-import process from "node:process";
-import readline from "node:readline/promises";
-import { spawnSync } from "node:child_process";
-import { buildWorkerFileSet, classifyChanges } from "./smart-change-classifier.mjs";
-import { deploymentMode, mayModifyExternalEnvironment } from "./smart-execution-policy.mjs";
-import { formatSpawnError, spawnCommand } from "./smart-command-runner.mjs";
-import { changedFiles, dependencyFilesChanged, git, workingTreeDirty } from "./smart-git.mjs";
+import fs from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline/promises';
+import { deploymentMode } from './smart-execution-policy.mjs';
+import { spawnCommand, formatSpawnError } from './smart-command-runner.mjs';
+import { git, assertDeploymentRepository } from './smart-git.mjs';
+import { workerCommand } from './smart-worker-command.mjs';
+import { findRelatedTests } from './smart-change-classifier.mjs';
+import { executeDeployment } from './smart-deploy-flow.mjs';
+import { IGNORE_COMMAND, classifyRange, commitBaseline, atomicJson, readJson, migrationVersions, migrationsConfirmed } from './smart-deploy-support.mjs';
+import { waitForVercel } from './smart-vercel.mjs';
 
-const rootDir = process.cwd();
-const statePath = path.join(rootDir, ".smart-deploy-state.json");
+const root = process.cwd();
 const args = new Set(process.argv.slice(2));
-const dryRun = args.has("--dry-run");
-const execute = args.has("--execute");
-const mode = deploymentMode({ execute, dryRun });
-const yes = args.has("--yes");
-const baseArg = process.argv.find((arg) => arg.startsWith("--base="))?.slice(7);
-const savedBase = readState()?.commit;
-const base = baseArg || process.env.SMART_DEPLOY_BASE || savedBase || (dryRun ? "HEAD^" : null);
-
-if (!base) fail("No deployment baseline found. Use --base=<commit> for the first deployment.");
-if (mode === "plan") console.log("Planning mode: no production action will run. Add --execute to deploy.");
-
-const files = changedFiles({ base, head: "HEAD" });
-const dependenciesChanged = dependencyFilesChanged({ base, head: "HEAD" });
-const classification = classifyChanges(files, { workerFiles: buildWorkerFileSet(rootDir), dependenciesChanged });
-if (workingTreeDirty()) {
-  console.warn("WARNING: working tree has local changes; they were not included in this baseline-to-HEAD classification.");
-}
-printPlan(base, classification);
-
-if (!mayModifyExternalEnvironment(mode)) process.exit(0);
-if (!classification.frontend && !classification.worker && !classification.migration) {
-  console.log("Nothing needs production deployment.");
-  process.exit(0);
-}
-
-assertSafeRepository();
-if (!yes) {
-  const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await prompt.question("Execute exactly these production actions? Type DEPLOY to continue: ");
-  prompt.close();
-  if (answer !== "DEPLOY") fail("Deployment cancelled.");
-}
-
-if (classification.migration) run("npx", ["supabase", "db", "push", "--linked"], "Supabase migrations");
-if (classification.frontend) run("npx", ["vercel", "--prod", "--yes"], "Vercel production deployment");
-if (classification.worker) {
-  const remote = classification.dependencies
-    ? "cd /opt/gestao-marketplace && git pull origin main && npm ci && pm2 restart marketplace-worker --update-env && pm2 status marketplace-worker"
-    : "cd /opt/gestao-marketplace && git pull origin main && pm2 restart marketplace-worker --update-env && pm2 status marketplace-worker";
-  run("ssh", ["root@76.13.239.70", remote], "VPS worker update");
-}
-
-fs.writeFileSync(statePath, `${JSON.stringify({ commit: git(["rev-parse", "HEAD"]), deployedAt: new Date().toISOString() }, null, 2)}\n`);
-console.log("Deployment completed successfully; baseline updated.");
-
-function printPlan(selectedBase, result) {
-  console.log(`\nBaseline: ${selectedBase}`);
-  console.log(`Changed files: ${result.files.length}`);
-  console.log(`\nFrontend/Vercel: ${yn(result.frontend)}`);
-  console.log(`Worker/VPS: ${yn(result.worker)}`);
-  console.log(`Dependencies changed: ${yn(result.dependencies)}`);
-  console.log(`Migration: ${yn(result.migration)}`);
-  console.log("\nActions required:");
-  console.log(result.migration ? "✓ Apply Supabase migrations first" : "- Migration not required");
-  console.log(result.frontend ? "✓ Deploy frontend to Vercel" : "- Vercel deployment not required");
-  console.log(result.worker ? "✓ Update VPS and restart marketplace-worker" : "- VPS update and PM2 restart not required");
-  console.log(result.worker && result.dependencies ? "✓ Run npm ci on VPS" : "- npm ci not required");
-  if (mode === "dry-run") console.log("\nDRY RUN: no network connection or production change was made.");
-}
-
-function assertSafeRepository() {
-  if (git(["status", "--porcelain"])) fail("Real deployment requires a clean working tree.");
-  if (git(["branch", "--show-current"]) !== "main") fail("Real deployment is allowed only from the main branch.");
-  const pushed = spawnSync("git", ["merge-base", "--is-ancestor", "HEAD", "origin/main"], { cwd: rootDir });
-  if (pushed.status !== 0) fail("HEAD must already be pushed to origin/main before deployment.");
-}
-
-function run(command, commandArgs, label) {
-  console.log(`\n> ${label}`);
-  const result = spawnCommand(command, commandArgs, { cwd: rootDir, stdio: "inherit" });
-  if (result.error) {
-    fail(`${label} failed to start: ${formatSpawnError(result.error)}. Remaining steps were not executed.`);
+const mode = deploymentMode({ execute: args.has('--execute'), dryRun: args.has('--dry-run') });
+const statePath = path.join(root, '.smart-deploy-state.json');
+const progressPath = path.join(root, '.smart-deploy-progress.json');
+const lockPath = path.join(root, '.smart-deploy.lock');
+let locked = false;
+const run = (command, argv, capture = false) => {
+  const result = spawnCommand(command, argv, { cwd: root, stdio: capture ? 'pipe' : 'inherit', encoding: 'utf8', timeout: 1_200_000 });
+  if (result.error) throw new Error(`${command}: ${formatSpawnError(result.error)}`);
+  if (result.status !== 0) throw new Error(`${command} failed (${result.signal ?? result.status}); remaining steps stopped.`);
+  return result.stdout ?? '';
+};
+try {
+  // Freeze before resolving or classifying any range.
+  const target = git(['rev-parse', 'HEAD^{commit}']);
+  const selectedBase = process.argv.find(a => a.startsWith('--base='))?.slice(7) || process.env.SMART_DEPLOY_BASE || readJson(statePath)?.commit || (mode === 'dry-run' ? 'HEAD^' : null);
+  if (!selectedBase) throw new Error('No baseline. Use --base=<commit>.');
+  const base = git(['rev-parse', `${selectedBase}^{commit}`]);
+  git(['merge-base', '--is-ancestor', base, target]);
+  const classification = classifyRange(root, base, target);
+  console.log(JSON.stringify({ mode, base, target, ...classification }, null, 2));
+  if (mode !== 'execute') {
+    if (mode === 'dry-run') console.log('DRY RUN: no network connection or production change was made.');
+    console.log('Remote status is not verified in planning/dry-run mode.');
+  } else {
+    assertDeploymentRepository({ cwd: root, target });
+    const active = classification.frontend || classification.migration || classification.worker;
+    if (active) {
+      fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, target }), { flag: 'wx' });
+      locked = true;
+    }
+    let project;
+    let linkedProject;
+    const assertLinkedProject = () => {
+      if (fs.readFileSync('supabase/.temp/project-ref', 'utf8').trim() !== linkedProject) throw new Error('Supabase linked project changed during deployment.');
+    };
+    const originUrl = active ? git(['remote', 'get-url', '--all', 'origin']) : null;
+    const assertOrigin = () => {
+      if (!originUrl || originUrl.includes('\n') || git(['remote', 'get-url', '--all', 'origin']) !== originUrl ||
+          git(['remote', 'get-url', '--push', '--all', 'origin']) !== originUrl)
+        throw new Error('origin fetch/push must use one unchanged repository URL.');
+    };
+    const request = async endpoint => {
+      const url = new URL(endpoint, 'https://api.vercel.com');
+      if (project.orgId) url.searchParams.set('teamId', project.orgId);
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` }, signal: AbortSignal.timeout(30_000) });
+      if (!response.ok) throw new Error(`Vercel read API failed: HTTP ${response.status}`);
+      return response.json();
+    };
+    const assertLocal = () => assertDeploymentRepository({ cwd: root, target });
+    const remoteHead = () => git(['rev-parse', 'refs/remotes/origin/main']);
+    const refresh = () => {
+      assertLocal();
+      assertOrigin();
+      run('git', ['fetch', '--no-tags', 'origin', 'refs/heads/main:refs/remotes/origin/main']);
+      assertDeploymentRepository({ cwd: root, target, remote: true });
+      git(['merge-base', '--is-ancestor', base, remoteHead()]);
+      // No force, merge or rebase. A normal push remains the final race guard.
+    };
+    const versions = classification.migration ? migrationVersions(root) : [];
+    await executeDeployment({ mode, target, base, classification }, {
+      preflight: async () => {
+        assertLocal();
+        if (commitBaseline(root, target) !== base) throw new Error('Commit trailer must match selected baseline.');
+        if (JSON.parse(fs.readFileSync('vercel.json', 'utf8')).ignoreCommand !== IGNORE_COMMAND) throw new Error('Shared Vercel ignore command required.');
+        refresh();
+        if (classification.migration) {
+          if (git(['diff', '--name-only', '--diff-filter=MDRT', base, target, '--', 'supabase/migrations/'])) throw new Error('Existing migrations cannot be edited, removed or renamed; add a new migration.');
+          run('npx', ['--no-install', 'supabase', 'db', 'push', '--help'], true);
+          run('npx', ['--no-install', 'supabase', 'migration', 'list', '--help'], true);
+          if (!fs.existsSync('supabase/.temp/project-ref')) throw new Error('Supabase linked project required.');
+          linkedProject = fs.readFileSync('supabase/.temp/project-ref', 'utf8').trim();
+          if (!linkedProject) throw new Error('Empty Supabase linked project.');
+          console.log(`Supabase linked project: ${linkedProject}`);
+        }
+        if (classification.frontend) {
+          project = readJson(path.join(root, '.vercel/project.json'));
+          if (!project?.projectId || !process.env.VERCEL_TOKEN) throw new Error('Linked Vercel project and VERCEL_TOKEN required.');
+          console.log(`Vercel project: ${project.projectId}`);
+          const info = await request(`/v9/projects/${project.projectId}`);
+          if (info.link?.productionBranch !== 'main') throw new Error('Vercel Git production branch must be main.');
+        }
+      },
+      validate: async () => {
+        const tests = findRelatedTests(root, classification.files);
+        if (tests.length) run('npx', ['--no-install', 'tsx', '--test', ...tests]);
+        if (classification.typecheck) run('npm', ['run', 'typecheck']);
+        if (classification.frontend || classification.build) run('npm', ['run', 'build']);
+      },
+      confirm: async () => {
+        const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
+        try { return await prompt.question('Type DEPLOY to execute this exact plan: '); }
+        finally { prompt.close(); }
+      },
+      revalidate: refresh,
+      loadProgress: () => readJson(progressPath),
+      saveProgress: progress => atomicJson(progressPath, progress),
+      confirmMigrations: () => {
+        assertLinkedProject();
+        return migrationsConfirmed(run('npx', ['--no-install', 'supabase', 'migration', 'list', '--linked'], true), versions);
+      },
+      migrate: () => { assertLinkedProject(); run('npx', ['--no-install', 'supabase', 'db', 'push', '--linked']); },
+      isPublished: () => remoteHead() === target,
+      push: () => run('git', ['push', 'origin', `${target}:refs/heads/main`]),
+      verifyPublished: () => {
+        const line = run('git', ['ls-remote', '--exit-code', 'origin', 'refs/heads/main'], true).trim();
+        if (line.split(/\s+/)[0] !== target) throw new Error('origin/main is not the exact target SHA.');
+      },
+      waitVercel: () => waitForVercel({ target, projectId: project.projectId, request }),
+      updateWorker: () => {
+        const output = run('ssh', ['root@76.13.239.70', workerCommand(target, classification.dependencies)], true);
+        if (!output.split(/\r?\n/).includes(`SMART_WORKER_SHA=${target}`)) throw new Error('VPS SHA confirmation missing.');
+      },
+      complete: state => atomicJson(statePath, state),
+      clearProgress: () => { if (fs.existsSync(progressPath)) fs.unlinkSync(progressPath); }
+    });
+    console.log(active ? 'Deployment completed; baseline updated.' : 'Nothing needs production deployment.');
   }
-  if (result.status !== 0) {
-    const detail = result.signal ? `signal=${result.signal}` : `exit code=${result.status}`;
-    fail(`${label} failed (${detail}); remaining steps were not executed.`, result.status ?? 1);
-  }
+} catch (error) {
+  console.error(`ERROR: ${error.message}`);
+  process.exitCode = 1;
+} finally {
+  if (locked) fs.unlinkSync(lockPath);
 }
-
-function readState() {
-  try { return JSON.parse(fs.readFileSync(statePath, "utf8")); } catch { return null; }
-}
-
-function yn(value) { return value ? "YES" : "NO"; }
-function fail(message, code = 1) { console.error(`\nERROR: ${message}`); process.exit(code); }

@@ -4,6 +4,18 @@ export function git(args, options = {}) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
 }
 
+export function assertDeploymentRepository({ cwd, target, remote = false }) {
+  const options = cwd ? { cwd } : {};
+  if (git(['status', '--porcelain'], options)) throw new Error('Clean working tree required.');
+  if (git(['branch', '--show-current'], options) !== 'main') throw new Error('Only main is allowed.');
+  if (git(['rev-parse', 'HEAD'], options) !== target) throw new Error('HEAD changed during deployment.');
+  if (remote) {
+    const remoteSha = git(['rev-parse', 'refs/remotes/origin/main'], options);
+    try { git(['merge-base', '--is-ancestor', remoteSha, target], options); }
+    catch { throw new Error('origin/main is ahead or divergent; automatic reconciliation is forbidden.'); }
+  }
+}
+
 export function changedFiles({ base, head = "HEAD", includeWorkingTree = false, cwd } = {}) {
   const files = new Set();
   const options = cwd ? { cwd } : {};

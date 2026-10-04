@@ -24,5 +24,6 @@
       "path": "/api/prices/process?limit=5",
       "schedule": "0 6 * * *"
     }
-  ]
+  ],
+  "ignoreCommand": "node scripts/smart-vercel-ignore.mjs"
 }

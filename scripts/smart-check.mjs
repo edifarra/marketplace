@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnCommand } from "./smart-command-runner.mjs";
 import process from "node:process";
 import { buildWorkerFileSet, classifyChanges, findRelatedTests } from "./smart-change-classifier.mjs";
 import { changedFiles } from "./smart-git.mjs";
@@ -26,8 +26,7 @@ if (!commands.length) {
 
 for (const [command, commandArgs, label] of commands) {
   console.log(`\n> ${label}`);
-  const executable = process.platform === "win32" ? `${command}.cmd` : command;
-  const result = spawnSync(executable, commandArgs, { cwd: rootDir, stdio: "inherit" });
+  const result = spawnCommand(command, commandArgs, { cwd: rootDir, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 

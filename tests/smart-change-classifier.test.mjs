@@ -9,6 +9,17 @@ const workerFiles = new Set([
 ]);
 const classify = (files) => classifyChanges(files, { workerFiles });
 
+test('frontend code and configuration require a build', () => {
+  for (const file of ['app/page.tsx', 'tsconfig.json', 'scripts/smart-vercel-ignore.mjs']) {
+    const result = classify([file]);
+    assert.equal(result.frontend, true); assert.equal(result.build, true);
+  }
+});
+test('migration combined with shared module retains all impacts', () => {
+  const result = classify(['supabase/migrations/101_new.sql', 'lib/outgoing-activities.ts']);
+  assert.deepEqual(pick(result), [true, true, false, true]);
+});
+
 test("classifies frontend-only changes", () => {
   assert.deepEqual(pick(classify(["app/produtos/page.tsx"])), [true, false, false, false]);
 });

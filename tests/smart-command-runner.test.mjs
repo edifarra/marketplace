@@ -4,6 +4,21 @@ import path from "node:path";
 import test from "node:test";
 import { formatSpawnError, resolveCommand, spawnCommand } from "../scripts/smart-command-runner.mjs";
 
+test('runner preserves timeout, capture and failure results without a shell', () => {
+  for (const result of [{ status: 1 }, { status: null, signal: 'SIGTERM' }, { error: Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }) }]) {
+    const actual = spawnCommand('git', ['push', 'origin', 'sha:refs/heads/main'], {
+      platform: 'linux', timeout: 100, stdio: 'pipe',
+      spawn: (file, args, options) => {
+        assert.equal(file, 'git'); assert.equal(options.shell, false);
+        assert.equal(options.timeout, 100); assert.equal(options.stdio, 'pipe');
+        assert.deepEqual(args, ['push', 'origin', 'sha:refs/heads/main']);
+        return result;
+      }
+    });
+    assert.equal(actual, result);
+  }
+});
+
 test("Windows npx resolves to npx-cli.js executed by Node without a shell", () => {
   const npmCli = path.join("C:", "node", "node_modules", "npm", "bin", "npm-cli.js");
   const npxCli = path.join(path.dirname(npmCli), "npx-cli.js");

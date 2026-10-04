@@ -30,6 +30,7 @@ export function spawnCommand(command, args, options = {}) {
     nodePath = process.execPath,
     env = process.env,
     existsSync = fs.existsSync,
+    spawn = spawnSync,
     ...spawnOptions
   } = options;
 
@@ -40,7 +41,7 @@ export function spawnCommand(command, args, options = {}) {
     return { status: null, signal: null, error };
   }
 
-  return spawnSync(resolved.file, resolved.args, {
+  return spawn(resolved.file, resolved.args, {
     ...spawnOptions,
     env,
     shell: resolved.shell

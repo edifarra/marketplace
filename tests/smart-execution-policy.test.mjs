@@ -3,6 +3,13 @@ import fs from "node:fs";
 import test from "node:test";
 import { deploymentMode, mayModifyExternalEnvironment } from "../scripts/smart-execution-policy.mjs";
 
+test('normal deployment never creates a second manual Vercel deployment or force push', () => {
+  const source = fs.readFileSync(new URL('../scripts/smart-deploy.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /\[\s*['"]vercel['"]|--prod|--force|git.*rebase/);
+  assert.match(source, /target}:refs\/heads\/main/);
+  assert.doesNotMatch(source, /if\s*\([^)]*yes/);
+});
+
 test("planning mode cannot modify external environments", () => {
   const mode = deploymentMode({ execute: false, dryRun: false });
   assert.equal(mode, "plan");

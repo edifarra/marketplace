@@ -9,6 +9,7 @@ import { findRelatedTests } from './smart-change-classifier.mjs';
 import { executeDeployment } from './smart-deploy-flow.mjs';
 import { IGNORE_COMMAND, classifyRange, commitBaseline, assertCommitPlan, atomicJson, readJson, migrationVersions, migrationsConfirmed } from './smart-deploy-support.mjs';
 import { waitForVercel, assertVercelProject } from './smart-vercel.mjs';
+import { createVercelReader, assertLinkedVercelProject } from './smart-vercel-auth.mjs';
 
 const root = process.cwd();
 const args = new Set(process.argv.slice(2));
@@ -43,6 +44,7 @@ try {
       locked = true;
     }
     let project;
+    let request;
     let linkedProject;
     const assertLinkedProject = () => {
       if (fs.readFileSync('supabase/.temp/project-ref', 'utf8').trim() !== linkedProject) throw new Error('Supabase linked project changed during deployment.');
@@ -53,17 +55,11 @@ try {
           git(['remote', 'get-url', '--push', '--all', 'origin']) !== originUrl)
         throw new Error('origin fetch/push must use one unchanged repository URL.');
     };
-    const request = async endpoint => {
-      const url = new URL(endpoint, 'https://api.vercel.com');
-      if (project.orgId) url.searchParams.set('teamId', project.orgId);
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` }, signal: AbortSignal.timeout(30_000) });
-      if (!response.ok) throw new Error(`Vercel read API failed: HTTP ${response.status}`);
-      return response.json();
-    };
     const assertLocal = () => assertDeploymentRepository({ cwd: root, target });
     const remoteHead = () => git(['rev-parse', 'refs/remotes/origin/main']);
     const refresh = () => {
       assertLocal();
+      if (project) assertLinkedVercelProject(readJson(path.join(root, '.vercel/project.json')));
       assertOrigin();
       run('git', ['fetch', '--no-tags', 'origin', 'refs/heads/main:refs/remotes/origin/main']);
       assertDeploymentRepository({ cwd: root, target, remote: true });
@@ -91,7 +87,8 @@ try {
         }
         if (classification.frontend) {
           project = readJson(path.join(root, '.vercel/project.json'));
-          if (!project?.projectId || !process.env.VERCEL_TOKEN) throw new Error('Linked Vercel project and VERCEL_TOKEN required.');
+          assertLinkedVercelProject(project);
+          request = createVercelReader({ project, cwd: root });
           console.log(`Vercel project: ${project.projectId}`);
           const info = await request(`/v9/projects/${project.projectId}`);
           assertVercelProject(info);

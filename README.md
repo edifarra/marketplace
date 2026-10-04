@@ -80,8 +80,19 @@ ao alvo é permitida apenas por ancestralidade; branch local atrasada ou diverge
 o SHA remoto deve ser exatamente o alvo.
 
 Quando frontend=true, a integração Git da Vercel publica o commit; o script não
-cria deployment manual. Requer `.vercel/project.json`, `VERCEL_TOKEN` no ambiente
-e integração com production branch `main`. A API somente de leitura é consultada
+cria deployment manual. Requer `.vercel/project.json` corretamente linkado ao
+projeto `marketplace` (`prj_e21vdAeSn0hKztQyc25wrgVtMgUs`) e time
+`team_A9TQojzKRvDs6VvK1ZAhtc2s`, com integração production branch `main`.
+Sem `VERCEL_TOKEN`, usa `npx --no-install vercel api` com a sessão persistida da CLI,
+GET explícito, JSON raw, time fixado e modo não interativo. Requer uma CLI instalada
+ou disponível no cache npm que suporte `api --raw --non-interactive`; não executa
+login, não lê arquivos de credenciais e não instala a CLI automaticamente.
+`VERCEL_TOKEN` é opcional para CI: usa HTTPS com token apenas no header, nunca em
+argv, logs ou arquivos. Token inválido não faz fallback para outra identidade.
+O preflight valida também id, nome e accountId retornados pelo projeto autenticado;
+erros de autenticação, CLI indisponível, JSON inválido ou identidade divergente
+bloqueiam a execução. Saídas de erro da CLI/API não são reproduzidas nos logs.
+A API somente de leitura é consultada
 por projeto, ambiente production e SHA; exige `READY` e confirmação do alias de
 produção. Erro, cancelamento, bloqueio, falha de API ou timeout de 20 minutos
 interrompem o fluxo antes da VPS e preservam o baseline.

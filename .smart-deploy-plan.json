@@ -16,6 +16,7 @@
     "scripts/smart-deploy-support.mjs",
     "scripts/smart-deploy.mjs",
     "scripts/smart-git.mjs",
+    "scripts/smart-vercel-auth.mjs",
     "scripts/smart-vercel-ignore.mjs",
     "scripts/smart-vercel.mjs",
     "scripts/smart-worker-command.mjs",
@@ -25,6 +26,7 @@
     "tests/smart-deploy-support.test.mjs",
     "tests/smart-execution-policy.test.mjs",
     "tests/smart-git.test.mjs",
+    "tests/smart-vercel-auth.test.mjs",
     "tests/smart-vercel-ignore.test.mjs",
     "tests/smart-vercel.test.mjs",
     "vercel.json"

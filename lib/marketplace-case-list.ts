@@ -1,9 +1,11 @@
 import "server-only";
 import { supabaseAdmin } from "./supabase-admin";
 
+import { caseContext, CLAIM_CONTEXT_FILTER, RETURN_CONTEXT_FILTER } from "./marketplace-case-context";
+
 type Row = Record<string, any>;
 export const CASE_PAGE_SIZE = 30;
-export type CaseFilters = { search?: string; marketplace?: string; account?: string; tab?: string; page?: string };
+export type CaseFilters = { search?: string; marketplace?: string; account?: string; tab?: string; context?: string; page?: string };
 export const CASE_GROUPS = ["action", "ongoing", "unknown", "closed"] as const;
 export type CaseGroup = typeof CASE_GROUPS[number];
 // Only explicit case statuses are classified. Order/shipping status never participates.
@@ -25,7 +27,8 @@ export function caseGroup(row: Row): CaseGroup {
   const ongoing = row.marketplace === "mercado_livre" ? ["open", "opened", "reopened"].includes(row.status) : ["REQUESTED", "PROCESSING", "ACCEPTED", "JUDGING", "SELLER_DISPUTE"].includes(row.status);
   return ongoing ? "ongoing" : "unknown";
 }
-export const CASE_LIST_SELECT = `id,marketplace,marketplace_account_id,external_case_id,case_type,order_id,status,needs_action,reputation_impact,updated_at,official_updated_at,snapshot_order_at,reason:content->>reason,reason_code:content->>reason_code,buyer_description:content->>buyer_description,
+export const CASE_LIST_SELECT = `id,marketplace,marketplace_account_id,external_case_id,case_type,reverse_logistics,responsible,order_id,status,needs_action,reputation_impact,updated_at,official_updated_at,snapshot_order_at,reason:content->>reason,reason_code:content->>reason_code,buyer_description:content->>buyer_description,validation_type:content->>validation_type,buyer_name:content->>buyer_name,related_claim_id:content->>related_claim_id,
+  conversation:marketplace_conversations!conversation_id(buyer_name),
   account:config_marketplace_accounts!marketplace_account_id(id,name,nickname,marketplace),
   product:products!product_id(id,sku,title,product_images(url,cloudinary_url,position)),
   item:venda_item!venda_item_id(id,venda_id,sku,quantidade,valor_total),
@@ -37,7 +40,7 @@ const pattern = (s: string) => `"%${s.replace(/\\/g, "\\\\").replace(/%/g, "\\%"
 const quoted = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 
 export async function loadCaseList(input: CaseFilters, db = supabaseAdmin()) {
-  const filters = { search: (input.search || "").trim().slice(0, 160), marketplace: ["mercado_livre", "shopee"].includes(input.marketplace || "") ? input.marketplace! : "", account: input.account || "", tab: ["action", "ongoing", "closed"].includes(input.tab || "") ? input.tab! : "all" };
+  const filters = { search: (input.search || "").trim().slice(0, 160), marketplace: ["mercado_livre", "shopee"].includes(input.marketplace || "") ? input.marketplace! : "", account: input.account || "", context: input.context === "return" ? "return" : "claim", tab: ["action", "ongoing", "closed"].includes(input.tab || "") ? input.tab! : "all" };
   const accountsResult = await db.from("config_marketplace_accounts").select("id,name,nickname,marketplace").order("name").throwOnError();
   const accounts = accountsResult.data || [];
   if (!accounts.some(a => a.id === filters.account)) filters.account = "";
@@ -50,10 +53,11 @@ export async function loadCaseList(input: CaseFilters, db = supabaseAdmin()) {
       if ((result.data || []).length < 500) break;
     }
   }
-  const searchSelect = filters.search ? `,search_product:products!product_id(),search_item:venda_item!venda_item_id(),search_sale:venda!venda_id(),search_sale_items:venda!venda_id(search_items:venda_item!inner())` : "";
-  const compactSelect = "id,marketplace,status,needs_action,updated_at";
-  const query = (group: CaseGroup | null, head: boolean, compact = false, skuChunk?: string[]) => {
+  const searchSelect = filters.search ? `,search_product:products!product_id(),search_item:venda_item!venda_item_id(),search_sale:venda!venda_id(),search_sale_items:venda!venda_id(search_items:venda_item!inner()),search_conversation:marketplace_conversations!conversation_id()` : "";
+  const compactSelect = "id,marketplace,case_type,reverse_logistics,status,needs_action,updated_at";
+  const query = (group: CaseGroup | null, head: boolean, compact = false, skuChunk?: string[], context: string | null = filters.context) => {
     let q = db.from("marketplace_cases").select((head ? "id" : compact ? compactSelect : SELECT) + searchSelect, { count: "exact", head });
+    if (context) q = q.or(context === "return" ? RETURN_CONTEXT_FILTER : CLAIM_CONTEXT_FILTER);
     if (group) q = q.or(GROUP_FILTER[group]);
     if (filters.marketplace) q = q.eq("marketplace", filters.marketplace);
     if (filters.account) q = q.eq("marketplace_account_id", filters.account);
@@ -63,7 +67,8 @@ export async function loadCaseList(input: CaseFilters, db = supabaseAdmin()) {
         .ilike("search_item.sku", `%${filters.search.replace(/[%_\\]/g, "\\$&")}%`)
         .ilike("search_sale.order_id", `%${filters.search.replace(/[%_\\]/g, "\\$&")}%`)
         .or(skuChunk ? `sku.in.(${skuChunk.map(quoted).join(",")})` : `sku.ilike.${p}`, { referencedTable: "search_sale_items.search_items" })
-        .or(skuChunk ? "search_sale_items.not.is.null" : `external_case_id.ilike.${p},order_id.ilike.${p},search_product.not.is.null,search_item.not.is.null,search_sale.not.is.null,search_sale_items.not.is.null`);
+        .ilike("search_conversation.buyer_name", `%${filters.search.replace(/[%_\\]/g, "\\$&")}%`)
+        .or(skuChunk ? "search_sale_items.not.is.null" : `external_case_id.ilike.${p},order_id.ilike.${p},content->>buyer_name.ilike.${p},reverse_logistics->>contact_name.ilike.${p},reverse_logistics->>tracking.ilike.${p},reverse_logistics->>return_id.ilike.${p},search_conversation.not.is.null,search_product.not.is.null,search_item.not.is.null,search_sale.not.is.null,search_sale_items.not.is.null`);
     }
     return q;
   };
@@ -77,12 +82,20 @@ export async function loadCaseList(input: CaseFilters, db = supabaseAdmin()) {
     for (let i = 0; i < skus.length; i += 60) chunks.push(skus.slice(i, i + 60));
     for (const chunk of chunks) {
       for (let offset = 0; ; offset += 500) {
-        const r = await query(null, false, true, chunk).order("id").range(offset, offset + 499).throwOnError();
+        const r = await query(null, false, true, chunk, null).order("id").range(offset, offset + 499).throwOnError();
         for (const row of (r.data || []) as unknown as Row[]) unique.set(row.id, row);
         if ((r.data || []).length < 500) break;
       }
     }
     matches = [...unique.values()];
+  }
+  const contextCounts = { claim: 0, return: 0 };
+  if (matches) {
+    for (const row of matches) contextCounts[caseContext(row)]++;
+    matches = matches.filter(row => caseContext(row) === filters.context);
+  } else {
+    const result = await Promise.all(["claim", "return"].map(context => query(null, true, false, undefined, context).throwOnError()));
+    contextCounts.claim = result[0].count || 0; contextCounts.return = result[1].count || 0;
   }
   const counts = { action: 0, ongoing: 0, unknown: 0, closed: 0 };
   if (matches) for (const row of matches) counts[caseGroup(row)]++;
@@ -128,7 +141,7 @@ export async function loadCaseList(input: CaseFilters, db = supabaseAdmin()) {
     const result = await db.from("products").select("id,sku,title,product_images(url,cloudinary_url,position)").in("sku", saleSkus.slice(i, i + 100)).throwOnError();
     products.push(...(result.data || []));
   }
-  return { rows, products, accounts, counts, total, pages, page, filters };
+  return { rows, products, accounts, counts, contextCounts, total, pages, page, filters };
 }
 
 export function caseSaleItems(row: Row, products: Row[]) {
@@ -137,8 +150,8 @@ export function caseSaleItems(row: Row, products: Row[]) {
   if (row.product) return [{ sku: row.product.sku, product: row.product, quantidade: null, valor_total: null, scope: "case" }];
   return (sale?.items || []).map((i: Row) => ({ ...i, product: products.find(p => p.sku === i.sku), scope: "sale" }));
 }
-export function knownCaseDeadlines(row: Row) {
+export function knownCaseDeadlines(row: Row, includeUnknown = false) {
   const observation = row.observations?.[0];
   if (!observation || new Date(observation.order_at).getTime() !== new Date(row.snapshot_order_at).getTime()) return [];
-  return (observation.deadlines || []).filter((d: Row) => d.value && ["date", "timestamp"].includes(d.precision) && d.validity === "observed" && (d.purpose === "buyer_return_shipping" || /^action:[a-zA-Z0-9_]+$/.test(d.purpose)));
+  return (observation.deadlines || []).filter((d: Row) => d.value && ["date", "timestamp"].includes(d.precision) && d.validity === "observed" && (includeUnknown || ["buyer_return_shipping", "seller_response", "seller_evidence", "seller_validation", "logistics", "auto_close"].includes(d.purpose) || /^action:[a-zA-Z0-9_]+$/.test(d.purpose)));
 }

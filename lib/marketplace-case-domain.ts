@@ -37,21 +37,37 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
   const observed = detail ? new Date().toISOString() : officialDate(activity.received_at) || new Date().toISOString();
   const official = officialDate(shopee ? d.update_time : d.last_updated || d.date_last_updated);
   const deadlines: Row[] = [];
-  for (const key of shopee ? ["return_ship_due_date", "due_date"] : ["due_date"]) {
-    if (d[key] == null || d[key] === 0 || d[key] === "") continue;
-    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(d[key]));
-    deadlines.push({ purpose: key === "return_ship_due_date" ? "buyer_return_shipping" : "unknown",
-      official_field: key, responsible: key === "return_ship_due_date" ? "buyer" : "unknown",
-      value: dateOnly ? String(d[key]) : officialDate(d[key]), raw_value: String(d[key]),
-      precision: dateOnly ? "date" : officialDate(d[key]) ? "timestamp" : "unknown",
-      timezone: dateOnly ? null : officialDate(d[key]) ? "UTC" : null, source, validity: "observed" });
+  const proof = d.seller_proof || {};
+  const deadlineFields: Record<string, [string, string]> = shopee ? {
+    return_ship_due_date: ["buyer_return_shipping", "buyer"], return_seller_due_date: ["seller_response", "seller"],
+    seller_evidence_deadline: ["seller_evidence", "seller"], due_date: ["unknown", "unknown"]
+  } : { due_date: ["unknown", "unknown"] };
+  for (const [key, [purpose, responsible]] of Object.entries(deadlineFields)) {
+    const value = d[key] ?? proof[key];
+    if (value == null || value === 0 || value === "") continue;
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+    deadlines.push({ purpose, official_field: key, responsible,
+      value: dateOnly ? String(value) : officialDate(value), raw_value: String(value),
+      precision: dateOnly ? "date" : officialDate(value) ? "timestamp" : "unknown",
+      timezone: dateOnly ? null : officialDate(value) ? "UTC" : null, source, validity: "observed" });
   }
   const seller = Array.isArray(d.players) ? d.players.find((v: Row) => v.role === "respondent" && v.type === "seller") : null;
   const actions = !shopee && Array.isArray(seller?.available_actions) ? seller.available_actions.map((a: Row) => ({
     code: text(a.action), mandatory: typeof a.mandatory === "boolean" ? a.mandatory : null,
     deadline: officialDate(a.due_date), deadline_raw: text(a.due_date), parameters: {}, observed_at: observed, source
   })).filter((a: Row) => a.code) : [];
-  const required = actions.some((a: Row) => a.mandatory === true);
+  // Preserve unknown follow-up codes without inventing capabilities or their responsibility.
+  if (shopee && Array.isArray(d.follow_up_action_list)) for (const action of d.follow_up_action_list) {
+    const code = typeof action === "string" ? action : text(action?.action || action?.code || action?.action_type);
+    if (!code) continue;
+    actions.push({ code, mandatory: typeof action === "object" && action.responsible === "seller" && typeof action.mandatory === "boolean" ? action.mandatory : null,
+      deadline: typeof action === "object" && action.responsible === "seller" ? officialDate(action.due_date) : null,
+      parameters: { responsible: typeof action === "object" ? actor(action.responsible) : "unknown" }, observed_at: observed, source });
+  }
+  const required = actions.some((a: Row) => a.mandatory === true) || (shopee && (
+    deadlines.some(d => d.responsible === "seller" && d.value) || (d.seller_proof_status || proof.seller_proof_status) === "PENDING"));
+  const reverse = d.reverse_logistics || d.return_logistics || {};
+  const relatedReturn = Array.isArray(d.related_entities) ? d.related_entities.find((entity: any) => entity === "return" || entity?.type === "return") : null;
   const snapshot: Row = {
     order_id: text(shopee ? d.order_sn || p.data?.order_sn : d.resource === "order" ? d.resource_id : null),
     status: text(shopee ? d.return_status || d.status : d.status), stage: text(d.stage),
@@ -62,10 +78,19 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
     buyer_description: text(shopee ? d.text_reason : d.description), affected_quantity: number(d.quantity),
     refund_amount: number(d.refund_amount), currency: text(d.currency),
     reputation_impact: "unknown",
-    reverse_logistics: { status: text(d.logistics_status), modality: null, tracking: null, address: null },
+    related_claim_id: text(shopee ? d.claim_id : id), buyer_name: text(d.buyer_name),
+    validation_type: text(d.validation_type), seller_proof_status: text(d.seller_proof_status || proof.seller_proof_status),
+    negotiation_status: text(d.negotiation_status),
+    reverse_logistics: { return_id: text(shopee ? id : reverse.return_id || d.return_id || relatedReturn?.id),
+      entity_created: shopee || Boolean(relatedReturn) || reverse.entity_created === true ? true : null,
+      status: text(reverse.status || d.logistics_status), modality: text(reverse.modality),
+      tracking: text(reverse.tracking || reverse.tracking_number || d.reverse_tracking_number || (shopee ? d.tracking_number : null)),
+      carrier: text(reverse.carrier || reverse.carrier_name || d.reverse_carrier),
+      contact_name: text(reverse.contact_name || reverse.sender?.name || reverse.receiver?.name || d.reverse_logistics_contact_name || d.return_contact_name),
+      point: text(reverse.point || reverse.agency), address: null },
     enrichment: { state: detail ? "partial" : "incomplete", obtained_at: detail ? observed : null, source, error: null }
   };
-  snapshot.capabilities_known = !shopee && Array.isArray(seller?.available_actions);
+  snapshot.capabilities_known = shopee ? Array.isArray(d.follow_up_action_list) : Array.isArray(seller?.available_actions);
   const evidence: Row[] = [];
   // These are references from a return detail, not attachments copied from Chat.
   if (shopee && detail && Array.isArray(d.image)) {
@@ -92,7 +117,8 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
 export function transitionState(snapshot: Row) {
   return { status: snapshot.status ?? null, stage: snapshot.stage ?? null,
     responsible: snapshot.responsible || "unknown", logistics_status: snapshot.reverse_logistics?.status ?? null,
-    resolution: snapshot.resolution ?? null };
+    resolution: snapshot.resolution ?? null, return_id: snapshot.reverse_logistics?.return_id ?? null,
+    return_entity_created: snapshot.reverse_logistics?.entity_created ?? null };
 }
 export function safeConversation(candidates: Row[], marketplace: string, accountId: string, orderId: string | null) {
   if (!orderId) return null;

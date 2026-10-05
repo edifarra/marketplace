@@ -15,18 +15,20 @@ export default async function CasesPage({ searchParams = {} }: { searchParams?: 
   let result: Awaited<ReturnType<typeof loadCaseList>> | undefined;
   try { result = await loadCaseList(searchParams); } catch { /* Keep failures distinct from an empty list. */ }
   if (!result) return <main className="shell"><Sidebar /><section className="main"><div className="topbar"><h1>Central de Reclamações e Devoluções</h1></div><div className="form-error" role="alert">Não foi possível ler os Casos persistidos. Verifique a conexão e a configuração do Supabase.</div><Link href={path} className="secondary">Tentar novamente</Link></section></main>;
-  const { rows, products, accounts, filters, counts, total, page, pages } = result;
+  const { rows, products, accounts, filters, counts, contextCounts, total, page, pages } = result;
   const all = Object.values(counts).reduce((n, v) => n + v, 0);
   const tabs = [{ key: "all", label: "Todos", count: all }, { key: "action", label: "Precisa de ação", count: counts.action }, { key: "ongoing", label: "Em andamento", count: counts.ongoing }, { key: "closed", label: "Encerrados", count: counts.closed }];
   const from = (page - 1) * CASE_PAGE_SIZE;
   return <main className="shell"><Sidebar /><section className="main">
     <div className="topbar"><div><h1>Central de Reclamações e Devoluções</h1><div className="subtitle">Casos registrados · consulta somente leitura</div></div></div>
     <section className="card form-card">
+      <nav className={styles.tabs} aria-label="Contexto dos Casos">{([{key: "claim", label: "Reclamações"}, {key: "return", label: "Devoluções"}] as const).map(context => <Link prefetch={false} key={context.key} href={href(filters, {context: context.key, page: "1"})} className={`${styles.tab} ${filters.context === context.key ? styles.active : ""}`} aria-current={filters.context === context.key ? "page" : undefined}>{context.label}<span>{contextCounts[context.key]}</span></Link>)}</nav>
       <nav className={styles.tabs} aria-label="Situação dos Casos">{tabs.map(tab => <Link prefetch={false} key={tab.key} href={href(filters, { tab: tab.key, page: "1" })} className={`${styles.tab} ${filters.tab === tab.key ? styles.active : ""}`} aria-current={filters.tab === tab.key ? "page" : undefined}>{tab.label}<span>{tab.count}</span></Link>)}</nav>
       <form key={JSON.stringify(filters)} action={path} method="get">
+        <input type="hidden" name="context" value={filters.context}/>
         <input type="hidden" name="tab" value={filters.tab}/>
         <div className="form-grid">
-          <label>Buscar<input name="search" defaultValue={filters.search} placeholder="Venda/pedido, SKU, produto ou ID do Caso" maxLength={160}/></label>
+          <label>Buscar<input name="search" defaultValue={filters.search} placeholder="Cliente, nome logístico, código de retorno, pedido, caso, SKU ou produto" maxLength={160}/></label>
           <label>Marketplace<select name="marketplace" defaultValue={filters.marketplace}><option value="">Todos</option><option value="mercado_livre">Mercado Livre</option><option value="shopee">Shopee</option></select></label>
           <label>Conta<select name="account" defaultValue={filters.account}><option value="">Todas</option>{accounts.filter(a => !filters.marketplace || a.marketplace === filters.marketplace).map(a => <option key={a.id} value={a.id}>{a.name || a.nickname || "Não informado"}</option>)}</select></label>
         </div>

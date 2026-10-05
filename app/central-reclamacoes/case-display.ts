@@ -13,6 +13,18 @@ export function caseImage(product: any) {
 export function reputationLabel(row: any) {
   return row.marketplace !== "shopee" && row.reputation_impact === "affected" ? "Afeta reputação" : row.marketplace !== "shopee" && row.reputation_impact === "not_affected" ? "Não afeta reputação" : "Reputação: Não informado";
 }
+export function caseStatusLabel(row: any) {
+  const status = row.reverse_logistics?.status || row.status;
+  const labels: Record<string, string> = {
+    awaiting_buyer_shipping: "Aguardando postagem pelo comprador", waiting_for_buyer_shipping: "Aguardando postagem pelo comprador",
+    ready_to_ship: "Aguardando postagem pelo comprador", in_transit: "Devolução em transporte", shipped: "Devolução postada",
+    delivered: "Devolução entregue", awaiting_auto_close: "Aguardando encerramento automático"
+  };
+  return labels[status] || status || "Estado não informado";
+}
 export function deadlineLabel(d: any) {
-  return `${d.purpose === "buyer_return_shipping" ? "Envio da devolução pelo comprador" : `Ação ${d.purpose.slice(7)}`} — ${d.precision === "date" ? `${d.value} (sem horário informado)` : caseDate(d.value)}`;
+  const owners: Record<string, string> = { buyer: "comprador", seller: "vendedor", marketplace: "marketplace", unknown: "responsável não informado" };
+  const purposes: Record<string, string> = { buyer_return_shipping: "Postagem da devolução", seller_response: "Resposta", seller_evidence: "Evidência", seller_validation: "Validação", logistics: "Logística", auto_close: "Encerramento automático", unknown: "Finalidade não informada" };
+  const purpose = purposes[d.purpose] || (d.purpose.startsWith("action:") ? `Ação ${d.purpose.slice(7)}` : "Finalidade não informada");
+  return `${purpose} · Prazo do ${owners[d.responsible] || owners.unknown}: ${d.precision === "date" ? `${d.value} (sem horário informado)` : caseDate(d.value)}`;
 }

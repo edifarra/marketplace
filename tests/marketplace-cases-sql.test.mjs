@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { normalizeCase, transitionState } from "../lib/marketplace-case-domain.ts";
+import { caseContext, globalCaseAlert } from "../lib/marketplace-case-context.ts";
 
 // Isolated PostgreSQL engine, not Supabase. Set PGLITE_MODULE to a temporary installation's dist/index.js.
 const { PGlite } = await import(pathToFileURL(process.env.PGLITE_MODULE).href);
@@ -100,4 +102,31 @@ test("case survives conversation retention and all new tables/functions are serv
   }
   assert.equal((await db.query("select has_function_privilege('service_role','persist_marketplace_case(jsonb)','EXECUTE') allowed")).rows[0].allowed, true);
 });
+test("claim to actual return retains SQL identity, earlier history, logistics and seller deadline ownership without schema changes", async () => {
+  const observation = (event, data, at) => {
+    const normalized = normalizeCase({ id: event, marketplace: "mercado_livre", received_at: at,
+      raw_payload: { topic: "post_purchase", claim_id: "TRANSITION1", claim: data } }, account);
+    return { ...normalized, state: transitionState(normalized.snapshot) };
+  };
+  const first = observation("first", { status: "open" }, "2026-10-05T10:00:00Z");
+  const id = await persist(first);
+  const before = (await db.query("select id from marketplace_case_timeline where case_id=$1", [id])).rows;
+  const next = observation("second", { status: "open", related_entities: [{ type: "return", id: "REAL1" }],
+    reverse_logistics: { contact_name: "Maria Retorno", tracking: "BR123", carrier: "Correios" },
+    players: [{ role: "respondent", type: "seller", available_actions: [{ action: "return_review", mandatory: true, due_date: "2026-10-06T10:00:00Z" }] }] }, "2026-10-05T11:00:00Z");
+  assert.equal(await persist(next), id);
+  const row = (await db.query("select * from marketplace_cases where id=$1", [id])).rows[0];
+  assert.equal(row.case_type, "claim"); assert.equal(caseContext(row), "return"); assert.equal(globalCaseAlert(row), false);
+  assert.equal(row.content.related_claim_id, "TRANSITION1"); assert.equal(row.reverse_logistics.contact_name, "Maria Retorno");
+  assert.equal(row.reverse_logistics.tracking, "BR123"); assert.equal(row.reverse_logistics.carrier, "Correios");
+  const after = (await db.query("select id from marketplace_case_timeline where case_id=$1", [id])).rows;
+  assert.ok(before.every(event => after.some(saved => saved.id === event.id))); assert.equal(after.length, before.length + 1);
+  const deadlines = (await db.query("select responsible,purpose from marketplace_case_deadlines where case_id=$1", [id])).rows;
+  assert.deepEqual(deadlines, [{ responsible: "seller", purpose: "action:return_review" }]);
+  // Partial future pushes must retain the established logistics rather than move back to Claims.
+  await persist(observation("partial", { status: "open" }, "2026-10-05T12:00:00Z"));
+  const partial = (await db.query("select * from marketplace_cases where id=$1", [id])).rows[0];
+  assert.equal(caseContext(partial), "return"); assert.equal(partial.reverse_logistics.return_id, "REAL1");
+});
+
 test.after(async () => { await db.close(); });

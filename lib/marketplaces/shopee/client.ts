@@ -85,6 +85,12 @@ export class ShopeeClient {
     });
   }
 
+  async getReturnDetail(accessToken: string, shopId: string | number, returnSn: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/returns/get_return_detail", {
+      accessToken, shopId, query: { return_sn: returnSn }
+    });
+  }
+
   async getOrderList(
     accessToken: string,
     shopId: string | number,

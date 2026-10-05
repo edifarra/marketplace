@@ -9,6 +9,7 @@ import { enqueueDirectListingUpdates } from "./direct-marketplace-publisher";
 
 export type MarketplaceSaleInput = {
   activityId?: string;
+  deferActivityCompletion?: boolean;
   marketplace: Marketplace;
   externalEventId?: string;
   eventType?: string;
@@ -163,9 +164,10 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     }
 
     await supabase.from("marketplace_activities").update({
-      venda_id: vendaId, status: "processed", processed_at: new Date().toISOString()
+      venda_id: vendaId,
+      ...(input.deferActivityCompletion ? {} : { status: "processed", processed_at: new Date().toISOString() })
     }).eq("id", activityId).throwOnError();
-    await history(activityId, "completed", "success", { vendaId, items: items.length });
+    await history(activityId, input.deferActivityCompletion ? "sale_processed" : "completed", "success", { vendaId, items: items.length });
     // Toda atualizacao elegivel tenta a notificacao. A chave idempotente do
     // Telegram impede mensagens duplicadas e evita perder vendas que tenham
     // sido criadas antes por um evento preliminar ou por uma reconciliacao.
@@ -178,7 +180,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
         console.error("[sale_inventory_audit]", auditError);
       });
     }
-    await supabase.from("marketplace_activities").update({ status: "error", processing_error: message, processed_at: new Date().toISOString() }).eq("id", activityId);
+    if (!input.deferActivityCompletion) await supabase.from("marketplace_activities").update({ status: "error", processing_error: message, processed_at: new Date().toISOString() }).eq("id", activityId);
     await history(activityId, "processing", "error", { error: message });
     throw error;
   }

@@ -10,6 +10,9 @@ import { activityDescription } from "./marketplace-activity-labels";
 import { clearMarketplaceModeration, mercadoLivreModerationClass, recordMarketplaceModeration, shopeeModerationClass } from "./marketplace-moderations";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
 import { processMercadoLivreConversationNotification, processShopeeConversationNotification, syncMarketplaceConversationsSafetyNet } from "./marketplace-conversations";
+import { caseReference, normalizeCase } from "./marketplace-case-domain";
+import { persistCaseObservation, processCaseAndOrders, processNewCaseEvent } from "./marketplace-cases";
+import { enrichMercadoLivreClaim, enrichShopeeReturn } from "./marketplace-case-enrichment";
 
 const SHOPEE_ORDER_PUSH_CODES = new Set([3, 4, 15, 29, 30, 37, 47]);
 const SHOPEE_ACCOUNT_PUSH_CODES = new Set([1, 2, 12]);
@@ -71,6 +74,12 @@ async function processMercadoLivreActivity(activity: Record<string, any>) {
     return completeQueuedActivity(String(activity.id), result?.description || "Conversa atualizada.", { topic, ...(result || {}) });
   }
   if (topic === "items") return processMercadoLivreItemActivity(activity, payload);
+  if (caseReference("mercado_livre", payload)) {
+    if (!payload.user_id) throw new Error("Conta do Claim nao identificada no evento Mercado Livre.");
+    const account = await getMercadoLivreAccountForNotification(payload.user_id);
+    const caseId = await processNewCaseEvent(activity, account.id, id => enrichMercadoLivreClaim(id, account));
+    return completeQueuedActivity(String(activity.id), "Caso Mercado Livre atualizado.", { topic, caseId });
+  }
   if (topic !== "orders_v2" && topic !== "shipments") {
     return completeQueuedActivity(
       String(activity.id),
@@ -238,6 +247,20 @@ async function processShopeeActivity(activity: Record<string, any>) {
     if (!account) throw new Error(`Conta Shopee ${shopId || "nao informada"} nao encontrada.`);
     await processShopeeAccountPush(code, String(account.id));
     return completeQueuedActivity(String(activity.id), `Push de autorizacao Shopee ${code} processado.`, { code, shopId });
+  }
+
+  if (code === 29 && caseReference("shopee", payload)) {
+    if (!account) throw new Error(`Conta Shopee ${shopId || "nao informada"} nao encontrada.`);
+    // Independent outcomes: an inventory failure cannot prevent case persistence, and
+    // a detail failure cannot skip necessary order processing. Completion belongs to the worker.
+    const caseId = await processCaseAndOrders(
+      () => processNewCaseEvent(activity, account.id, id => enrichShopeeReturn(id, account)),
+      extractShopeeOrderSns(payload),
+      orderSn => processShopeeOrderSynchronized(orderSn, account, payload, undefined, String(activity.id), true)
+    );
+    // Order creation can occur after the first observation. Idempotent write refreshes safe local links only.
+    await persistCaseObservation(normalizeCase(activity, account.id)!);
+    return completeQueuedActivity(String(activity.id), "Caso Shopee e pedido atualizados.", { code, caseId });
   }
 
   if (account && hasShopeeItemStatus(payload)) {

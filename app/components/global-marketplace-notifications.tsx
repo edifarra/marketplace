@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   GlobalMarketplaceNotificationPoller,
   MarketplaceNotification,
@@ -10,8 +11,11 @@ import {
 } from "@/lib/global-marketplace-notifications";
 
 export function GlobalMarketplaceNotifications() {
+  const pathname = usePathname();
+  const centralReadOnly = pathname === "/central-reclamacoes" || pathname?.startsWith("/central-reclamacoes/");
   const [notifications, setNotifications] = useState<MarketplaceNotification[]>([]);
   useEffect(() => {
+    if (centralReadOnly) return;
     const poller = new GlobalMarketplaceNotificationPoller({
       visibility: () => document.visibilityState,
       fetchPage: async (cursor, until) => {
@@ -31,10 +35,11 @@ export function GlobalMarketplaceNotifications() {
       poller.stop();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [centralReadOnly]);
 
   const dismiss = (id: string) => setNotifications(current => current.filter(item => item.id !== id));
 
+  if (centralReadOnly) return null;
   return <aside className="marketplace-notification-stack" aria-live="polite" aria-label="Novidades dos marketplaces">
     {notifications.slice(0, 5).map(item => <article className={`marketplace-notification ${item.kind}`} key={item.id}>
       <a href={item.href} className="marketplace-notification-content">

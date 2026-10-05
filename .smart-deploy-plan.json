@@ -27,8 +27,10 @@
     "lib/shopee-orders.ts",
     "scripts/consolidate-local-marketplace-cases.ts",
     "scripts/guard-marketplace-case-reads.cjs",
+    "scripts/smart-check.mjs",
     "scripts/smart-deploy-support.mjs",
     "scripts/smart-deploy.mjs",
+    "scripts/smart-test-runner.mjs",
     "scripts/validate-marketplace-case-detail.ts",
     "scripts/validate-marketplace-case-list.ts",
     "supabase/migrations/20261004201000_keep_pending_conversations_today.sql",
@@ -41,7 +43,8 @@
     "tests/marketplace-conversation-today.test.ts",
     "tests/marketplace-message-rendering.test.ts",
     "tests/smart-deploy-support.test.mjs",
-    "tests/smart-git.test.mjs"
+    "tests/smart-git.test.mjs",
+    "tests/smart-test-runner.test.mjs"
   ],
   "dependenciesChanged": false
 }

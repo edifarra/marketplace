@@ -104,7 +104,7 @@ try {
       },
       validate: async () => {
         const tests = findRelatedTests(root, classification.files);
-        if (tests.length) run('npx', ['--no-install', 'tsx', '--test', ...tests]);
+        if (tests.length) run(process.execPath, ['scripts/smart-test-runner.mjs', ...tests]);
         if (classification.typecheck) run('npm', ['run', 'typecheck']);
         if (classification.frontend || classification.build) run('npm', ['run', 'build']);
       },

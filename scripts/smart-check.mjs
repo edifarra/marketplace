@@ -15,7 +15,7 @@ console.log(`Changed files: ${files.length}`);
 if (args.has("--verbose")) files.forEach((file) => console.log(`  ${file}`));
 
 const commands = [];
-if (relatedTests.length) commands.push(["npx", ["tsx", "--test", ...relatedTests], `Targeted tests (${relatedTests.length})`]);
+if (relatedTests.length) commands.push([process.execPath, ["scripts/smart-test-runner.mjs", ...relatedTests], `Targeted tests (${relatedTests.length})`]);
 if (classification.typecheck) commands.push(["npm", ["run", "typecheck"], "Typecheck"]);
 if (classification.build) commands.push(["npm", ["run", "build"], "Build (configuration or dependencies changed)"]);
 

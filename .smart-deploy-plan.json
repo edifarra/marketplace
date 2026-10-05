@@ -32,6 +32,8 @@
     "scripts/smart-deploy.mjs",
     "scripts/smart-migration-confirmation.mjs",
     "scripts/smart-test-runner.mjs",
+    "scripts/smart-worker-command.mjs",
+    "scripts/smart-worker-update.mjs",
     "scripts/validate-marketplace-case-detail.ts",
     "scripts/validate-marketplace-case-list.ts",
     "supabase/migrations/20261004201000_keep_pending_conversations_today.sql",
@@ -46,7 +48,8 @@
     "tests/smart-deploy-support.test.mjs",
     "tests/smart-git.test.mjs",
     "tests/smart-migration-confirmation.test.mjs",
-    "tests/smart-test-runner.test.mjs"
+    "tests/smart-test-runner.test.mjs",
+    "tests/smart-worker-update.test.mjs"
   ],
   "dependenciesChanged": false
 }

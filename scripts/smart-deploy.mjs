@@ -4,7 +4,7 @@ import readline from 'node:readline/promises';
 import { deploymentMode } from './smart-execution-policy.mjs';
 import { spawnCommand, formatSpawnError } from './smart-command-runner.mjs';
 import { git, assertDeploymentRepository } from './smart-git.mjs';
-import { workerCommand } from './smart-worker-command.mjs';
+import { updateWorker } from './smart-worker-update.mjs';
 import { findRelatedTests } from './smart-change-classifier.mjs';
 import { executeDeployment } from './smart-deploy-flow.mjs';
 import { confirmLinkedMigrations } from './smart-migration-confirmation.mjs';
@@ -137,10 +137,7 @@ try {
         if (line.split(/\s+/)[0] !== target) throw new Error('origin/main is not the exact target SHA.');
       },
       waitVercel: () => waitForVercel({ target, projectId: project.projectId, request }),
-      updateWorker: () => {
-        const output = run('ssh', ['root@76.13.239.70', workerCommand(target, classification.dependencies)], true);
-        if (!output.split(/\r?\n/).includes(`SMART_WORKER_SHA=${target}`)) throw new Error('VPS SHA confirmation missing.');
-      },
+      updateWorker: () => updateWorker(target, classification.dependencies, { cwd: root }),
       complete: state => atomicJson(statePath, state),
       clearProgress: () => { if (fs.existsSync(progressPath)) fs.unlinkSync(progressPath); }
     });

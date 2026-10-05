@@ -1,5 +1,6 @@
 "use server";
 
+import { queueShopeeConversationAction } from "@/lib/shopee-chat-management";
 import { revalidatePath } from "next/cache";
 import { queueConversationReply } from "@/lib/marketplace-conversations";
 import { enqueueMarketplaceActivity } from "@/lib/marketplace-queue";
@@ -39,9 +40,21 @@ export async function retryConversationReply(formData: FormData) {
   return { ok: true };
 }
 
-export async function markConversationRead(formData: FormData) {
-  const conversationId = String(formData.get("conversationId") || "");
-  await supabaseAdmin().from("marketplace_conversations").update({ unread: false, updated_at: new Date().toISOString() }).eq("id", conversationId).throwOnError();
-  revalidatePath("/chats-perguntas");
+export async function manageShopeeConversation(formData: FormData) {
+  try {
+    const activityId = await queueShopeeConversationAction(
+      String(formData.get("conversationId") || ""),
+      String(formData.get("action") || ""),
+      String(formData.get("lastMessageId") || "")
+    );
+    revalidatePath("/atividades-marketplace/enviadas");
+    return { ok: true as const, activityId };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
+export async function markConversationRead(formData: FormData) {
+  formData.set("action", "conversation_read");
+  return manageShopeeConversation(formData);
+}

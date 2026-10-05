@@ -1,3 +1,4 @@
+import { latestShopeeMessageId, reconcileShopeeChatManagement } from "./shopee-chat-management-state";
 import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "./auth";
@@ -580,7 +581,7 @@ async function pendingMarketplaceReconciliationRows(marketplace: "mercado_livre"
 async function pendingShopeeReconciliationRows(accountId: string, limit: number) {
   const result = await supabaseAdmin().from("marketplace_conversations")
     .select("id,external_conversation_id,raw_data")
-    .eq("marketplace", "shopee").eq("marketplace_account_id", accountId).eq("conversation_type", "chat")
+    .eq("marketplace", "shopee").eq("marketplace_account_id", accountId).eq("conversation_type", "chat").is("shopee_deleted_at", null)
     .or("requires_response.eq.true,and(product_id.is.null,listing_id.not.is.null),and(product_id.is.null,order_id.not.is.null)")
     .order("last_reconciled_at", { ascending: true, nullsFirst: true }).order("last_message_at", { ascending: false })
     .limit(limit).throwOnError();
@@ -734,7 +735,9 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
       : existing?.requires_response ?? Number(detail.unread_count ?? seed.unread_count ?? 0) > 0;
   const onlySystemActivity = !activity.direction && isShopeeOutOfStockReminder(latest);
   const requiresResponse = onlySystemActivity ? Boolean(existing?.requires_response) : incoming;
-  const unread = onlySystemActivity ? Boolean(existing?.unread) : incoming;
+  const unreadCount = detail.unread_count ?? seed.unread_count;
+  const unread = unreadCount !== undefined && Number.isFinite(Number(unreadCount))
+    ? Number(unreadCount) > 0 : onlySystemActivity ? Boolean(existing?.unread) : incoming;
   const { orderSn } = shopeeConversationReferences(messages.length ? messages : [latest], detail, seed);
   // Referências de anúncio em mensagens pertencem somente ao card daquela mensagem.
   // Apenas o contexto próprio da conversa pode definir ou trocar seu produto principal.
@@ -758,7 +761,7 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
     product_id: null, sku: null, product_title: null, product_price: null,
     available_stock: null, product_status: null, product_image_url: null, purchased_at: null
   } : {};
-  const conversationInput = {
+  const conversationInput = reconcileShopeeChatManagement({
     marketplace: "shopee", marketplace_account_id: account.id, external_conversation_id: conversationId, conversation_type: "chat",
     external_status: externalStatus, status, requires_response: requiresResponse, unread,
     buyer_id: buyerId || null, buyer_name: String(detail.to_name || detail.peer_name || detail.buyer_username || "") || null,
@@ -767,8 +770,10 @@ async function prepareShopeeConversation(account: ShopeeAccountConfig, context: 
     last_outgoing_at: shopeeDate(activity.latestOutgoing || {}) || existing?.last_outgoing_at || (!incoming ? sentAt : null),
     last_message_at: onlySystemActivity && existing?.last_message_at ? existing.last_message_at : sentAt,
     last_message_preview: onlySystemActivity && existing?.last_message_preview != null ? existing.last_message_preview : preview,
+    shopee_last_message_id: latestShopeeMessageId([...messages, { message_id: detail.latest_message_id }]) || existing?.shopee_last_message_id || null,
+    shopee_last_incoming_message_id: latestShopeeMessageId(messages.filter(item => shopeeMessageDirection(item, isShopeeSellerMessage(item, account)) === "incoming")) || existing?.shopee_last_incoming_message_id || null,
     raw_data: { ...detail, marketplace_url: "https://seller.shopee.com.br/webchat" }, ...preservedProduct
-  };
+  }, existing);
   const desiredMessages = messages.map((item): MarketplaceMessageWrite => {
     const direction = shopeeMessageDirection(item, isShopeeSellerMessage(item, account));
     return messageWrite(String(existing?.id || ""), String(item.message_id || item.id || hash(item)), direction,

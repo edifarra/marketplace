@@ -117,7 +117,7 @@ export function conversationTimelineSections(row: Record<string, any>) {
 export function rowMatchesConversationView(row: ConversationRow, view: ConversationView, now = Date.now()) {
   const search = view.search.toLocaleUpperCase("pt-BR");
   const attendingSince = now - 24 * 60 * 60 * 1000;
-  return (view.tab === "all" || row.requires_response || new Date(row.last_message_at).getTime() >= attendingSince)
+  return !row.shopee_deleted_at && (view.tab === "all" || row.requires_response || new Date(row.last_message_at).getTime() >= attendingSince)
     && (!view.marketplace || row.marketplace === view.marketplace)
     && (!view.store || row.marketplace_account_id === view.store)
     && (!view.status || row.status === view.status)

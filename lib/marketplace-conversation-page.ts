@@ -13,7 +13,7 @@ export const MARKETPLACE_CONVERSATION_PAGE_SELECT = [
   "external_status", "status", "requires_response", "unread", "buyer_id", "buyer_name",
   "product_id", "listing_id", "order_id", "sku", "product_title", "product_price",
   "available_stock", "product_image_url", "purchased_at", "last_incoming_at", "last_outgoing_at",
-  "last_message_at", "last_error", "raw_data",
+  "last_message_at", "last_error", "raw_data", "shopee_deleted_at", "shopee_last_message_id",
   "config_marketplace_accounts(name,nickname,shop_id)",
   "marketplace_conversation_messages(id,external_message_id,direction,message_type,text,sender_name,sent_at,status,raw_data)"
 ].join(",");

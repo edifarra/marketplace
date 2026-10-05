@@ -8,7 +8,8 @@ export const SHOPEE_CONVERSATION_SNAPSHOT_FIELDS = [
   "order_id", "sku", "product_title", "product_price", "available_stock", "product_status",
   "product_image_url", "purchased_at", "last_incoming_at", "last_outgoing_at", "last_message_at",
   "last_message_preview", "last_error", "pack_id", "seller_id", "conversation_path",
-  "counterparty_id", "messaging_agent", "reviewed_at"
+  "counterparty_id", "messaging_agent", "reviewed_at", "shopee_last_message_id", "shopee_last_incoming_message_id",
+  "shopee_read_message_id", "shopee_deleted_message_id", "shopee_deleted_at"
 ] as const;
 
 export const SHOPEE_CONVERSATION_SNAPSHOT_SELECT =

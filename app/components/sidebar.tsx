@@ -7,7 +7,7 @@ export async function Sidebar() {
   const user = await getCurrentUser();
   const [{ data }, pending, claims] = await Promise.all([
     supabaseAdmin().from("settings").select("key,value").in("key", ["SYSTEM_COMPACT_LOGO_URL", "SYSTEM_FULL_LOGO_URL"]),
-    supabaseAdmin().from("marketplace_conversations").select("id", { count: "exact", head: true }).eq("requires_response", true),
+    supabaseAdmin().from("marketplace_conversations").select("id", { count: "exact", head: true }).eq("requires_response", true).is("shopee_deleted_at", null),
     supabaseAdmin().from("marketplace_cases").select("id", { count: "exact", head: true }).or(CLAIM_CONTEXT_FILTER).or(ACTIVE_ACTION_FILTER)
   ]);
   const value = (key: string) => String(data?.find(row => row.key === key)?.value || "").replace(/^"|"$/g, "");

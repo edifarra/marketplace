@@ -1,17 +1,20 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { ConversationCursor, mergeConversationDelta, shouldPollConversationChanges } from "@/lib/marketplace-conversation-delta";
 import { ConversationRow, ConversationView, conversationTimelineSections } from "@/lib/marketplace-conversation-view";
 import { mercadoLivreAttachments, shopeeMessageImageUrl, shopeeOutOfStockReminderContent } from "@/lib/marketplace-special-messages";
 import { messagesWithVisibleShopeeProductCards } from "@/lib/shopee-message-product-cards";
 import { validateMarketplaceReply } from "@/lib/marketplace-reply-validation";
-import { retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
+import { latestShopeeMessageId } from "@/lib/shopee-chat-management-state";
+import { manageShopeeConversation, retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
 
 type Row = ConversationRow;
 type DeltaResponse = { cursor: ConversationCursor; changes: Row[]; changedConversationIds: string[]; hasMore: boolean };
 
 export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows: Row[]; initialCursor: ConversationCursor; view: ConversationView; pageSize: number }) {
+  const router = useRouter();
   const initialCursorId = initialCursor.id;
   const initialCursorUpdatedAt = initialCursor.updatedAt;
   const [liveRows, setLiveRows] = useState(rows);
@@ -20,6 +23,9 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
   const [notices, setNotices] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
   const [sending, setSending] = useState(() => new Set<string>());
+  const [chatActions, setChatActions] = useState<Record<string, string>>({});
+  const chatActionIds = useRef<Record<string, string>>({});
+  const [chatActionNotices, setChatActionNotices] = useState<Record<string, string>>({});
   const [syncNotice, setSyncNotice] = useState("");
   const cursor = useRef(initialCursor);
   const polling = useRef(false);
@@ -45,6 +51,25 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
         hasMore = payload.hasMore;
         setLiveRows(current => mergeConversationDelta(current, payload.changes, payload.changedConversationIds, view, pageSize));
       }
+      const actionIds = Object.values(chatActionIds.current).filter(id => id !== "submitting");
+      if (actionIds.length) {
+        const statusResponse = await fetch('/api/chats/action-status?' + new URLSearchParams({ ids: actionIds.join(',') }), { cache: "no-store" });
+        if (!statusResponse.ok) throw new Error("Não foi possível consultar as ações de chat.");
+        const status = await statusResponse.json() as { activities: Array<{ id: string; source_id: string; activity_type: string; status: string; processing_error?: string }> };
+        for (const item of status.activities) {
+          if (item.status !== "completed" && item.status !== "error") continue;
+          if (chatActionIds.current[item.source_id] !== item.id) continue;
+          if (item.status === "completed") router.refresh();
+          delete chatActionIds.current[item.source_id];
+          setChatActions(current => { const next = { ...current }; delete next[item.source_id]; return next; });
+          if (item.activity_type === "conversation_delete" && item.status === "completed") setSyncNotice("Exclusão do chat confirmada pela Shopee.");
+          setChatActionNotices(current => ({ ...current, [item.source_id]: item.status === "error"
+            ? 'Erro: ' + (item.processing_error || 'a Shopee não confirmou a ação.')
+            : item.activity_type === "conversation_read" ? "Leitura confirmada pela Shopee. A pendência de resposta permanece quando aplicável." : "Exclusão confirmada pela Shopee." }));
+          // Fetch the canonical row on the following delta; do not infer its state
+          // from completion (a new incoming message may have arrived meanwhile).
+        }
+      }
       if (syncActivityId.current) {
         const statusResponse = await fetch(`/api/chats/sync-status?id=${encodeURIComponent(syncActivityId.current)}`, { cache: "no-store" });
         if (statusResponse.ok) {
@@ -63,7 +88,7 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
     } finally {
       polling.current = false;
     }
-  }, [pageSize, view]);
+  }, [pageSize, view, router]);
 
   useEffect(() => {
     const refreshWhenVisible = () => {
@@ -93,9 +118,11 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
       const maximumLength = row.marketplace === "mercado_livre" && row.conversation_type === "post_sale" ? 350 : 2000;
       const canReply = row.marketplace === "shopee" || row.requires_response && !["closed", "review", "blocked"].includes(row.status);
       const listingUrl = productListingUrl(row);
+      const lastMessageId = row.shopee_last_message_id || latestShopeeMessageId(row.messages);
       return <article key={row.id} className={`conversation-card ${row.requires_response ? "pending" : ""}`}>
+        <div className="conversation-header">
         <button type="button" className="conversation-summary" onClick={() => toggle(row.id)} aria-expanded={isOpen}>
-          <span className={`pending-dot ${row.requires_response ? "visible" : ""}`} aria-label={row.requires_response ? "Pendente" : "Respondido"}/>
+          <span className={`pending-dot ${row.requires_response ? "visible" : ""}`} aria-label={row.requires_response ? row.unread ? "Não lida, resposta pendente" : "Lida, resposta pendente" : "Sem pendência"}/>
           <img className="marketplace-chat-icon" src={row.marketplace === "mercado_livre" ? "/marketplaces/mercado-livre-mini.png" : "/marketplaces/shopee-mini.webp"} alt={row.marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee"}/>
           <span className="conversation-store">{row.config_marketplace_accounts?.nickname || row.config_marketplace_accounts?.name || "Loja"}</span>
           <span><small>SKU</small>{row.sku || "—"}</span>
@@ -106,8 +133,19 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
           <span><small>Recebida em</small>{formatDate(row.last_incoming_at || row.last_message_at)}</span>
           <span className="conversation-chevron">{isOpen ? "⌃" : "⌄"}</span>
         </button>
+        {row.marketplace === "shopee" && <details className="conversation-options">
+          <summary aria-label={`Opções do chat de ${row.buyer_name || row.external_conversation_id}`} title="Opções do chat">⋯</summary>
+          <div className="conversation-options-panel">
+            <button type="button" className="secondary" disabled={Boolean(chatActions[row.id]) || !lastMessageId} onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void manageChat(row, "conversation_read", lastMessageId); }}>Marcar como lido</button>
+            <button type="button" className="secondary" disabled={Boolean(chatActions[row.id]) || !lastMessageId} onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); if (confirm("Excluir esta conversa na Shopee? O histórico interno será preservado. Novas mensagens podem trazer o chat de volta.")) void manageChat(row, "conversation_delete", lastMessageId); }}>Excluir chat</button>
+            <small>As ações serão processadas na Shopee. Marcar como lido não dispensa responder.</small>
+            {!lastMessageId && <small>Atualize o chat para obter a última mensagem.</small>}
+          </div>
+        </details>}
+        </div>
+        {chatActionNotices[row.id] && <div className={chatActionNotices[row.id].startsWith("Erro") ? "form-error" : "form-success"} role="status">{chatActionNotices[row.id]} <a href="/atividades-marketplace/enviadas">Ver fila</a></div>}
         {isOpen && <div className="conversation-detail">
-          <div className="conversation-person"><div><strong>{row.buyer_name || (row.buyer_id ? `Cliente ${mask(row.buyer_id)}` : "Cliente não identificado")}</strong><small className="conversation-source">Fonte: API oficial · {row.question_count > 1 ? `IDs ${row.grouped_external_ids.join(", ")}` : `ID ${row.external_conversation_id}`} · Estado original: {originalStatus(row)}</small></div><div className="conversation-context-actions"><span>{row.order_id ? `Pedido ${row.order_id}` : row.conversation_type === "question" ? `${row.question_count || 1} pergunta${row.question_count === 1 ? "" : "s"} neste produto` : "Conversa com a loja"}{conversationUrl(row) ? <> · <a href={conversationUrl(row)!} target="_blank" rel="noreferrer">Abrir no marketplace</a></> : null}</span><div className="conversation-product-links">{listingUrl && <a className="secondary link-button compact" href={listingUrl} target="_blank" rel="noopener noreferrer">Ver Anuncio</a>}{row.product_id && <a className="secondary link-button compact" href={`/produtos/${encodeURIComponent(row.product_id)}`}>Ver produto</a>}</div></div></div>
+          <div className="conversation-person"><div><strong>{row.buyer_name || (row.buyer_id ? `Cliente ${mask(row.buyer_id)}` : "Cliente não identificado")}</strong><small className="conversation-source">Fonte: API oficial{row.marketplace === "shopee" && <> · {row.unread ? "Não lida" : "Lida"}</>} · {row.question_count > 1 ? `IDs ${row.grouped_external_ids.join(", ")}` : `ID ${row.external_conversation_id}`} · Estado original: {originalStatus(row)}</small></div><div className="conversation-context-actions"><span>{row.order_id ? `Pedido ${row.order_id}` : row.conversation_type === "question" ? `${row.question_count || 1} pergunta${row.question_count === 1 ? "" : "s"} neste produto` : "Conversa com a loja"}{conversationUrl(row) ? <> · <a href={conversationUrl(row)!} target="_blank" rel="noreferrer">Abrir no marketplace</a></> : null}</span><div className="conversation-product-links">{listingUrl && <a className="secondary link-button compact" href={listingUrl} target="_blank" rel="noopener noreferrer">Ver Anuncio</a>}{row.product_id && <a className="secondary link-button compact" href={`/produtos/${encodeURIComponent(row.product_id)}`}>Ver produto</a>}</div></div></div>
           <Timeline row={row}/>
           {row.last_error && <div className="form-error"><strong>Falha no envio:</strong> {row.last_error}</div>}
           {canReply && <div className="reply-box">
@@ -128,6 +166,23 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
       </article>;
     })}{!liveRows.length && <div className="empty-state">Nenhum chat ou pergunta encontrado com os filtros selecionados.</div>}</div>
   </>;
+
+  async function manageChat(row: Row, action: string, lastMessageId: string) {
+    if (chatActionIds.current[row.id]) return;
+    chatActionIds.current[row.id] = "submitting";
+    setChatActions(current => ({ ...current, [row.id]: action }));
+    const fd = new FormData(); fd.set("conversationId", row.id); fd.set("action", action); fd.set("lastMessageId", lastMessageId);
+    try {
+      const result = await manageShopeeConversation(fd);
+      if (!result.ok) throw new Error(result.error);
+      chatActionIds.current[row.id] = result.activityId;
+      setChatActionNotices(current => ({ ...current, [row.id]: "Ação enviada para a fila. Aguardando confirmação da Shopee..." }));
+    } catch (error) {
+      delete chatActionIds.current[row.id];
+      setChatActions(current => { const next = { ...current }; delete next[row.id]; return next; });
+      setChatActionNotices(current => ({ ...current, [row.id]: 'Erro: ' + (error instanceof Error ? error.message : String(error)) }));
+    }
+  }
 
   async function sendOptimistically(row: Row, text: string) {
     const now = new Date().toISOString();

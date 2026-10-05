@@ -5,6 +5,7 @@ import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createTinyProduct, deactivateTinyProductById, findTinyProductId, getTinyProductInventory, getTinyProductSnapshot, updateTinyProduct, updateTinyProductPriceById, updateTinyProductStockById } from "./tiny";
 import { htmlToPlainText } from "./html-to-plain-text";
 import { buildMercadoLivreStockRequests, buildMercadoLivreVariationStockPayload, shouldReactivateMercadoLivreListing } from "./marketplace-stock-payloads";
+import { executeShopeeConversationAction } from "./shopee-chat-management";
 import { executeConversationReply, markConversationReplyError } from "./marketplace-conversations";
 import { normalizeMercadoLivrePackageAttributes } from "./effective-product";
 import { prepareManagedTitleRetry } from "./mercado-livre-managed-title";
@@ -12,7 +13,7 @@ import { compareMercadoLivrePictures, hasProcessingMercadoLivrePictures, request
 
 export type OutgoingActivityInput = {
   destination: "mercado_livre" | "shopee" | "tiny";
-  activityType: "stock_update" | "listing_create" | "listing_update" | "listing_delete" | "answer_send" | "question_answer";
+  activityType: "stock_update" | "listing_create" | "listing_update" | "listing_delete" | "answer_send" | "question_answer" | "conversation_read" | "conversation_delete";
   productId?: string | null; sku: string; productName?: string | null;
   accountId?: string | null; listingId?: string | null;
   previousData?: Record<string, unknown>; requestedData: Record<string, unknown>;
@@ -106,6 +107,15 @@ export async function processOutgoingActivities(limit = 10) {
       results.push({ id: activity.id, ok: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (["conversation_read", "conversation_delete"].includes(String(activity.activity_type))
+        && (isNonRetryableConversationError(message) || /conversa mudou|divergente|sem ID válido|disponível somente/i.test(message))) {
+        await db.from("outgoing_marketplace_activities").update({ status: "error", processing_error: message,
+          processed_at: new Date().toISOString(), processing_started_at: null, updated_at: new Date().toISOString() })
+          .eq("id", activity.id).throwOnError();
+        await history(String(activity.id), Number(activity.attempt_count), "chat_action", "error", { error: message });
+        results.push({ id: activity.id, ok: false, error: message });
+        continue;
+      }
       if (["answer_send", "question_answer"].includes(String(activity.activity_type))) {
         await markConversationReplyError(activity, message);
         if (isNonRetryableConversationError(message)) {
@@ -175,6 +185,7 @@ async function markProductSentWhenAllMarketplacesAreLinked(productId: string) {
 }
 
 async function executeAndConfirm(activity: Record<string, any>) {
+  if (["conversation_read", "conversation_delete"].includes(String(activity.activity_type))) return executeShopeeConversationAction(activity);
   if (["answer_send", "question_answer"].includes(String(activity.activity_type))) return executeConversationReply(activity);
   if (activity.destination === "tiny" && activity.activity_type === "listing_create") return createAndConfirmTiny(activity);
   if (activity.destination === "mercado_livre" && activity.activity_type === "listing_create") return createAndConfirmMercadoLivre(activity);

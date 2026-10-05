@@ -15,6 +15,7 @@ type ShopeeRequestOptions = {
   shopId?: string | number | null;
   method?: "GET" | "POST";
   body?: Record<string, unknown>;
+  rawBody?: string;
   query?: Record<string, string | number | null | undefined>;
 };
 
@@ -181,6 +182,18 @@ export class ShopeeClient {
   async getConversationMessages(accessToken: string, shopId: string | number, conversationId: string, offset = 0, pageSize = 50) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/sellerchat/get_message", {
       accessToken, shopId, query: { conversation_id: conversationId, offset, page_size: Math.min(Math.max(pageSize, 1), 50) }
+    });
+  }
+
+  async deleteConversation(accessToken: string, shopId: string | number, conversationId: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/sellerchat/delete_conversation", {
+      accessToken, shopId, method: "POST", rawBody: shopeeConversationActionBody(conversationId)
+    });
+  }
+
+  async readConversation(accessToken: string, shopId: string | number, conversationId: string, lastReadMessageId: string) {
+    return this.signedRequest<Record<string, unknown>>("/api/v2/sellerchat/read_conversation", {
+      accessToken, shopId, method: "POST", rawBody: shopeeConversationActionBody(conversationId, lastReadMessageId)
     });
   }
 
@@ -432,7 +445,7 @@ export class ShopeeClient {
     const response = await fetch(`${this.baseUrl}${path}?${params.toString()}`, {
       method: options.method || "GET",
       headers: { "content-type": "application/json" },
-      body: options.method === "POST" ? JSON.stringify(options.body || {}) : undefined
+      body: options.method === "POST" ? (options.rawBody ?? JSON.stringify(options.body || {})) : undefined
     });
     const responseText = await response.text();
     let json: Record<string, any> = {};
@@ -461,7 +474,7 @@ export class ShopeeClient {
     const response = await fetch(`${this.baseUrl}${path}?${params.toString()}`, {
       method: options.method || "GET",
       headers: { "content-type": "application/json" },
-      body: options.method === "POST" ? JSON.stringify(options.body || {}) : undefined,
+      body: options.method === "POST" ? (options.rawBody ?? JSON.stringify(options.body || {})) : undefined,
       cache: "no-store"
     });
     const body = await response.arrayBuffer();
@@ -500,4 +513,13 @@ export class ShopeeClient {
 
 export function currentTimestamp() {
   return Math.floor(Date.now() / 1000);
+}
+
+// conversation_id is int64 in the request contract; never round it through Number.
+export function shopeeConversationActionBody(conversationId: string, lastReadMessageId?: string) {
+  if (!/^[1-9]\d{0,18}$/.test(conversationId) || BigInt(conversationId) > 9223372036854775807n)
+    throw new Error("ID da conversa Shopee inválido.");
+  if (lastReadMessageId !== undefined && !/^[1-9]\d{0,19}$/.test(lastReadMessageId))
+    throw new Error("ID da última mensagem Shopee inválido.");
+  return '{"conversation_id":' + conversationId + (lastReadMessageId === undefined ? '' : ',"last_read_message_id":' + JSON.stringify(lastReadMessageId)) + '}';
 }

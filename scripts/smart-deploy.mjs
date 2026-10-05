@@ -7,7 +7,8 @@ import { git, assertDeploymentRepository } from './smart-git.mjs';
 import { workerCommand } from './smart-worker-command.mjs';
 import { findRelatedTests } from './smart-change-classifier.mjs';
 import { executeDeployment } from './smart-deploy-flow.mjs';
-import { IGNORE_COMMAND, classifyRange, commitBaseline, assertCommitPlan, atomicJson, readJson, migrationVersions, migrationStatus, migrationsConfirmed } from './smart-deploy-support.mjs';
+import { confirmLinkedMigrations } from './smart-migration-confirmation.mjs';
+import { IGNORE_COMMAND, classifyRange, commitBaseline, assertCommitPlan, atomicJson, readJson, migrationVersions, migrationStatus } from './smart-deploy-support.mjs';
 import { waitForVercel, assertVercelProject } from './smart-vercel.mjs';
 import { createVercelReader, assertLinkedVercelProject } from './smart-vercel-auth.mjs';
 
@@ -126,7 +127,7 @@ try {
       saveProgress: progress => atomicJson(progressPath, progress),
       confirmMigrations: () => {
         assertLinkedProject();
-        return migrationsConfirmed(run('npx', ['--no-install', 'supabase', 'migration', 'list', '--linked'], true), versions);
+        return confirmLinkedMigrations(versions, { cwd: root });
       },
       migrate: () => { assertLinkedProject(); run('npx', ['--no-install', 'supabase', 'db', 'push', '--linked']); },
       isPublished: () => remoteHead() === target,

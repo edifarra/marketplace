@@ -14,13 +14,17 @@
     "lib/marketplaces/shopee/client.ts",
     "lib/shopee-orders.ts",
     "scripts/consolidate-local-marketplace-cases.ts",
+    "scripts/smart-deploy-support.mjs",
+    "scripts/smart-deploy.mjs",
     "supabase/migrations/20261004201000_keep_pending_conversations_today.sql",
     "supabase/migrations/20261005003405_marketplace_cases_stage_one.sql",
     "tests/marketplace-cases-sql.test.mjs",
     "tests/marketplace-cases.test.ts",
     "tests/marketplace-conversation-initial-page.test.ts",
     "tests/marketplace-conversation-today.test.ts",
-    "tests/marketplace-message-rendering.test.ts"
+    "tests/marketplace-message-rendering.test.ts",
+    "tests/smart-deploy-support.test.mjs",
+    "tests/smart-git.test.mjs"
   ],
   "dependenciesChanged": false
 }

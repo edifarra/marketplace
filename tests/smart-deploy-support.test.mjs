@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { atomicJson, readJson, migrationsConfirmed, classifyRange, assertCommitPlan } from '../scripts/smart-deploy-support.mjs';
+import { atomicJson, readJson, migrationStatus, migrationsConfirmed, classifyRange, assertCommitPlan } from '../scripts/smart-deploy-support.mjs';
 import { PLAN_FILE, planDigest } from '../scripts/smart-deploy-metadata.mjs';
 import { workerCommand } from '../scripts/smart-worker-command.mjs';
 test('migration confirmation requires exact local and remote histories', () => {
@@ -21,6 +21,46 @@ test('atomic state replacement leaves no temporary files', context => {
   atomicJson(state, { commit: 'old' }); atomicJson(state, { commit: 'target' });
   assert.deepEqual(readJson(state), { commit: 'target' });
   assert.deepEqual(fs.readdirSync(root), ['state.json']);
+});
+test('current CLI JSON distinguishes applied and pending migrations without hardcoded versions or totals', () => {
+  const expected = ['001', '01301', '20260102030405'];
+  const migrations = expected.map((local, i) => ({ local, remote: i === expected.length - 1 ? '' : local, time: 'official CLI metadata' }));
+  const output = JSON.stringify({ migrations, message: 'Migrations listed' });
+  assert.deepEqual(migrationStatus(output, expected), {
+    localCount: expected.length, remoteCount: expected.length - 1,
+    applied: expected.slice(0, -1), pending: expected.slice(-1)
+  });
+  assert.equal(migrationsConfirmed(output, expected), false);
+  migrations.at(-1).remote = expected.at(-1);
+  assert.equal(migrationsConfirmed(JSON.stringify({ migrations }), expected), true);
+});
+test('legacy ASCII and Unicode tables preserve the same status as JSON', () => {
+  const expected = ['001', '002'];
+  const json = JSON.stringify({ migrations: [{ local: '001', remote: '001' }, { local: '002', remote: '' }] });
+  for (const separator of ['|', '│']) {
+    const table = `\u001b[32mLocal ${separator} Remote ${separator} Time\u001b[0m\r\n-----+-----+-----\r\n001 ${separator} 001 ${separator} date\r\n002 ${separator} ${separator} date`;
+    assert.deepEqual(migrationStatus(table, expected), migrationStatus(json, expected));
+  }
+});
+test('malformed, empty, unsupported and unsuccessful JSON never confirms migrations', () => {
+  for (const output of ['{', '[]', '{}', '{"migrations":[]}', '{"migrations":{}}',
+    '{"migrations":[{"local":"001"}]}', '{"migrations":[{"local":1,"remote":1}]}',
+    '{"migrations":[{"local":"001","remote":null}]}',
+    '{"migrations":[{"local":"001","remote":"bad"}]}',
+    '{"migrations":[{"local":"","remote":""}]}',
+    '{"migrations":[{"local":"001","remote":"001"}],"error":"failed"}']) {
+    assert.throws(() => migrationsConfirmed(output, ['001']), /Unrecognized/, output);
+  }
+  assert.throws(() => migrationsConfirmed('{"migrations":[{"local":"001","remote":"001"}]}', []), /Unrecognized/);
+});
+test('JSON unknown remote versions, mismatched rows and duplicate histories fail closed', () => {
+  const json = migrations => JSON.stringify({ migrations });
+  assert.throws(() => migrationsConfirmed(json([{ local: '001', remote: '001' }, { local: '', remote: '999' }]), ['001']), /diverges/);
+  assert.throws(() => migrationsConfirmed(json([{ local: '001', remote: '002' }, { local: '002', remote: '001' }]), ['001', '002']), /diverges/);
+  assert.throws(() => migrationsConfirmed(json([{ local: '001', remote: '001' }, { local: '001', remote: '' }]), ['001']), /Duplicate/);
+  assert.throws(() => migrationsConfirmed(json([{ local: '001', remote: '001' }, { local: '', remote: '001' }]), ['001']), /Duplicate/);
+  assert.throws(() => migrationsConfirmed(json([{ local: '001', remote: '001' }]), ['001','002']), /incomplete/);
+  assert.throws(() => migrationsConfirmed(json([{ local: '001', remote: '001' }]), ['001','001']), /Unrecognized/);
 });
 test('failed atomic write preserves previous baseline', context => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'smart-state-fail-'));

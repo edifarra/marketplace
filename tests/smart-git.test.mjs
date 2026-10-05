@@ -71,6 +71,30 @@ test("package scripts-only change does not count as dependencies", (context) => 
 
   assert.equal(dependencyFilesChanged({ base: "HEAD^", head: "HEAD", cwd: repo }), false);
 });
+test('dry-run reports pending migrations from a read-only CLI JSON snapshot and cannot use it for execution', context => {
+  const repo = fixtureRepository(context);
+  const versions = ['001', '002'];
+  for (const version of versions) write(repo, `supabase/migrations/${version}_example.sql`, '-- fixture');
+  commit(repo, 'migrations');
+  const snapshot = path.join(repo, 'history.json');
+  const history = JSON.stringify({ migrations: versions.map((local, i) => ({ local, remote: i ? '' : local, time: 'date' })) });
+  fs.writeFileSync(snapshot, history);
+  const deployScript = path.resolve(path.dirname(new URL(import.meta.url).pathname.slice(process.platform === 'win32' ? 1 : 0)), '../scripts/smart-deploy.mjs');
+  const output = execFileSync(process.execPath, [deployScript, '--dry-run', '--base=HEAD^', `--migration-history=${snapshot}`], {
+    cwd: repo, encoding: 'utf8', stdio: ['ignore','pipe','pipe']
+  });
+  assert.match(output, /"localCount": 2/); assert.match(output, /"remoteCount": 1/);
+  assert.match(output, /"pendingCount": 1/); assert.match(output, /"pending": \[\s*"002"\s*\]/);
+  assert.equal(fs.readFileSync(snapshot, 'utf8'), history);
+  for (const file of ['.smart-deploy-state.json', '.smart-deploy-progress.json', '.smart-deploy.lock']) {
+    assert.equal(fs.existsSync(path.join(repo, file)), false);
+  }
+  for (const args of [[], ['--execute']]) {
+    assert.throws(() => execFileSync(process.execPath, [deployScript, ...args, `--migration-history=${snapshot}`], {
+      cwd: repo, stdio: ['ignore','pipe','pipe']
+    }), error => String(error.stderr).includes('supported only in dry-run mode'));
+  }
+});
 
 test("real dependency change requires installation", (context) => {
   const repo = fixtureRepository(context);

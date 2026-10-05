@@ -7,7 +7,7 @@ import { git, assertDeploymentRepository } from './smart-git.mjs';
 import { workerCommand } from './smart-worker-command.mjs';
 import { findRelatedTests } from './smart-change-classifier.mjs';
 import { executeDeployment } from './smart-deploy-flow.mjs';
-import { IGNORE_COMMAND, classifyRange, commitBaseline, assertCommitPlan, atomicJson, readJson, migrationVersions, migrationsConfirmed } from './smart-deploy-support.mjs';
+import { IGNORE_COMMAND, classifyRange, commitBaseline, assertCommitPlan, atomicJson, readJson, migrationVersions, migrationStatus, migrationsConfirmed } from './smart-deploy-support.mjs';
 import { waitForVercel, assertVercelProject } from './smart-vercel.mjs';
 import { createVercelReader, assertLinkedVercelProject } from './smart-vercel-auth.mjs';
 
@@ -25,6 +25,9 @@ const run = (command, argv, capture = false) => {
   return result.stdout ?? '';
 };
 try {
+  const historyPath = process.argv.find(a => a.startsWith('--migration-history='))?.slice(20);
+  if (historyPath !== undefined && (mode !== 'dry-run' || !historyPath))
+    throw new Error('A migration history snapshot is supported only in dry-run mode with a nonempty path.');
   // Freeze before resolving or classifying any range.
   const target = git(['rev-parse', 'HEAD^{commit}']);
   const selectedBase = process.argv.find(a => a.startsWith('--base='))?.slice(7) || process.env.SMART_DEPLOY_BASE || readJson(statePath)?.commit || (mode === 'dry-run' ? 'HEAD^' : null);
@@ -36,6 +39,11 @@ try {
   if (mode !== 'execute') {
     if (mode === 'dry-run') console.log('DRY RUN: no network connection or production change was made.');
     console.log('Remote status is not verified in planning/dry-run mode.');
+    if (historyPath) {
+      const status = migrationStatus(fs.readFileSync(historyPath, 'utf8'), migrationVersions(root));
+      console.log(JSON.stringify({ migrationHistorySnapshot: historyPath, ...status, pendingCount: status.pending.length }, null, 2));
+      console.log('Migration status above comes from the supplied read-only snapshot; execution always queries the linked database again.');
+    }
   } else {
     assertDeploymentRepository({ cwd: root, target });
     const active = classification.frontend || classification.migration || classification.worker;

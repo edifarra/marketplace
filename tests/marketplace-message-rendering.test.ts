@@ -45,3 +45,33 @@ test("imagem com referência a pedido conserva imagem e legenda", () => {
 test("tipo desconhecido mantém fallback sem virar pedido", () => {
   assert.ok(render("unknown", {}).includes("[unknown]"));
 });
+
+const reminderMessage = {
+  id: "reminder", direction: "system", message_type: "out_of_stock_reminder_card", sent_at: "2026-10-07T12:00:00Z",
+  raw_data: { message_type: "out_of_stock_reminder_card", source: "server", content: {
+    seller_user_id: 20, product_info: { item_id: 22398678635, name: "Placa Inverter Sony", thumb_url: "sg-product-image", sku: "SONY-01", models: [{ model_stock: 1 }] }
+  } }
+};
+test("lembrete reutiliza card compacto e mantém produto, miniatura e dados sem ações", () => {
+  const html = renderToStaticMarkup(React.createElement(Message, { row, message: reminderMessage, showItemCard: true }));
+  for (const value of ['chat-product-card message-item-card shopee-reminder', 'Lembrete da Shopee', 'Placa Inverter Sony', 'https://cf.shopee.com.br/file/sg-product-image', 'SONY-01', '22398678635', 'Estoque informado: 1', 'Seu produto pode estar sem estoque']) assert.ok(html.includes(value), value);
+  for (const value of ['Definir Estoque', 'Responder', '<button', '<details', 'class="chat-message system"']) assert.ok(!html.includes(value), value);
+});
+test("lembrete sem miniatura ou estoque mantém card informativo", () => {
+  const message = { ...reminderMessage, raw_data: { ...reminderMessage.raw_data, content: { seller_user_id: 20, product_info: { item_id: 22398678635, name: "Placa Inverter Sony" } } } };
+  const html = renderToStaticMarkup(React.createElement(Message, { row, message, showItemCard: false }));
+  assert.ok(html.includes('message-item-card shopee-reminder'));
+  assert.ok(!html.includes('<img'));
+  assert.ok(!html.includes('Estoque informado'));
+});
+test("card de contexto mantém apresentação e Mercado Livre não recebe lembrete Shopee", () => {
+  const html = renderToStaticMarkup(React.createElement(Message, { row, showItemCard: true, message: {
+    id: "context", direction: "incoming", text: "Serve nessa TV?", sent_at: "2026-10-07T12:00:00Z",
+    shopee_item_card: { image_url: "https://example.test/product.jpg", title: "Placa Sony", sku: "SKU-1", found: true }
+  } }));
+  assert.ok(html.includes('class="chat-product-card message-item-card"'));
+  assert.ok(html.includes('O cliente está perguntando sobre este anúncio/produto'));
+  assert.ok(html.includes('Serve nessa TV?'));
+  const ml = renderToStaticMarkup(React.createElement(Message, { row: { ...row, marketplace: "mercado_livre" }, message: reminderMessage, showItemCard: false }));
+  assert.ok(!ml.includes('shopee-reminder'));
+});

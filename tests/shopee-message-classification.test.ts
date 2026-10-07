@@ -48,7 +48,7 @@ test("out_of_stock_reminder_card confirmado pelo payload é evento de sistema", 
   assert.deepEqual(shopeeOutOfStockReminderContent(reminder), {
     title: "Lembrete da Shopee",
     description: "Seu produto pode estar sem estoque, por favor atualize o estoque caso necessário.",
-    productName: "Kit Cabo Flat", itemId: "58208834633", stock: 6
+    productName: "Kit Cabo Flat", imageUrl: "", sku: "", itemId: "58208834633", stock: 6
   });
 });
 

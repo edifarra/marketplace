@@ -219,9 +219,15 @@ function Divider({ label }: { label: string }) { return <div className="timeline
 export function Message({ message, row, showItemCard }: { message: Record<string, any>; row: Row; showItemCard: boolean }) {
   const type = String(message.message_type || message.raw_data?.message_type || "text").toLowerCase();
   const imageUrl = shopeeMessageImageUrl(message.raw_data);
-  const reminder = shopeeOutOfStockReminderContent(message.raw_data);
+  const reminder = row.marketplace === "shopee" ? shopeeOutOfStockReminderContent(message.raw_data) : null;
   const attachments = mercadoLivreAttachments(message.raw_data);
   const itemCard = message.shopee_item_card;
+  if (reminder) return <div className="chat-message-group incoming">
+    <div className="chat-product-card message-item-card shopee-reminder">
+      {reminder.imageUrl && <img src={reminder.imageUrl} alt=""/>}
+      <div><small>{reminder.title}</small><p>{reminder.description}</p>{reminder.productName && <strong>{reminder.productName}</strong>}{reminder.sku && <span>SKU {reminder.sku}</span>}<small>Item {reminder.itemId}{reminder.stock != null ? ` · Estoque informado: ${reminder.stock}` : ""}</small><small>Shopee · {formatDate(message.sent_at)}</small></div>
+    </div>
+  </div>;
   const isOrder = type === "order";
   const ordinaryContent = attachments.length ? <div>{attachments.map((attachment, index) => {
     const url = `/api/chats/attachments/${encodeURIComponent(message.id)}?index=${index}`;
@@ -232,10 +238,9 @@ export function Message({ message, row, showItemCard }: { message: Record<string
     : isOrder ? <div className="chat-product-card">{row.product_image_url && <img src={row.product_image_url} alt=""/>}<div><small>Pedido {row.order_id || message.raw_data?.content?.order_sn || message.raw_data?.source_content?.order_sn || ""}</small><strong>{row.product_title || "Pedido compartilhado pelo cliente"}</strong>{row.sku && <span>SKU {row.sku}</span>}{row.product_price != null && <span>{Number(row.product_price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}</div></div>
     : imageUrl ? <div><a href={imageUrl} target="_blank" rel="noreferrer"><img className="chat-attachment" src={imageUrl} loading="lazy" alt="Imagem enviada no chat"/></a>{message.text && <div className="chat-image-text">{message.text}</div>}</div>
     : message.text ? <div>{message.text}</div> : !itemCard ? <div>{`[${type || "mensagem"}]`}</div> : null;
-  const bubble = <div className={`chat-message ${reminder ? "system shopee-reminder" : message.direction}`}>
-    {reminder ? <div><strong>{reminder.title}</strong><p>{reminder.description}</p>{reminder.productName && <span>{reminder.productName}</span>}{reminder.itemId && <small>Item {reminder.itemId}{reminder.stock != null ? ` · Estoque informado: ${reminder.stock}` : ""}</small>}</div>
-      : ordinaryContent}
-    <small>{reminder ? "Shopee" : message.sender_name || (message.direction === "incoming" ? "Cliente" : "Loja")} · {formatDate(message.sent_at)}{message.direction === "outgoing" && <span className={`message-tick ${message.status === "sent" ? "confirmed" : message.status === "error" ? "failed" : ""}`} title={message.status === "sent" ? "Confirmada pela fila" : message.status === "error" ? "Falha no envio" : "Aguardando confirmação"}>✓</span>}</small>
+  const bubble = <div className={`chat-message ${message.direction}`}>
+    {ordinaryContent}
+    <small>{message.sender_name || (message.direction === "incoming" ? "Cliente" : "Loja")} · {formatDate(message.sent_at)}{message.direction === "outgoing" && <span className={`message-tick ${message.status === "sent" ? "confirmed" : message.status === "error" ? "failed" : ""}`} title={message.status === "sent" ? "Confirmada pela fila" : message.status === "error" ? "Falha no envio" : "Aguardando confirmação"}>✓</span>}</small>
   </div>;
   if (!showItemCard || !itemCard) return bubble;
   return <div className="chat-message-group incoming">

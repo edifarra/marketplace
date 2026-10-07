@@ -81,6 +81,10 @@ export function shopeeOutOfStockReminderContent(raw: Record<string, any> | null 
     title: "Lembrete da Shopee",
     description: "Seu produto pode estar sem estoque, por favor atualize o estoque caso necessário.",
     productName: typeof product?.name === "string" ? product.name : "",
+    imageUrl: typeof product?.thumb_url === "string" && product.thumb_url
+      ? product.thumb_url.startsWith("https://") ? product.thumb_url : `https://cf.shopee.com.br/file/${encodeURIComponent(product.thumb_url)}`
+      : "",
+    sku: typeof product?.sku === "string" ? product.sku : "",
     itemId: product?.item_id == null ? "" : String(product.item_id),
     stock: stocks.length ? stocks.reduce((total: number, value: number) => total + value, 0) : null
   };

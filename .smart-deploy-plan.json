@@ -5,9 +5,12 @@
     ".smart-deploy-plan.json",
     "app/central-reclamacoes/case-display.ts",
     "app/central-reclamacoes/case-grid.tsx",
+    "app/central-reclamacoes/case-presentation.ts",
+    "app/central-reclamacoes/cases.module.css",
     "docs/marketplace-claim-post-deploy-local.md",
     "scripts/validate-marketplace-claim-detail.ts",
-    "tests/marketplace-case-detail.test.ts"
+    "tests/marketplace-case-detail.test.ts",
+    "tests/marketplace-case-presentation.test.ts"
   ],
   "dependenciesChanged": false
 }

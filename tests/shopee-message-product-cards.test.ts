@@ -4,6 +4,7 @@ import fs from "node:fs";
 import {
   attachShopeeMessageProductCards,
   explicitShopeeMessageItemId,
+  outgoingShopeeBuyerContextShopId,
   messagesWithVisibleShopeeProductCards
 } from "../lib/shopee-message-product-cards";
 
@@ -33,6 +34,30 @@ const products = new Map([[`${accountId}:58218919949`, {
   raw_data: { image: { image_url_list: ["https://example.invalid/item.jpg"] } },
   products: { title: "Produto local", price: 120, estoque: [{ estoque_disponivel: 3 }] }
 }]]);
+
+test("contexto de comprador em saída usa catálogo da loja proprietária explícita", () => {
+  const message = { id: "2439762385570234737", direction: "outgoing", raw_data: {
+    message_type: "text", source: "pc_mall_minichat", from_shop_id: 329326155, to_shop_id: 754011889,
+    source_content: { item_id: 58269798300 }, content: { text: "Tudo certo ?" }
+  } };
+  const item = { product_id: "owner-product", sku: "1417PP", titulo_marketplace: "Placa Principal TV Oled65cxpsa Com Defeito", valor_marketplace: 199,
+    raw_data: { image: { image_url_list: ["https://example.test/owner.jpg"] } } };
+  const catalog = new Map([["owner:58269798300", item], ["sender:58269798300", { ...item, product_id: "wrong" }]]);
+  const [result] = attachShopeeMessageProductCards([{ marketplace: "shopee", marketplace_account_id: "sender", product_id: "header", messages: [message] }], catalog, new Map([["754011889", "owner"]]));
+  const card = result.messages[0].shopee_item_card;
+  assert.equal(card.product_id, "owner-product");
+  assert.equal(card.price, 199);
+  assert.equal(card.image_url, "https://example.test/owner.jpg");
+  assert.equal(card.shop_id, "754011889");
+  assert.equal(result.product_id, "header");
+  assert.equal(messagesWithVisibleShopeeProductCards(result.messages).size, 1);
+  assert.equal(outgoingShopeeBuyerContextShopId({ ...message, raw_data: { ...message.raw_data, source: "openapi" } }), "");
+  assert.equal(outgoingShopeeBuyerContextShopId({ ...message, raw_data: { ...message.raw_data, message_type: "item", content: { item_id: 58269798300, shop_id: 754011889 } } }), "754011889");
+  assert.equal(outgoingShopeeBuyerContextShopId({ ...message, raw_data: { ...message.raw_data, message_type: "item", content: { item_id: 58269798300, shop_id: 329326155 } } }), "");
+  const [unknown] = attachShopeeMessageProductCards([{ marketplace: "shopee", marketplace_account_id: "sender", messages: [message] }], catalog);
+  assert.equal(unknown.messages[0].shopee_item_card.found, false);
+  assert.equal(unknown.messages[0].shopee_item_card.shop_id, "754011889");
+});
 
 test("mensagem de texto extrai source_content.item_id explícito", () => {
   assert.equal(explicitShopeeMessageItemId(originalConversation.marketplace_conversation_messages[0].raw_data), "58218919949");

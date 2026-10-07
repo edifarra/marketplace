@@ -50,3 +50,10 @@ test("Mercado Livre mantém produto da conversa, permalink e fallback atuais", (
     });
   }
 });
+
+test("contexto de comprador usa anúncio da loja proprietária e produto resolvido", () => {
+  const row: any = { marketplace: "shopee", config_marketplace_accounts: { shop_id: "329326155" }, messages: [{ direction: "outgoing",
+    shopee_item_card: { item_id: "58269798300", shop_id: "754011889", buyer_context: true, product_id: "owner-product" }
+  }] };
+  assert.deepEqual(conversationProductLinks(row), { productId: "owner-product", listingUrl: "https://shopee.com.br/product/754011889/58269798300" });
+});

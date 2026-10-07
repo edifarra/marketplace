@@ -6,7 +6,7 @@ export function conversationProductLinks(row: ConversationRow) {
     // Reuse the cards already resolved for this chat's account and timeline.
     const messages = [...messagesWithVisibleShopeeProductCards(row.messages)];
     const card = messages[messages.length - 1]?.shopee_item_card;
-    const shopId = row.config_marketplace_accounts?.shop_id;
+    const shopId = card?.shop_id || row.config_marketplace_accounts?.shop_id;
     return {
       productId: card?.product_id || null,
       listingUrl: card?.item_id && shopId

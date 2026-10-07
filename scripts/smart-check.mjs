@@ -1,11 +1,25 @@
 import { spawnCommand } from "./smart-command-runner.mjs";
 import process from "node:process";
 import { buildWorkerFileSet, classifyChanges, findRelatedTests } from "./smart-change-classifier.mjs";
-import { changedFiles } from "./smart-git.mjs";
+import { changedFiles, git, workingTreeDirty } from "./smart-git.mjs";
+import { assertDeploymentMetadata, readJson } from './smart-deploy-support.mjs';
 
 const rootDir = process.cwd();
 const args = new Set(process.argv.slice(2));
 const baseArg = process.argv.find((arg) => arg.startsWith("--base="))?.slice(7);
+try {
+  if (workingTreeDirty()) {
+    console.log('Working tree validation only: deployment metadata must be checked after committing with npm run commit:smart.');
+  } else {
+    const base = baseArg || process.env.SMART_DEPLOY_BASE || readJson('.smart-deploy-state.json')?.commit;
+    if (!base) throw new Error('Deployment baseline required for committed metadata validation.');
+    assertDeploymentMetadata(rootDir, git(['rev-parse', 'HEAD']), git(['rev-parse', `${base}^{commit}`]));
+    console.log('Committed deployment metadata verified.');
+  }
+} catch (error) {
+  console.error(`ERROR: ${error.message}`);
+  process.exit(1);
+}
 const files = changedFiles({ base: baseArg, includeWorkingTree: true });
 const workerFiles = buildWorkerFileSet(rootDir);
 const classification = classifyChanges(files, { workerFiles });

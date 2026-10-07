@@ -1,5 +1,13 @@
 # Regras permanentes do projeto
 
+## Commits e Smart Deploy
+
+- O Codex deve criar todos os novos commits com `npm run commit:smart -- -m "mensagem"`, após adicionar explicitamente ao index os arquivos da tarefa. Não usar `git commit` diretamente ou copiar trailers de outro commit.
+- Esse comando regenera o plano cumulativo e inclui automaticamente `Smart-Deploy-Base` e `Smart-Deploy-Plan`. Usa exclusivamente o SHA do estado local de deploy confirmado. Nunca fabricar ou editar `.smart-deploy-state.json` para liberar um commit/deploy; se ausente, recuperar evidência do último deploy confirmado antes de continuar.
+- Executar `npm run check:smart` e `npm run deploy:smart -- --dry-run` após o commit. A validação com arquivos pendentes valida apenas o código, não certifica o commit futuro.
+- Commit publicado sem trailer: criar um novo commit pelo comando acima, mantendo o baseline confirmado e o diff cumulativo. Nunca amend, rebase, push forçado, baseline escolhido para esconder mudanças ou bypass da integridade.
+- Restrições explícitas da tarefa (por exemplo, não executar deploy/migrations/VPS) prevalecem sobre a regra geral de entrega. Nesses casos, registrar o commit e informar que a publicação em produção permanece pendente; nunca declarar READY sem confirmação.
+
 ## Entrega e deploy
 
 - Toda alteração solicitada neste repositório deve ser aplicada no ambiente de produção, incluindo o deploy na Vercel.

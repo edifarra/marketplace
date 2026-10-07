@@ -36,7 +36,8 @@ test("only explicit execute mode can modify external environments", () => {
 
 test("smart validation contains no production action", () => {
   const source = fs.readFileSync(new URL("../scripts/smart-check.mjs", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /\b(?:vercel|ssh)\b|supabase\s+db\s+push|smart-deploy/i);
+  assert.doesNotMatch(source, /\b(?:vercel|ssh)\b|supabase\s+db\s+push|["']scripts\/smart-deploy\.mjs["']/i);
+  assert.match(source, /assertDeploymentMetadata/);
 });
 
 test("validation package scripts do not invoke deployment", () => {

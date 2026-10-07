@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from 'node:url';
+import { planDigest } from '../scripts/smart-deploy-metadata.mjs';
 import { changedFiles, dependencyFilesChanged, workingTreeDirty, assertDeploymentRepository } from "../scripts/smart-git.mjs";
 
 test('repository gate accepts equality/ahead and rejects behind/divergence', context => {
@@ -49,7 +51,7 @@ test("baseline diff ignores modified and untracked working-tree files", (context
 test("actual dry-run CLI does not write deployment state or execute production actions", (context) => {
   const repo = fixtureRepository(context);
   write(repo, "app/page.tsx", "export default 'committed';\n");
-  commit(repo, "frontend commit");
+  commitPrepared(repo, "frontend commit");
   const deployScript = path.resolve(path.dirname(new URL(import.meta.url).pathname.slice(process.platform === "win32" ? 1 : 0)), "../scripts/smart-deploy.mjs");
 
   const output = execFileSync(process.execPath, [deployScript, "--dry-run", "--execute", "--yes", "--base=HEAD^"], {
@@ -75,7 +77,7 @@ test('dry-run reports pending migrations from a read-only CLI JSON snapshot and 
   const repo = fixtureRepository(context);
   const versions = ['001', '002'];
   for (const version of versions) write(repo, `supabase/migrations/${version}_example.sql`, '-- fixture');
-  commit(repo, 'migrations');
+  commitPrepared(repo, 'migrations');
   const snapshot = path.join(repo, 'history.json');
   const history = JSON.stringify({ migrations: versions.map((local, i) => ({ local, remote: i ? '' : local, time: 'date' })) });
   fs.writeFileSync(snapshot, history);
@@ -137,6 +139,14 @@ function write(repo, relativePath, contents) {
 function commit(repo, message) {
   run(repo, ["add", "."]);
   run(repo, ["commit", "-m", message]);
+}
+
+function commitPrepared(repo, message) {
+  const base = run(repo, ['rev-parse', 'HEAD']).trim();
+  run(repo, ['add', '.']);
+  execFileSync(process.execPath, [fileURLToPath(new URL('../scripts/smart-deploy-prepare.mjs', import.meta.url)), `--base=${base}`], { cwd: repo, stdio: 'pipe' });
+  const plan = JSON.parse(fs.readFileSync(path.join(repo, '.smart-deploy-plan.json'), 'utf8'));
+  run(repo, ['commit', '-m', `${message}\n\nSmart-Deploy-Base: ${base}\nSmart-Deploy-Plan: ${planDigest(plan)}`]);
 }
 
 function run(repo, args) {

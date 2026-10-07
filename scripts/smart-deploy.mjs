@@ -8,7 +8,7 @@ import { updateWorker } from './smart-worker-update.mjs';
 import { findRelatedTests } from './smart-change-classifier.mjs';
 import { executeDeployment } from './smart-deploy-flow.mjs';
 import { confirmLinkedMigrations } from './smart-migration-confirmation.mjs';
-import { IGNORE_COMMAND, classifyRange, commitBaseline, assertCommitPlan, atomicJson, readJson, migrationVersions, migrationStatus } from './smart-deploy-support.mjs';
+import { IGNORE_COMMAND, classifyRange, assertDeploymentMetadata, atomicJson, readJson, migrationVersions, migrationStatus } from './smart-deploy-support.mjs';
 import { waitForVercel, assertVercelProject } from './smart-vercel.mjs';
 import { createVercelReader, assertLinkedVercelProject } from './smart-vercel-auth.mjs';
 
@@ -31,12 +31,13 @@ try {
     throw new Error('A migration history snapshot is supported only in dry-run mode with a nonempty path.');
   // Freeze before resolving or classifying any range.
   const target = git(['rev-parse', 'HEAD^{commit}']);
-  const selectedBase = process.argv.find(a => a.startsWith('--base='))?.slice(7) || process.env.SMART_DEPLOY_BASE || readJson(statePath)?.commit || (mode === 'dry-run' ? 'HEAD^' : null);
+  const selectedBase = process.argv.find(a => a.startsWith('--base='))?.slice(7) || process.env.SMART_DEPLOY_BASE || readJson(statePath)?.commit;
   if (!selectedBase) throw new Error('No baseline. Use --base=<commit>.');
   const base = git(['rev-parse', `${selectedBase}^{commit}`]);
   git(['merge-base', '--is-ancestor', base, target]);
   const classification = classifyRange(root, base, target);
   console.log(JSON.stringify({ mode, base, target, ...classification }, null, 2));
+  assertDeploymentMetadata(root, target, base);
   if (mode !== 'execute') {
     if (mode === 'dry-run') console.log('DRY RUN: no network connection or production change was made.');
     console.log('Remote status is not verified in planning/dry-run mode.');
@@ -81,8 +82,7 @@ try {
     await executeDeployment({ mode, target, base, classification, supersedeFrontend }, {
       preflight: async () => {
         assertLocal();
-        if (commitBaseline(root, target) !== base) throw new Error('Commit trailer must match selected baseline.');
-        assertCommitPlan(root, target, base, classification);
+        assertDeploymentMetadata(root, target, base);
         if (JSON.parse(fs.readFileSync('vercel.json', 'utf8')).ignoreCommand !== IGNORE_COMMAND) throw new Error('Shared Vercel ignore command required.');
         refresh();
         if (classification.migration) {

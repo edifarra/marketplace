@@ -17,7 +17,8 @@
     "test:smart-change-classifier": "node --test tests/smart-*.test.mjs",
     "check:smart": "node scripts/smart-check.mjs",
     "deploy:smart": "node scripts/smart-deploy.mjs",
-    "deploy:prepare": "node scripts/smart-deploy-prepare.mjs"
+    "deploy:prepare": "node scripts/smart-deploy-prepare.mjs",
+    "commit:smart": "node scripts/smart-commit.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

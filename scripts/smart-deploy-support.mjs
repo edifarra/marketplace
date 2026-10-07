@@ -15,6 +15,11 @@ export function commitBaseline(root, target) {
   const message = git(['show', '-s', '--format=%B', target], { cwd: root });
   return parseTrailer(message, 'Smart-Deploy-Base', 40);
 }
+export function assertDeploymentMetadata(root, target, base) {
+  git(['merge-base', '--is-ancestor', base, target], { cwd: root });
+  if (commitBaseline(root, target) !== base) throw new Error('Commit trailer must match selected baseline.');
+  return assertCommitPlan(root, target, base, classifyRange(root, base, target));
+}
 export function assertCommitPlan(root, target, base, classification) {
   const plan = normalizePlan(JSON.parse(git(['show', `${target}:${PLAN_FILE}`], { cwd: root })));
   verifyPlanMessage(plan, git(['show', '-s', '--format=%B', target], { cwd: root }));

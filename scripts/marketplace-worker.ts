@@ -3,6 +3,7 @@ import { processMarketplaceQueue } from "../lib/marketplace-queue-worker";
 import { syncMarketplaceConversationsSafetyNet } from "../lib/marketplace-conversations";
 import { processOutgoingActivities } from "../lib/outgoing-activities";
 import workerDefaults from "./marketplace-worker-defaults.json";
+import { reconcileMarketplaceClaims } from "../lib/marketplace-claim-service";
 
 loadEnvConfig(process.cwd());
 
@@ -49,8 +50,9 @@ export async function runMarketplaceWorker() {
     try {
       if (Date.now() - lastConversationSyncAt >= conversationSyncIntervalMs) {
         const sync = await syncMarketplaceConversationsSafetyNet();
+        const claims = await reconcileMarketplaceClaims();
         lastConversationSyncAt = Date.now();
-        log("marketplace_conversation_reconciliation_completed", { sync });
+        log("marketplace_conversation_reconciliation_completed", { sync, claims });
       }
       const result = await processMarketplaceQueue(batchSize);
       const outgoing = await processOutgoingActivities(batchSize);

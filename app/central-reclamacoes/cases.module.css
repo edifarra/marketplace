@@ -34,5 +34,13 @@
 .generalFields dt { color:#667085; }.generalFields dd { margin:0; overflow-wrap:anywhere; }
 .detailProducts { margin-top:16px; display:grid; gap:12px; }
 .pagination { justify-content:center; align-items:center; }
+.deadline { color:#b42318; font-weight:800; }
+.claimContext { margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #eaecf0; font-size:13px; }
+.claimContext p { margin:8px 0; }
+.reply { margin-top:14px; display:grid; gap:10px; }
+.reply textarea { width:100%; resize:vertical; }
+.modalBackdrop { position:fixed; inset:0; z-index:1000; background:rgba(16,24,40,.5); display:grid; place-items:center; padding:24px; }
+.modal { background:white; border-radius:12px; padding:24px; width:min(620px,100%); max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px #10182833; }
+.modal select { display:block; width:100%; margin-top:8px; }
 @media(max-width:750px) { .drilldown { grid-template-columns:minmax(0,1fr); }.chatScroll { height:560px; } }
 @media(prefers-reduced-motion:reduce) { .expansion { animation:none; }.chevron { transition:none; } }

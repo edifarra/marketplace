@@ -26,6 +26,8 @@ export default async function CasesPage({ searchParams = {} }: { searchParams?: 
       <nav className={styles.tabs} aria-label="Situação dos Casos">{tabs.map(tab => <Link prefetch={false} key={tab.key} href={href(filters, { tab: tab.key, page: "1" })} className={`${styles.tab} ${filters.tab === tab.key ? styles.active : ""}`} aria-current={filters.tab === tab.key ? "page" : undefined}>{tab.label}<span>{tab.count}</span></Link>)}</nav>
       <form key={JSON.stringify(filters)} action={path} method="get">
         <input type="hidden" name="context" value={filters.context}/>
+        {filters.buyer && <input type="hidden" name="buyer" value={filters.buyer}/>}
+        {filters.site && <input type="hidden" name="site" value={filters.site}/>}
         <input type="hidden" name="tab" value={filters.tab}/>
         <div className="form-grid">
           <label>Buscar<input name="search" defaultValue={filters.search} placeholder="Cliente, nome logístico, código de retorno, pedido, caso, SKU ou produto" maxLength={160}/></label>

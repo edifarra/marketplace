@@ -130,3 +130,42 @@ test("claim to actual return retains SQL identity, earlier history, logistics an
 });
 
 test.after(async () => { await db.close(); });
+
+test("local claim migration: isolated chat/messages, current snapshots, operation equivalence and send barrier",async()=>{
+  await db.exec(`
+    alter table marketplace_conversations alter column id set default gen_random_uuid();
+    alter table marketplace_conversations add column external_conversation_id text,add column buyer_id text,add column buyer_name text,
+      add column status text,add column requires_response boolean,add column external_status text,add column updated_at timestamptz default now(),
+      add constraint marketplace_conversations_conversation_type_check check(conversation_type in ('question','chat','post_sale')),
+      add unique(marketplace,marketplace_account_id,external_conversation_id);
+    create table marketplace_conversation_messages(id uuid primary key default gen_random_uuid(),conversation_id uuid references marketplace_conversations(id),
+      marketplace_account_id uuid,external_message_id text,external_message_key text,direction text,message_type text,text text,sender_id text,sender_name text,sent_at timestamptz,status text,raw_data jsonb,
+      unique(conversation_id,external_message_id));
+  `);
+  await db.exec(readFileSync(new URL("../supabase/migrations/037_outgoing_marketplace_activities.sql",import.meta.url),"utf8"));
+  await db.exec(readFileSync(new URL("../supabase/migrations/20261007170807_marketplace_claim_operations.sql",import.meta.url),"utf8"));
+  const enriched={id:"SQLCLAIM",resource:"order",resource_id:"O1",status:"opened",last_updated:"2026-10-07T12:00:00Z",date_created:"2026-10-07T11:00:00Z",players:[],
+    __case_enrichment:{reason:{name:"repentant_buyer",detail:"Motivo humano"},reputation:{affects_reputation:"not_applies"},buyer:{id:"B",display_name:"Nome",site_id:"MLB",legal_name:"Empresa Fiscal"},
+      messages:[{hash:"hash1",sender_role:"complainant",receiver_role:"respondent",message:"Mensagem pessoal LEDs",message_date:"2026-10-07T11:00:01Z",status:"available",attachments:[{filename:"photo.jpg",size:42,type:"image/jpeg"}]}],
+      actions:[{action_name:"open_claim",player_role:"complainant",date_created:"2026-10-07T11:00:00Z"}],statuses:[],resolutions:[]}};
+  const normalize=(event,caseId="SQLCLAIM")=>{const n=normalizeCase({id:event,marketplace:"mercado_livre",received_at:"2026-10-07T12:01:00Z",raw_payload:{topic:"post_purchase",claim_id:caseId}},account,{...enriched,id:caseId});return {...n,state:transitionState(n.snapshot)};};
+  const id=await persist(normalize("webhook"));await persist(normalize("reconcile"));await persist(normalize("confirm"));
+  const row=(await db.query("select * from marketplace_cases where id=$1",[id])).rows[0];assert.equal(row.reputation_impact,"not_applies");assert.equal(row.content.buyer_data.legal_name,"Empresa Fiscal");
+  assert.equal(row.content.claim_messages,undefined);assert.equal(row.content.claim_events,undefined);
+  const chat=(await db.query("select * from marketplace_conversations where id=$1",[row.conversation_id])).rows[0];assert.equal(chat.conversation_type,"claim");assert.equal(chat.external_conversation_id,"claim:SQLCLAIM");
+  assert.equal(Number((await db.query("select count(*) n from marketplace_conversation_messages where conversation_id=$1",[row.conversation_id])).rows[0].n),1);
+  const message=(await db.query("select raw_data,text from marketplace_conversation_messages where conversation_id=$1",[row.conversation_id])).rows[0];assert.equal(message.text,"Mensagem pessoal LEDs");assert.equal(message.raw_data.attachments.length,1);
+  const second=await persist(normalize("other-claim","SQLCLAIM2"));assert.notEqual((await db.query("select conversation_id from marketplace_cases where id=$1",[second])).rows[0].conversation_id,row.conversation_id);
+  const enqueue=async(op,request={operatorId:"operator",action:"refund",parameters:{},fingerprint:"same-revision-and-action"})=>(await db.query("select enqueue_marketplace_claim_operation($1,$2,$3) id",[id,op,JSON.stringify(request)])).rows[0].id;
+  const op="77777777-7777-4777-8777-777777777777",duplicate="88888888-8888-4888-8888-888888888888";
+  const concurrent=await Promise.all([enqueue(op),enqueue(duplicate)]);assert.equal(concurrent[0],concurrent[1]);assert.equal(await enqueue(op),op);
+  await assert.rejects(enqueue(op,{operatorId:"other-user",action:"refund",parameters:{},fingerprint:"same-revision-and-action"}));
+  await assert.rejects(enqueue("99999999-9999-4999-8999-999999999999",{operatorId:"operator",action:"allow_return",parameters:{},fingerprint:"different-action"}));
+  await db.query("update outgoing_marketplace_activities set status='processing' where id=$1",[op]);
+  const send=async()=>(await db.query("select begin_marketplace_claim_send($1) allowed",[op])).rows[0].allowed;
+  assert.equal(await send(),true);assert.equal(await send(),false);
+  await db.query("update outgoing_marketplace_activities set status='error',remote_execution_state='uncertain' where id=$1",[op]);
+  await assert.rejects(enqueue("99999999-9999-4999-8999-999999999999",{operatorId:"operator",action:"allow_return",parameters:{},fingerprint:"different-action"}));
+  for(const role of ["anon","authenticated"])assert.equal((await db.query("select has_function_privilege($1,'enqueue_marketplace_claim_operation(uuid,uuid,jsonb)','EXECUTE') allowed",[role])).rows[0].allowed,false);
+  await assert.rejects(enqueue("99999999-9999-4999-8999-999999999999",{operatorId:"operator",action:"open_dispute",parameters:{},fingerprint:"forbidden"}));
+});

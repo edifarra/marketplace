@@ -1,9 +1,11 @@
 type Row = Record<string, any>;
+import { claimOfficialEvents, officialClaimMessages } from "./marketplace-claim-timeline";
 export type CaseObservation = {
   marketplace: string; marketplace_account_id: string; case_type: string; external_case_id: string;
   source: string; source_key: string; observed_at: string; official_at: string | null; order_at: string;
   snapshot: Row; deadlines: Row[]; actions: Row[]; evidence: Row[];
   identity_only?: boolean;
+  claim_messages?: Row[]; claim_events?: Row[];
 };
 export function caseIdentity(o: CaseObservation) {
   return [o.marketplace, o.marketplace_account_id, o.case_type, o.external_case_id].join(":");
@@ -34,6 +36,7 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
   const shopee = activity.marketplace === "shopee";
   const d = detail || (shopee ? p.data || {} : p.claim || p.data?.claim || {});
   const source = detail ? (shopee ? "shopee:return_detail" : "ml:claim_detail") : "persisted_event";
+  const extra = d.__case_enrichment || {};
   const observed = detail ? new Date().toISOString() : officialDate(activity.received_at) || new Date().toISOString();
   const official = officialDate(shopee ? d.update_time : d.last_updated || d.date_last_updated);
   const deadlines: Row[] = [];
@@ -74,17 +77,19 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
     responsible: actor(d.responsible), needs_action: required ? true : null,
     resolution: d.resolution ? { reason: text(d.resolution.reason), closed_by: text(d.resolution.closed_by),
       date_created: officialDate(d.resolution.date_created) } : null,
-    reason_code: text(d.reason_id || d.reason_code || d.reason), reason: text(d.reason_text),
+    reason_code: text(d.reason_id || d.reason_code || d.reason), reason: text(extra.reason?.detail || d.reason_text),
+    reason_name: text(extra.reason?.name), claim_created_at: officialDate(d.date_created), buyer_data: extra.buyer || null,
+    current_actions: actions, current_claim: !shopee && detail ? {id:String(d.id),resource:d.resource,resource_id:String(d.resource_id),status:d.status,players:d.players,last_updated:d.last_updated} : null,
     buyer_description: text(shopee ? d.text_reason : d.description), affected_quantity: number(d.quantity),
     refund_amount: number(d.refund_amount), currency: text(d.currency),
     reputation_impact: "unknown",
     related_claim_id: text(shopee ? d.claim_id : id), buyer_name: text(d.buyer_name),
     validation_type: text(d.validation_type), seller_proof_status: text(d.seller_proof_status || proof.seller_proof_status),
     negotiation_status: text(d.negotiation_status),
-    reverse_logistics: { return_id: text(shopee ? id : reverse.return_id || d.return_id || relatedReturn?.id),
+    reverse_logistics: { return_id: text(shopee ? id : extra.return?.id || reverse.return_id || d.return_id || relatedReturn?.id),
       entity_created: shopee || Boolean(relatedReturn) || reverse.entity_created === true ? true : null,
-      status: text(reverse.status || d.logistics_status), modality: text(reverse.modality),
-      tracking: text(reverse.tracking || reverse.tracking_number || d.reverse_tracking_number || (shopee ? d.tracking_number : null)),
+      status: text(extra.return?.shipments?.[0]?.status || reverse.status || d.logistics_status), modality: text(reverse.modality),
+      tracking: text(extra.return?.shipments?.[0]?.tracking_number || reverse.tracking || reverse.tracking_number || d.reverse_tracking_number || (shopee ? d.tracking_number : null)),
       carrier: text(reverse.carrier || reverse.carrier_name || d.reverse_carrier),
       contact_name: text(reverse.contact_name || reverse.sender?.name || reverse.receiver?.name || d.reverse_logistics_contact_name || d.return_contact_name),
       point: text(reverse.point || reverse.agency), address: null },
@@ -101,7 +106,8 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
     }
   }
   // No automatic inference from open/closed or from Shopee reputation.
-  if (!shopee && ["affected", "not_affected"].includes(d.affects_reputation)) snapshot.reputation_impact = d.affects_reputation;
+  const reputation = extra.reputation?.affects_reputation || d.affects_reputation;
+  if (!shopee && ["affected", "not_affected", "not_applies"].includes(reputation)) snapshot.reputation_impact = reputation;
   if (!shopee && Array.isArray(seller?.available_actions) && actions.every((a: Row) => a.mandatory === false)) snapshot.needs_action = false;
   for (const a of actions) {
     if (a.deadline) deadlines.push({ purpose: `action:${a.code}`, official_field: "players.available_actions.due_date",
@@ -112,7 +118,8 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
   return { marketplace: activity.marketplace, marketplace_account_id: accountId,
     case_type: shopee ? "return" : "claim", external_case_id: id, source, source_key: key,
     observed_at: observed, official_at: official, order_at: officialDate(activity.received_at) || observed,
-    snapshot, deadlines, actions, evidence };
+    snapshot, deadlines, actions, evidence,
+    ...(!shopee && d.__case_enrichment ? {claim_messages:officialClaimMessages(extra.messages || [],id),claim_events:claimOfficialEvents(d,extra)} : {}) };
 }
 export function transitionState(snapshot: Row) {
   return { status: snapshot.status ?? null, stage: snapshot.stage ?? null,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { CHAT_CONVERSATION_TYPES } from "@/lib/marketplace-conversation-scope";
 import { latestConversationCursor, takeConversationChangeBatch } from "@/lib/marketplace-conversation-delta";
 import { prepareConversationRows } from "@/lib/marketplace-conversation-view";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
       db.from("marketplace_conversations")
         .select("*,config_marketplace_accounts(name,nickname,shop_id),marketplace_conversation_messages(*)")
         .in("id", [...affectedIds])
+        .in("conversation_type", CHAT_CONVERSATION_TYPES)
         .throwOnError(),
       db.from("settings").select("key,value")
         .in("key", ["CHAT_SLA_WITH_PRODUCT_HOURS", "CHAT_SLA_WITHOUT_PRODUCT_HOURS"])

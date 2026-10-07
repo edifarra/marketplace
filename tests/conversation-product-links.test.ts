@@ -6,7 +6,7 @@ import { prepareConversationRows } from "../lib/marketplace-conversation-view";
 
 test("Shopee usa o último card do histórico e o catálogo da conta do chat", () => {
   const row = {
-    id: "974656379479497586", marketplace: "shopee", marketplace_account_id: "store-a",
+    id: "974656379479497586", marketplace: "shopee", conversation_type: "chat", marketplace_account_id: "store-a",
     config_marketplace_accounts: { shop_id: "123" }, product_id: "stale", listing_id: "stale",
     raw_data: { product_url: "https://wrong-store.invalid" },
     messages: [
@@ -32,7 +32,7 @@ test("Shopee usa o último card do histórico e o catálogo da conta do chat", (
 });
 
 test("Shopee sem card não reutiliza links antigos; item desconhecido não inventa produto ou loja", () => {
-  const [row] = prepareConversationRows([{ id: "chat", marketplace: "shopee", product_id: "stale", messages: [] }], 24, 24);
+  const [row] = prepareConversationRows([{ id: "chat", marketplace: "shopee", conversation_type: "chat", product_id: "stale", messages: [] }], 24, 24);
   assert.deepEqual(conversationProductLinks(row), { productId: null, listingUrl: null });
   const unknown = { ...row, messages: [{ direction: "incoming", shopee_item_card: { item_id: "unknown", found: false } }] };
   assert.deepEqual(conversationProductLinks(unknown), { productId: null, listingUrl: null });
@@ -42,7 +42,7 @@ test("Shopee sem card não reutiliza links antigos; item desconhecido não inven
 });
 
 test("Mercado Livre mantém produto da conversa, permalink e fallback atuais", () => {
-  const [row] = prepareConversationRows([{ id: "ml", marketplace: "mercado_livre", product_id: "ml-product", listing_id: "MLB123", messages: [] }], 24, 24);
+  const [row] = prepareConversationRows([{ id: "ml", marketplace: "mercado_livre", conversation_type: "post_sale", product_id: "ml-product", listing_id: "MLB123", messages: [] }], 24, 24);
   assert.deepEqual(conversationProductLinks(row), { productId: "ml-product", listingUrl: "https://produto.mercadolivre.com.br/MLB-123-_JM" });
   for (const field of ["item_permalink", "permalink", "product_url"]) {
     assert.deepEqual(conversationProductLinks({ ...row, raw_data: { [field]: "https://listing.invalid" } }), {

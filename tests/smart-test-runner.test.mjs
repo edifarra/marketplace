@@ -21,7 +21,7 @@ test('SQL test prepares pinned isolated PGlite and supplies shim without leaking
 });
 
 test('cached SQL runtime avoids installation; non-SQL tests need no PGlite', () => {
-  for (const files of [['tests/marketplace-cases-sql.test.mjs'], ['tests/marketplace-case-detail.test.ts']]) {
+  for (const files of [['tests/marketplace-cases-sql.test.mjs'], ['tests/marketplace-conversation-scope-sql.test.mjs'], ['tests/marketplace-case-detail.test.ts']]) {
     const calls = [];
     runSmartTests(files, { env: {}, read: () => ({ version: '0.5.8' }), run: (command, args) => { calls.push({ command, args }); return { status: 0 }; } });
     assert.equal(calls.length, 1);

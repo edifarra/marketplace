@@ -48,7 +48,7 @@ test("leitura preserva obrigação de resposta e mensagem nova volta a ficar nã
 });
 
 test("exclusão confirmada sai do delta e nova mensagem pode reabrir o chat", () => {
-  const row:any = { id:"c1",groupKey:"single:c1",grouped_conversation_ids:["c1"],requires_response:true,last_message_at:"2026-10-05T12:00:00Z",messages:[],shopee_deleted_at:"2026-10-05T12:01:00Z",shopee_deleted_message_id:"100",shopee_last_message_id:"100" };
+  const row:any = { id:"c1",conversation_type:"chat",groupKey:"single:c1",grouped_conversation_ids:["c1"],requires_response:true,last_message_at:"2026-10-05T12:00:00Z",messages:[],shopee_deleted_at:"2026-10-05T12:01:00Z",shopee_deleted_message_id:"100",shopee_last_message_id:"100" };
   assert.deepEqual(mergeConversationDelta([{...row,shopee_deleted_at:null}], [row], [row.id], view,25), []);
   assert.ok(!("shopee_deleted_at" in reconcileShopeeChatManagement({shopee_last_message_id:"100"},row)));
   const reopened = reconcileShopeeChatManagement({...row,shopee_last_message_id:"101"},row);

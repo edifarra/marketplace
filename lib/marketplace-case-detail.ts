@@ -2,6 +2,7 @@ import "server-only";
 import { supabaseAdmin } from "./supabase-admin";
 import { CASE_LIST_SELECT, caseSaleItems, knownCaseDeadlines } from "./marketplace-case-list";
 import { orderedClaimTimeline,saleOfficialEvents } from "./marketplace-claim-timeline";
+import { isChatConversation } from "./marketplace-conversation-scope";
 type Row = Record<string, any>;
 export function safeClaimConversation(candidates:Row[],account:string,claim:string) {
   const matches=candidates.filter(c=>c.marketplace === "mercado_livre" && c.marketplace_account_id === account && c.conversation_type === "claim" && c.external_conversation_id === `claim:${claim}`);
@@ -12,6 +13,12 @@ export function safeCaseConversation(candidates: Row[], marketplace: string, acc
   const matches = candidates.filter(c => c.marketplace === marketplace && c.marketplace_account_id === account && c.order_id === order && ["chat", "post_sale"].includes(c.conversation_type));
   return matches.length === 1 ? matches[0] : null;
 }
+// A case's normal order chat is context only, never its official message channel.
+export function caseContextMessages(messages: Row[], openedAt?: string | null) {
+  const cutoff = openedAt ? Date.parse(openedAt) : NaN;
+  return messages.filter(message => !Number.isFinite(cutoff) ||
+    (message.sent_at && Date.parse(message.sent_at) < cutoff));
+}
 async function readChildren(db: ReturnType<typeof supabaseAdmin>, table: string, select: string, caseId: string, order: string) {
   const rows: Row[] = [];
   for (let offset = 0; ; offset += 500) {
@@ -21,7 +28,7 @@ async function readChildren(db: ReturnType<typeof supabaseAdmin>, table: string,
   }
 }
 export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: { at: string; id: string; sent: string | null }) {
-  const result = await db.from("marketplace_cases").select(`${CASE_LIST_SELECT},resolution,buyer_data:content->buyer_data,current_claim:content->current_claim,seller_proof_status:content->>seller_proof_status,negotiation_status:content->>negotiation_status`).eq("id", id).maybeSingle().throwOnError();
+  const result = await db.from("marketplace_cases").select(`${CASE_LIST_SELECT},resolution,claim_created_at:content->>claim_created_at,buyer_data:content->buyer_data,current_claim:content->current_claim,seller_proof_status:content->>seller_proof_status,negotiation_status:content->>negotiation_status`).eq("id", id).maybeSingle().throwOnError();
   const row = result.data as unknown as Row | null;
   if (!row) return null;
   const sale = row.sale?.marketplace === row.marketplace && (!row.order_id || row.sale.order_id === row.order_id) ? row.sale : null;
@@ -52,6 +59,23 @@ export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: 
   }
   const messages = conversation ? await messageQuery.order("sent_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(101).throwOnError() : { data: [] };
   const recent = (messages.data || []).slice(0, 100).reverse();
+  const contextConversations: Row[] = [];
+  const contextMessages: Row[] = [];
+  // Separate, read-only history for ML claims, including multiple normal channels.
+  // Without an official opening date we label it order context, not prior history.
+  if (isClaim && order && !before) {
+    const context = await db.from("marketplace_conversations").select("id,conversation_type,external_conversation_id")
+      .eq("marketplace", row.marketplace).eq("marketplace_account_id", row.marketplace_account_id)
+      .eq("order_id", order).in("conversation_type", ["chat", "post_sale"]).throwOnError();
+    contextConversations.push(...(context.data || []).filter(isChatConversation));
+    if (contextConversations.length) {
+      let history = db.from("marketplace_conversation_messages").select("id,conversation_id,direction,message_type,text,sender_name,sent_at,created_at,status,raw_data")
+        .in("conversation_id", contextConversations.map(c => c.id));
+      if (row.claim_created_at) history = history.lt("sent_at", row.claim_created_at);
+      const result = await history.order("sent_at", { ascending: false, nullsFirst: false }).order("id", { ascending: false }).limit(101).throwOnError();
+      contextMessages.push(...caseContextMessages((result.data || []).slice(0, 100).reverse(), row.claim_created_at));
+    }
+  }
   const pendingOperation=isClaim ? (await db.from("outgoing_marketplace_activities").select("id,status,remote_execution_state").eq("activity_type","claim_action")
     .eq("source_id",id).eq("marketplace_account_id",row.marketplace_account_id).or("status.in.(queued,processing,retry),remote_execution_state.in.(sending,uncertain,succeeded)").order("updated_at",{ascending:false}).limit(1).throwOnError()).data?.[0] : null;
   let visibleTimeline=timeline;
@@ -62,5 +86,6 @@ export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: 
   }
   return { row, items: caseSaleItems(row, products), deadlines: knownCaseDeadlines({ ...row, observations: observations.data }, true),
     conversation, messages: recent, olderMessages: (messages.data || []).length > 100, pendingOperation,
+    messageScope: isClaim ? "case" : "order_context", contextConversations, contextMessages,
     timeline: isClaim ? visibleTimeline : timeline.sort((a, b) => Date.parse(a.official_at || a.observed_at) - Date.parse(b.official_at || b.observed_at) || a.id.localeCompare(b.id)), actions, evidence };
 }

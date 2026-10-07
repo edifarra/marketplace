@@ -1,6 +1,9 @@
+import { isChatConversation } from "./marketplace-conversation-scope";
+
 export interface ConversationRow {
   [key: string]: any;
   id: string;
+  conversation_type: string;
   messages: Array<Record<string, any>>;
   slaHours: number;
   slaBreached: boolean;
@@ -26,7 +29,7 @@ export function prepareConversationRows(
   withoutProductHours: number,
   now = Date.now()
 ) {
-  const individualRows = rows.map((row) => {
+  const individualRows = rows.filter(isChatConversation).map((row) => {
     const slaHours = row.product_id || row.listing_id ? withProductHours : withoutProductHours;
     const since = new Date(row.last_incoming_at || row.last_message_at).getTime();
     return {
@@ -117,7 +120,7 @@ export function conversationTimelineSections(row: Record<string, any>) {
 export function rowMatchesConversationView(row: ConversationRow, view: ConversationView, now = Date.now()) {
   const search = view.search.toLocaleUpperCase("pt-BR");
   const attendingSince = now - 24 * 60 * 60 * 1000;
-  return !row.shopee_deleted_at && (view.tab === "all" || row.requires_response || new Date(row.last_message_at).getTime() >= attendingSince)
+  return isChatConversation(row) && !row.shopee_deleted_at && (view.tab === "all" || row.requires_response || new Date(row.last_message_at).getTime() >= attendingSince)
     && (!view.marketplace || row.marketplace === view.marketplace)
     && (!view.store || row.marketplace_account_id === view.store)
     && (!view.status || row.status === view.status)

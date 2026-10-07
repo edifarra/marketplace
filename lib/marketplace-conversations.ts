@@ -1,4 +1,5 @@
 import { latestShopeeMessageId, reconcileShopeeChatManagement } from "./shopee-chat-management-state";
+import { assertChatReplyChannel, isChatConversation } from "./marketplace-conversation-scope";
 import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "./auth";
@@ -204,6 +205,7 @@ export async function queueConversationReply(conversationId: string, text: strin
   const db = supabaseAdmin();
   const conversationResult = await db.from("marketplace_conversations").select("*").eq("id", conversationId).single().throwOnError();
   const conversation = conversationResult.data;
+  assertChatReplyChannel(conversation);
   const validation = validateMarketplaceReply(cleanText, conversation);
   if (validation.blocked.length) throw new Error(validation.blocked.join(" "));
   if (!conversation.requires_response && conversation.conversation_type === "question") throw new Error("Esta pergunta não está mais disponível para resposta.");
@@ -237,6 +239,7 @@ export async function executeConversationReply(activity: Record<string, any>) {
   const db = supabaseAdmin();
   const conversationResult = await db.from("marketplace_conversations").select("*").eq("id", conversationId).single().throwOnError();
   const conversation = conversationResult.data;
+  assertChatReplyChannel(conversation);
   const text = String(requested.text || "").trim();
   let remote: Record<string, any>;
   if (conversation.marketplace === "mercado_livre") {
@@ -298,8 +301,10 @@ export async function markConversationReplyError(activity: Record<string, any>, 
   const conversationId = String(activity.requested_data?.conversationId || activity.source_id || "");
   if (!conversationId) return;
   const db = supabaseAdmin();
-  const current = await db.from("marketplace_conversations").select("external_status,raw_data")
+  const current = await db.from("marketplace_conversations").select("conversation_type,external_status,raw_data")
     .eq("id", conversationId).maybeSingle().throwOnError();
+  // Rejecting a legacy chat job must not regress the official case projection.
+  if (!current.data || !isChatConversation(current.data)) return;
   if (String(current.data?.external_status || "").toUpperCase() === "ANSWERED" || current.data?.raw_data?.answer) {
     await db.from("marketplace_conversations").update({ status: "answered", requires_response: false, unread: false, last_error: null, updated_at: new Date().toISOString() })
       .eq("id", conversationId).throwOnError();

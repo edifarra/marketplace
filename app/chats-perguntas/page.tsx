@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CHAT_CONVERSATION_TYPES } from "@/lib/marketplace-conversation-scope";
 import { Sidebar } from "@/app/components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { ConversationView, prepareConversationRows, sortConversationRows } from "@/lib/marketplace-conversation-view";
@@ -50,6 +51,7 @@ export default async function ChatsQuestionsPage({ searchParams }: { searchParam
   const conversations = plan.conversationIds.length
     ? await db.from("marketplace_conversations").select(MARKETPLACE_CONVERSATION_PAGE_SELECT)
         .in("id", plan.conversationIds)
+        .in("conversation_type", CHAT_CONVERSATION_TYPES)
     : { data: [], error: null };
   const enrichedConversations = await enrichShopeeMessageProductCards(db, conversations.data || []);
   const rows = prepareConversationRows(enrichedConversations, withProduct, withoutProduct, now.getTime()).sort(sortConversationRows);

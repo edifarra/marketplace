@@ -10,6 +10,8 @@ import { validateMarketplaceReply } from "@/lib/marketplace-reply-validation";
 import { latestShopeeMessageId } from "@/lib/shopee-chat-management-state";
 import { manageShopeeConversation, retryConversationReply, sendConversationReply, updateConversationsNow } from "./actions";
 
+import { conversationProductLinks } from "./product-links";
+
 type Row = ConversationRow;
 type DeltaResponse = { cursor: ConversationCursor; changes: Row[]; changedConversationIds: string[]; hasMore: boolean };
 
@@ -117,7 +119,7 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
       }).blocked[0] || "" : "";
       const maximumLength = row.marketplace === "mercado_livre" && row.conversation_type === "post_sale" ? 350 : 2000;
       const canReply = row.marketplace === "shopee" || row.requires_response && !["closed", "review", "blocked"].includes(row.status);
-      const listingUrl = productListingUrl(row);
+      const { productId, listingUrl } = conversationProductLinks(row);
       const lastMessageId = row.shopee_last_message_id || latestShopeeMessageId(row.messages);
       return <article key={row.id} className={`conversation-card ${row.requires_response ? "pending" : ""}`}>
         <div className="conversation-header">
@@ -145,7 +147,7 @@ export function ConversationGrid({ rows, initialCursor, view, pageSize }: { rows
         </div>
         {chatActionNotices[row.id] && <div className={chatActionNotices[row.id].startsWith("Erro") ? "form-error" : "form-success"} role="status">{chatActionNotices[row.id]} <a href="/atividades-marketplace/enviadas">Ver fila</a></div>}
         {isOpen && <div className="conversation-detail">
-          <div className="conversation-person"><div><strong>{row.buyer_name || (row.buyer_id ? `Cliente ${mask(row.buyer_id)}` : "Cliente não identificado")}</strong><small className="conversation-source">Fonte: API oficial{row.marketplace === "shopee" && <> · {row.unread ? "Não lida" : "Lida"}</>} · {row.question_count > 1 ? `IDs ${row.grouped_external_ids.join(", ")}` : `ID ${row.external_conversation_id}`} · Estado original: {originalStatus(row)}</small></div><div className="conversation-context-actions"><span>{row.order_id ? `Pedido ${row.order_id}` : row.conversation_type === "question" ? `${row.question_count || 1} pergunta${row.question_count === 1 ? "" : "s"} neste produto` : "Conversa com a loja"}{conversationUrl(row) ? <> · <a href={conversationUrl(row)!} target="_blank" rel="noreferrer">Abrir no marketplace</a></> : null}</span><div className="conversation-product-links">{listingUrl && <a className="secondary link-button compact" href={listingUrl} target="_blank" rel="noopener noreferrer">Ver Anuncio</a>}{row.product_id && <a className="secondary link-button compact" href={`/produtos/${encodeURIComponent(row.product_id)}`}>Ver produto</a>}</div></div></div>
+          <div className="conversation-person"><div><strong>{row.buyer_name || (row.buyer_id ? `Cliente ${mask(row.buyer_id)}` : "Cliente não identificado")}</strong><small className="conversation-source">Fonte: API oficial{row.marketplace === "shopee" && <> · {row.unread ? "Não lida" : "Lida"}</>} · {row.question_count > 1 ? `IDs ${row.grouped_external_ids.join(", ")}` : `ID ${row.external_conversation_id}`} · Estado original: {originalStatus(row)}</small></div><div className="conversation-context-actions"><span>{row.order_id ? `Pedido ${row.order_id}` : row.conversation_type === "question" ? `${row.question_count || 1} pergunta${row.question_count === 1 ? "" : "s"} neste produto` : "Conversa com a loja"}{conversationUrl(row) ? <> · <a href={conversationUrl(row)!} target="_blank" rel="noreferrer">Abrir no marketplace</a></> : null}</span><div className="conversation-product-links">{listingUrl && <a className="secondary link-button compact" href={listingUrl} target="_blank" rel="noopener noreferrer">Ver Anuncio</a>}{productId && <a className="secondary link-button compact" href={`/produtos/${encodeURIComponent(productId)}`}>Ver produto</a>}</div></div></div>
           <Timeline row={row}/>
           {row.last_error && <div className="form-error"><strong>Falha no envio:</strong> {row.last_error}</div>}
           {canReply && <div className="reply-box">
@@ -246,5 +248,4 @@ function formatDate(value: string) { return value ? new Date(value).toLocaleStri
 function mask(value: string) { return value.length <= 4 ? value : `${value.slice(0, 2)}•••${value.slice(-2)}`; }
 function statusLabel(value: string) { return ({ answered: "Respondida", closed: "Encerrada", review: "Em revisão", blocked: "Bloqueada", error: "Erro", pending: "Pendente" } as Record<string, string>)[value] || value; }
 function conversationUrl(row: Row) { if (row.raw_data?.marketplace_url) return String(row.raw_data.marketplace_url); if (row.marketplace === "mercado_livre") return row.raw_data?.item_permalink || "https://www.mercadolivre.com.br/perguntas"; if (row.marketplace === "shopee") return "https://seller.shopee.com.br/webchat"; return null; }
-function productListingUrl(row: Row) { const explicitUrl = row.raw_data?.item_permalink || row.raw_data?.permalink || row.raw_data?.product_url; if (explicitUrl) return String(explicitUrl); if (!row.listing_id) return null; if (row.marketplace === "mercado_livre") { const digits = String(row.listing_id).replace(/^MLB/i, ""); return `https://produto.mercadolivre.com.br/MLB-${digits}-_JM`; } if (row.marketplace === "shopee") { const shopId = row.config_marketplace_accounts?.shop_id; return shopId ? `https://shopee.com.br/product/${encodeURIComponent(shopId)}/${encodeURIComponent(row.listing_id)}` : `https://shopee.com.br/search?keyword=${encodeURIComponent(row.listing_id)}`; } return null; }
 function originalStatus(row: Row) { if (row.raw_data?.deleted_from_listing) return `${row.external_status || "UNANSWERED"} · Removida do anúncio`; if (row.external_status === "NOT_INFORMED") return "Não informado pelo marketplace"; return row.external_status || "Não informado pelo marketplace"; }

@@ -16,6 +16,20 @@ export function reputationLabel(row: any) {
 export function caseReason(row:any) {
   return ({repentant_buyer:"O comprador se arrependeu"} as Record<string,string>)[row.reason_name] || row.reason || (row.reason_code ? `Código ${row.reason_code}` : "");
 }
+export function caseHeaderRow(initial:any, detail:any) {
+  if (!detail) return initial;
+  const row = { ...initial, ...detail.row, items: detail.items, deadlines: detail.deadlines };
+  const closed = row.marketplace === "mercado_livre" ? row.status === "closed" : ["CLOSED", "CANCELLED"].includes(row.status);
+  const ongoing = row.marketplace === "mercado_livre" ? ["open", "opened", "reopened"].includes(row.status) : ["REQUESTED", "PROCESSING", "ACCEPTED", "JUDGING", "SELLER_DISPUTE"].includes(row.status);
+  row.group = closed ? "closed" : row.needs_action === true ? "action" : ongoing ? "ongoing" : "unknown";
+  row.groupLabel = ({action:"Precisa de ação",ongoing:"Em andamento / aguardando",closed:"Encerrado",unknown:"Desconhecido / incompleto"} as Record<string,string>)[row.group];
+  return row;
+}
+export function claimDescription(row:any) {
+  if (row.reason_name === "repentant_buyer" && row.reason)
+    return "O comprador disse que chegou em boas condições, mas não quer mais o produto.";
+  return row.reason || row.buyer_description || "";
+}
 export function sellerDeadline(row:any,deadlines:any[]) {
   if(row.status !== "opened")return null;
   return [...deadlines].filter(d=>d.responsible === "seller" && d.precision === "timestamp" && Number.isFinite(Date.parse(d.value)) && d.purpose?.startsWith("action:")

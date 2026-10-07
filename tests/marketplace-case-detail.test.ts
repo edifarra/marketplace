@@ -11,7 +11,7 @@ test("chat requires one exact marketplace/account/order result, never buyer or S
   assert.equal(safeCaseConversation([], "shopee", "account", "order"), null);
 });
 test("Shopee never gets inferred or accidentally copied reputation", () => {
-  for (const reputation_impact of [null, "unknown", "affected", "not_affected"]) assert.equal(reputationLabel({ marketplace: "shopee", reputation_impact }), "Reputação: Não informado");
+  for (const reputation_impact of [null, "unknown", "affected", "not_affected"]) assert.equal(reputationLabel({ marketplace: "shopee", reputation_impact }), "");
   assert.equal(reputationLabel({ marketplace: "mercado_livre", reputation_impact: "affected" }), "Afeta sua reputação");
   assert.equal(reputationLabel({ marketplace: "mercado_livre", reputation_impact: "not_affected" }), "Não afeta sua reputação");
 });

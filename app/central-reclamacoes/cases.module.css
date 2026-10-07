@@ -44,3 +44,5 @@
 .modal select { display:block; width:100%; margin-top:8px; }
 @media(max-width:750px) { .drilldown { grid-template-columns:minmax(0,1fr); }.chatScroll { height:560px; } }
 @media(prefers-reduced-motion:reduce) { .expansion { animation:none; }.chevron { transition:none; } }
+
+.fullWidth { grid-column:1 / -1; }

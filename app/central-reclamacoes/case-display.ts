@@ -1,3 +1,4 @@
+import { humanLabel } from "./case-presentation";
 export function caseDate(value: string | null | undefined) {
   if (!value || !Number.isFinite(Date.parse(value))) return "Não informado";
   return new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -11,10 +12,10 @@ export function caseImage(product: any) {
   return url.startsWith("/uploads/") || /^https:\/\/res\.cloudinary\.com\//.test(url) ? url : "";
 }
 export function reputationLabel(row: any) {
-  return row.marketplace === "shopee" ? "Reputação: Não informado" : ({affected:"Afeta sua reputação",not_affected:"Não afeta sua reputação",not_applies:"Não se aplica à reputação"} as Record<string,string>)[row.reputation_impact] || "";
+  return row.marketplace === "shopee" ? "" : ({affected:"Afeta sua reputação",not_affected:"Não afeta sua reputação",not_applies:"Não se aplica à reputação"} as Record<string,string>)[row.reputation_impact] || "";
 }
 export function caseReason(row:any) {
-  return ({repentant_buyer:"O comprador se arrependeu"} as Record<string,string>)[row.reason_name] || row.reason || (row.reason_code ? `Código ${row.reason_code}` : "");
+  return ({repentant_buyer:"O comprador se arrependeu"} as Record<string,string>)[row.reason_name] || humanLabel(row.reason) || humanLabel(row.reason_code) || "";
 }
 export function caseHeaderRow(initial:any, detail:any) {
   if (!detail) return initial;
@@ -38,17 +39,11 @@ export function sellerDeadline(row:any,deadlines:any[]) {
 }
 export function caseStatusLabel(row: any) {
   const status = row.reverse_logistics?.status || row.status;
-  const labels: Record<string, string> = {
-    opened:"Status: Aberto",closed:"Status: Encerrado",open:"Status: Aberto",reopened:"Status: Reaberto",
-    awaiting_buyer_shipping: "Aguardando postagem pelo comprador", waiting_for_buyer_shipping: "Aguardando postagem pelo comprador",
-    ready_to_ship: "Aguardando postagem pelo comprador", in_transit: "Devolução em transporte", shipped: "Devolução postada",
-    delivered: "Devolução entregue", awaiting_auto_close: "Aguardando encerramento automático"
-  };
-  return labels[status] || status || "Estado não informado";
+  return humanLabel(status) || humanLabel(row.status) || "Estado não informado";
 }
 export function deadlineLabel(d: any) {
   const owners: Record<string, string> = { buyer: "comprador", seller: "vendedor", marketplace: "marketplace", unknown: "responsável não informado" };
   const purposes: Record<string, string> = { buyer_return_shipping: "Postagem da devolução", seller_response: "Resposta", seller_evidence: "Evidência", seller_validation: "Validação", logistics: "Logística", auto_close: "Encerramento automático", unknown: "Finalidade não informada" };
-  const purpose = purposes[d.purpose] || (d.purpose.startsWith("action:") ? `Ação ${d.purpose.slice(7)}` : "Finalidade não informada");
+  const purpose = purposes[d.purpose] || (d.purpose?.startsWith("action:") ? humanLabel(d.purpose.slice(7)) || "Ação do marketplace" : "Finalidade não informada");
   return `${purpose} · Prazo do ${owners[d.responsible] || owners.unknown}: ${d.precision === "date" ? `${d.value} (sem horário informado)` : caseDate(d.value)}`;
 }

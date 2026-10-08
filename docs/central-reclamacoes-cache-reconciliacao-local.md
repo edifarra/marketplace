@@ -1,5 +1,7 @@
 # Central: cache de leitura e reconciliação horária
 
+Este documento registra o comportamento do commit `aae5e0b`. A reconciliação foi posteriormente otimizada; consultar [o relatório da revisão econômica](central-reclamacoes-reconciliacao-economica.md) para o fluxo e os custos atuais. O cache de leitura foi preservado.
+
 Implementação exclusivamente local, baseada em `9e8a6d106f58ff3c6ac035b707939eb5c3ab8fee`. Nenhum deploy, acesso financeiro, reconciliação em massa, migration remota ou comando na VPS foi executado nesta tarefa.
 
 ## A. Abertura e drilldown

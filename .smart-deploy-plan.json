@@ -18,6 +18,7 @@
     "docs/central-reclamacoes-auditoria-shopee.md",
     "docs/central-reclamacoes-cache-reconciliacao-local.md",
     "docs/central-reclamacoes-layout-local.md",
+    "docs/central-reclamacoes-reconciliacao-economica.md",
     "lib/case-read-cache.ts",
     "lib/marketplace-case-detail.ts",
     "lib/marketplace-case-domain.ts",

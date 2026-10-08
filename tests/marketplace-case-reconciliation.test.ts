@@ -50,3 +50,41 @@ test("webhook and hourly refresh share one lease across the remote read and its 
  await assert.rejects(h.module.processCaseReconciliation(h.activity,h.db),/já está sendo atualizado/);
  finish();await webhook;assert.equal(remote,1);assert.equal(persisted,2);assert.equal(h.events.at(-1).args.p_success,true);
 });
+
+test("actual safety runner for 100 unchanged cases uses 26 consolidated RPCs, no individual reads, no queue requests",async()=>{
+ const h=harness();const rows=Array.from({length:100},(_,i)=>({...h.row,id:`case-${i}`,external_case_id:`R${i}`,account:{active:true}}));
+ let cursor=0,remote=0;const calls:string[]=[];
+ h.db.from=()=>{throw new Error("Redundant individual read");};
+ h.db.rpc=(name:string,args:any)=>({throwOnError:async()=>{
+  calls.push(name);
+  if(name==="claim_marketplace_case_checks"){const data=rows.slice(cursor,cursor+20);cursor+=data.length;return {data};}
+  assert.equal(name,"finish_marketplace_case_checks");assert.ok(args.p_results.length<=5);
+  remote+=args.p_results.filter((r:any)=>r.observation).length;return {data:{checked:args.p_results.length,queued:0}};
+ }});
+ const result=await h.module.scheduleCaseReconciliation(h.db);
+ assert.equal(result.checked,100);assert.equal(result.queued,0);assert.equal(remote,100);assert.equal(calls.length,26);
+ assert.equal(calls.filter(n=>n==="claim_marketplace_case_checks").length,6);
+});
+
+test("ML still reads independent resources when claim timestamp is stable, and gets one token per bundle",async()=>{
+ let tokens=0;const calls:string[]=[];
+ const {loadMercadoLivreClaimBundle}=loadPage("lib/marketplace-case-enrichment.ts",{
+  "./mercado-livre":{getValidMercadoLivreAccessToken:async()=>{tokens++;return "mock";},mlGet:async(path:string)=>{calls.push(path);return path.endsWith("/123")?{id:123,last_updated:"2026-10-08T00:00:00Z",reason_id:"reason"}:{};}},
+  "./shopee":{},"./shopee-oauth":{},"./marketplace-claim-domain":{claimBuyerId:()=>null},
+ }, (await import("node:fs")).readFileSync("lib/marketplace-case-enrichment.ts","utf8").replace("AbortSignal.timeout(20_000)","undefined"));
+ await loadMercadoLivreClaimBundle("123",{});await loadMercadoLivreClaimBundle("123",{});
+ assert.equal(tokens,2);assert.equal(calls.length,14);
+ for(const path of ["messages","status-history","actions-history","expected-resolutions","affects-reputation"])assert.equal(calls.filter(p=>p.endsWith('/'+path)).length,2);
+});
+
+test("captured changes are persisted only by queue and do not repeat remote GET; worker can yield after a batch",async()=>{
+ const h=harness();
+ // Identity for this fixture comes from the real notification normalizer.
+ const actual=normalizeCase({id:"probe",marketplace:"shopee",received_at:new Date().toISOString(),raw_payload:{code:29,data:{return_sn:"R1"}}},"SP-ED",{return_sn:"R1",return_status:"PROCESSING"})!;
+ await h.module.processCaseReconciliation({...h.activity,raw_payload:{...h.activity.raw_payload,account_id:"SP-ED",case_observation:actual}},h.db);
+ assert.equal(h.events.some(e=>e.name==="remote"),false);assert.equal(h.events.filter(e=>e.name==="persist").length,1);
+ let claims=0;
+ h.db.rpc=(name:string,args:any)=>({throwOnError:async()=>name==="claim_marketplace_case_checks"?{data:++claims===1?[{...h.row,account:{active:true}}]:[]}:{data:{checked:args.p_results.length,queued:0}}});
+ assert.equal((await h.module.scheduleCaseReconciliation(h.db,1)).drained,false);
+ assert.equal(claims,1);assert.equal((await h.module.scheduleCaseReconciliation(h.db,1)).drained,true);
+});

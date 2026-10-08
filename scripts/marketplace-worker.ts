@@ -58,15 +58,17 @@ export async function runMarketplaceWorker() {
       }
       const result = await processMarketplaceQueue(batchSize);
       const outgoing = await processOutgoingActivities(batchSize);
-      // Webhooks/outgoing operations are drained before planning hourly safety reads.
+      let caseChecksPending = false;
+      // Webhooks/outgoing operations are drained before leased hourly safety reads.
       if (Date.now() - lastCaseSyncAt >= CASE_RECONCILIATION_MS) {
-        const cases = await scheduleCaseReconciliation();
-        lastCaseSyncAt = Date.now();
-        log("marketplace_case_reconciliation_scheduled", cases);
+        const cases = await scheduleCaseReconciliation(undefined, 1);
+        caseChecksPending = !cases.drained;
+        if (cases.drained) lastCaseSyncAt = Date.now();
+        log("marketplace_case_reconciliation_checked", cases);
       }
       errorCycles = 0;
 
-      if (result.claimed > 0 || outgoing.claimed > 0) {
+      if (result.claimed > 0 || outgoing.claimed > 0 || caseChecksPending) {
         emptyCycles = 0;
         log("batch_completed", {
           durationMs: Date.now() - startedAt,

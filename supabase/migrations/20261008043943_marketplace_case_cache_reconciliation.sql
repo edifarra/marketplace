@@ -21,6 +21,15 @@ create index marketplace_cases_reconciliation_open on public.marketplace_cases(m
      or (marketplace='shopee' and case_type='return' and status in ('REQUESTED','PROCESSING','ACCEPTED','JUDGING','SELLER_DISPUTE'));
 create index marketplace_case_sync_due on public.marketplace_case_sync_control(next_due_at,case_id);
 
+create function public.case_business_date(v jsonb) returns jsonb
+language plpgsql immutable security invoker set search_path=public,pg_temp as $$
+begin
+  if jsonb_typeof(v)='string' and v#>>'{}' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*(Z|[+-][0-9]{2}:[0-9]{2})$' then
+    begin return to_jsonb(to_char((v#>>'{}')::timestamptz at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'));
+    exception when others then return v; end;
+  end if;
+  return v;
+end $$;
 create function public.case_business_canonical(v jsonb) returns jsonb
 language plpgsql immutable security invoker set search_path=public,pg_temp as $$
 declare r jsonb; s text;
@@ -28,28 +37,41 @@ begin
   if v is null or v='null'::jsonb then return 'null'::jsonb; end if;
   if jsonb_typeof(v)='object' then
     select coalesce(jsonb_object_agg(key,clean),'{}') into r from (
-      select key,case_business_canonical(value) clean from jsonb_each(v)
-      where key not in ('observed_at','obtained_at','source','last_updated','date_last_updated','raw_value','deadline_raw','enrichment')
+      select key,case when key in ('value','deadline','at','official_at','date_created','claim_created_at','return_created_at','message_date','sent_at')
+        then case_business_date(case_business_canonical(value))
+        else case_business_canonical(value) end clean from jsonb_each(v)
     ) q where clean<>'null'::jsonb;
     return r;
   elsif jsonb_typeof(v)='array' then
-    select coalesce(jsonb_agg(clean order by clean::text),'[]') into r from
-      (select distinct case_business_canonical(value) clean from jsonb_array_elements(v)) q;
+    select coalesce(jsonb_agg(case_business_canonical(value) order by ordinality),'[]') into r
+      from jsonb_array_elements(v) with ordinality;
     return r;
   elsif jsonb_typeof(v)='string' then
-    s:=btrim(v#>>'{}'); if s='' then return 'null'::jsonb; end if;
-    if s ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}' then
-      begin return to_jsonb(to_char(s::timestamptz at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')); exception when others then return to_jsonb(s); end;
-    end if;
+    s:=v#>>'{}'; if s='' then return 'null'::jsonb; end if;
     return to_jsonb(s);
   end if;
   return v;
 end $$;
-create function public.case_observation_business(o jsonb) returns jsonb
+create function public.case_business_set(v jsonb) returns jsonb
 language sql immutable security invoker set search_path=public,pg_temp as $$
-  select case_business_canonical(jsonb_build_object('snapshot',o->'snapshot','deadlines',coalesce(o->'deadlines','[]'),
-    'actions',coalesce(o->'actions','[]'),'evidence',coalesce(o->'evidence','[]'),
-    'claim_messages',coalesce(o->'claim_messages','[]'),'claim_events',coalesce(o->'claim_events','[]')))
+  select coalesce(jsonb_agg(clean order by clean::text),'[]') from
+    (select case_business_canonical(value) clean from jsonb_array_elements(coalesce(v,'[]'))) q
+$$;
+create function public.case_observation_business(o jsonb) returns jsonb
+language plpgsql immutable security invoker set search_path=public,pg_temp as $$
+declare snapshot jsonb:=coalesce(o->'snapshot','{}')-'enrichment'; actions jsonb; deadlines jsonb; evidence jsonb;
+begin
+  select coalesce(jsonb_agg(value-array['observed_at','source','deadline_raw']),'[]') into actions from jsonb_array_elements(coalesce(o->'actions','[]'));
+  select coalesce(jsonb_agg(case when value->>'precision' in ('date','timestamp') and value->>'value' is not null then value-array['source','raw_value'] else value-'source' end),'[]')
+    into deadlines from jsonb_array_elements(coalesce(o->'deadlines','[]'));
+  select coalesce(jsonb_agg(case when jsonb_typeof(value->'metadata')='object' then jsonb_set(value,'{metadata}',(value->'metadata')-array['source','observed_at']) else value end),'[]')
+    into evidence from jsonb_array_elements(coalesce(o->'evidence','[]'));
+  if jsonb_typeof(snapshot->'current_claim')='object' then snapshot:=jsonb_set(snapshot,'{current_claim}',(snapshot->'current_claim')-array['last_updated','date_last_updated']); end if;
+  if snapshot ? 'current_actions' then snapshot:=jsonb_set(snapshot,'{current_actions}',case_business_set(actions)); end if;
+  return case_business_canonical(jsonb_build_object('snapshot',snapshot,'deadlines',case_business_set(deadlines),
+    'actions',case_business_set(actions),'evidence',case_business_set(evidence),
+    'claim_messages',case_business_set(o->'claim_messages'),'claim_events',case_business_set(o->'claim_events')));
+end
 $$;
 create function public.case_observation_fingerprint(o jsonb) returns text
 language sql immutable security invoker set search_path=public,pg_temp as $$
@@ -60,7 +82,7 @@ $$;
 alter function public.persist_marketplace_case(jsonb) rename to persist_marketplace_case_before_cache;
 create function public.persist_marketplace_case(p_observation jsonb) returns uuid
 language plpgsql security invoker set search_path=public,pg_temp as $$
-declare c marketplace_cases; old_hash text; new_hash text:=case_observation_fingerprint(p_observation); previous marketplace_case_observations; baseline jsonb; result uuid; item jsonb; fresh_evidence jsonb:='[]';
+declare c marketplace_cases; old_hash text; new_hash text:=case_observation_fingerprint(p_observation); previous marketplace_case_observations; baseline jsonb; result uuid; item jsonb; fresh_evidence jsonb:='[]'; prior_batch text;
 begin
   select * into c from marketplace_cases where marketplace=p_observation->>'marketplace'
     and marketplace_account_id=(p_observation->>'marketplace_account_id')::uuid and case_type=p_observation->>'case_type'
@@ -79,8 +101,8 @@ begin
           'deadlines',coalesce((select jsonb_agg(metadata) from marketplace_case_deadlines where observation_id=previous.id),'[]'),
           'actions',coalesce((select jsonb_agg(jsonb_build_object('code',action_code,'mandatory',mandatory,'deadline',deadline,'parameters',capabilities)) from marketplace_case_actions where observation_id=previous.id),'[]'),
           'evidence',coalesce((select jsonb_agg(jsonb_build_object('media_type',media_type,'reference',reference,'metadata',metadata)) from marketplace_case_evidence where observation_id=previous.id),'[]'),
-          'claim_messages',coalesce((select jsonb_agg(jsonb_build_object('key',external_message_id,'direction',direction,'text',text,'at',sent_at,'raw',raw_data)) from marketplace_conversation_messages where conversation_id=c.conversation_id and c.marketplace='mercado_livre'),'[]'),
-          'claim_events',coalesce((select jsonb_agg(jsonb_build_object('key',transition_key,'event_type',event_type,'state',state,'actor',actor,'official_at',official_at)) from marketplace_case_timeline where case_id=c.id and event_type<>'state_observed' and c.marketplace='mercado_livre'),'[]')) into baseline;
+          'claim_messages',coalesce((select jsonb_agg(jsonb_build_object('key',external_message_id,'direction',direction,'text',text,'sender_role',raw_data->>'sender_role','at',sent_at,'raw',raw_data)) from marketplace_conversation_messages where conversation_id=c.conversation_id and c.marketplace='mercado_livre'),'[]'),
+          'claim_events',coalesce((select jsonb_agg(jsonb_build_object('key',transition_key,'event_type',event_type,'state',state,'actor',actor,'official_at',official_at,'source',source)) from marketplace_case_timeline where case_id=c.id and event_type<>'state_observed' and c.marketplace='mercado_livre'),'[]')) into baseline;
         old_hash:=case_observation_fingerprint(baseline);
       end if;
     end if;
@@ -97,12 +119,15 @@ begin
     for item in select value from jsonb_array_elements(coalesce(p_observation->'evidence','[]')) loop
       if exists(select 1 from marketplace_case_evidence where case_id=c.id and media_type=item->>'media_type' and reference=item->>'reference') then
         update marketplace_case_evidence set metadata=item->'metadata' where case_id=c.id and media_type=item->>'media_type' and reference=item->>'reference'
-          and case_business_canonical(metadata) is distinct from case_business_canonical(item->'metadata');
+          and case_business_canonical(metadata-array['source','observed_at']) is distinct from case_business_canonical((item->'metadata')-array['source','observed_at']);
       else fresh_evidence:=fresh_evidence||jsonb_build_array(item); end if;
     end loop;
     p_observation:=jsonb_set(p_observation,'{evidence}',fresh_evidence);
   end if;
+  prior_batch:=current_setting('app.case_revision_batch',true);
+  if p_observation->>'source' in ('ml:claim_detail','shopee:return_detail') then perform set_config('app.case_revision_batch','1',true); end if;
   result:=persist_marketplace_case_before_cache(p_observation);
+  perform set_config('app.case_revision_batch',coalesce(prior_batch,''),true);
   if p_observation->>'source' in ('ml:claim_detail','shopee:return_detail') then
     insert into marketplace_case_sync_control(case_id,business_hash) values(result,new_hash)
       on conflict(case_id) do update set business_hash=excluded.business_hash
@@ -118,6 +143,9 @@ create function public.bump_marketplace_case_cache_revision() returns trigger
 language plpgsql security invoker set search_path=public,pg_temp as $$
 declare target uuid; related uuid;
 begin
+  if current_setting('app.case_revision_batch',true)='1' then
+    if TG_OP='DELETE' then return old; end if; return new;
+  end if;
   if TG_TABLE_NAME='outgoing_marketplace_activities' then
     if coalesce(new.activity_type,old.activity_type)<>'claim_action' then
       if TG_OP='DELETE' then return old; end if; return new;
@@ -176,32 +204,6 @@ language sql stable security invoker set search_path=public,pg_temp as $$
         and coalesce(coalesce(q.raw_payload->'notification',q.raw_payload)->>'claim_id',substring(coalesce(q.raw_payload->'notification',q.raw_payload)->>'resource' from '/claims/([0-9]+)'))=mc.external_case_id
         and coalesce(q.raw_payload->'notification',q.raw_payload)->>'user_id'=coalesce(a.seller_id::text,a.account_id::text))))
 $$;
-create function public.enqueue_due_marketplace_cases(p_limit integer default 20) returns integer
-language plpgsql security invoker set search_path=public,pg_temp as $$
-declare c record; n integer:=0;
-begin
-  -- Single short scheduler lock; queue IDs dedupe concurrent callers and worker restarts.
-  if not pg_try_advisory_xact_lock(18191013) then return 0; end if;
-  for c in select mc.id,mc.marketplace,mc.marketplace_account_id,mc.external_case_id,mc.order_id from marketplace_cases mc join config_marketplace_accounts a on a.id=mc.marketplace_account_id
-    left join marketplace_case_sync_control s on s.case_id=mc.id
-    where a.active and (
-      (mc.marketplace='mercado_livre' and mc.case_type='claim' and mc.status in ('open','opened','reopened')) or
-      (mc.marketplace='shopee' and mc.case_type='return' and mc.status in ('REQUESTED','PROCESSING','ACCEPTED','JUDGING','SELLER_DISPUTE')))
-    and (s.next_due_at is null or s.next_due_at<=now()) and (s.lease_until is null or s.lease_until<now())
-    and not exists(select 1 from marketplace_activities q where q.source_key='case_reconcile:'||mc.id::text and q.status in ('queued','retry','processing'))
-    and not marketplace_case_has_pending_event(mc.id)
-    order by coalesce(s.next_due_at,'-infinity'),mc.marketplace_account_id,mc.id limit greatest(1,least(p_limit,100))
-  loop
-    perform enqueue_marketplace_activity_idempotently(c.marketplace,'case_reconcile',
-      'case_reconcile:'||c.id::text||':'||floor(extract(epoch from now())/3600)::text,c.order_id,
-      'Reconciliação horária do caso '||c.external_case_id,'queued','case_reconcile:'||c.id::text,
-      jsonb_build_object('case_reconcile_id',c.id),null,now(),null);
-    insert into marketplace_case_sync_control(case_id,next_due_at) values(c.id,date_trunc('hour',now())+interval '60 minutes')
-      on conflict(case_id) do update set next_due_at=excluded.next_due_at;
-    n:=n+1;
-  end loop;
-  return n;
-end $$;
 -- Keep safety jobs behind actual notifications; retain the existing queue claim/retry semantics.
 create or replace function public.claim_marketplace_activity_queue(p_limit integer default 10)
 returns setof public.marketplace_activities language plpgsql security invoker set search_path=public,pg_temp as $$
@@ -214,6 +216,65 @@ begin
   ) update marketplace_activities a set status='processing',attempt_count=a.attempt_count+1,
     processing_started_at=now(),locked_at=now(),processing_error=null from candidates where a.id=candidates.id returning a.*;
 end $$;
+-- Lightweight safety reads. These RPCs never mutate case business data: changed
+-- observations and failed reads are handed to the existing queue atomically.
+create function public.claim_marketplace_case_checks(p_owner uuid,p_limit integer default 20) returns jsonb
+language plpgsql security invoker set search_path=public,pg_temp as $$
+declare c record; acquired uuid; results jsonb:='[]';
+begin
+  for c in select mc.id,mc.marketplace,mc.marketplace_account_id,mc.external_case_id,mc.order_id,mc.case_type,to_jsonb(a) account
+    from marketplace_cases mc join config_marketplace_accounts a on a.id=mc.marketplace_account_id
+    left join marketplace_case_sync_control s on s.case_id=mc.id
+    where a.active and ((mc.marketplace='mercado_livre' and mc.case_type='claim' and mc.status in ('open','opened','reopened'))
+      or (mc.marketplace='shopee' and mc.case_type='return' and mc.status in ('REQUESTED','PROCESSING','ACCEPTED','JUDGING','SELLER_DISPUTE')))
+    and (s.next_due_at is null or s.next_due_at<=now()) and (s.lease_until is null or s.lease_until<now())
+    and not exists(select 1 from marketplace_activities q where q.source_key='case_reconcile:'||mc.id::text and q.status in ('queued','retry','processing'))
+    and not marketplace_case_has_pending_event(mc.id)
+    order by coalesce(s.next_due_at,'-infinity'),mc.id limit greatest(1,least(p_limit,20)) for update of mc skip locked
+  loop
+    acquired:=null;
+    insert into marketplace_case_sync_control(case_id,lease_owner,lease_until) values(c.id,p_owner,now()+interval '10 minutes')
+      on conflict(case_id) do update set lease_owner=excluded.lease_owner,lease_until=excluded.lease_until
+      where marketplace_case_sync_control.lease_until is null or marketplace_case_sync_control.lease_until<now()
+      returning case_id into acquired;
+    if acquired is not null then results:=results||jsonb_build_array(to_jsonb(c)); end if;
+  end loop;
+  return results;
+end $$;
+create function public.finish_marketplace_case_checks(p_owner uuid,p_results jsonb) returns jsonb
+language plpgsql security invoker set search_path=public,pg_temp as $$
+declare r jsonb; c marketplace_cases; s marketplace_case_sync_control; hash text; job jsonb; checked integer:=0; queued integer:=0;
+begin
+  if jsonb_array_length(p_results)>5 then raise exception 'case_check_batch_too_large'; end if;
+  for r in select value from jsonb_array_elements(p_results) loop
+    select * into s from marketplace_case_sync_control where case_id=(r->>'case_id')::uuid for update;
+    if s.lease_owner is distinct from p_owner or s.lease_until<now() then continue; end if;
+    select * into strict c from marketplace_cases where id=s.case_id;
+    hash:=null;
+    if r ? 'observation' then
+      job:=r->'observation';
+      if job->>'marketplace' is distinct from c.marketplace or (job->>'marketplace_account_id')::uuid is distinct from c.marketplace_account_id
+        or job->>'external_case_id' is distinct from c.external_case_id or job->>'case_type' is distinct from c.case_type then raise exception 'case_check_identity_mismatch'; end if;
+      hash:=case_observation_fingerprint(job);
+      if (job->>'official_at')::timestamptz<c.official_updated_at or (job->>'order_at')::timestamptz<c.snapshot_order_at then hash:=s.business_hash; end if;
+    end if;
+    if hash is distinct from s.business_hash or r ? 'error' then
+      perform enqueue_marketplace_activity_idempotently(c.marketplace,'case_reconcile',
+        'case_check:'||c.id::text||':'||p_owner::text||':'||coalesce(hash,'error'),c.order_id,'Atualização detectada pela reconciliação',
+        'queued','case_reconcile:'||c.id::text,
+        jsonb_strip_nulls(jsonb_build_object('case_reconcile_id',c.id,'account_id',c.marketplace_account_id,'case_observation',r->'observation')),
+        null,now(),null);
+      queued:=queued+1;
+    end if;
+    update marketplace_case_sync_control set lease_owner=null,lease_until=null,
+      last_checked_at=case when r ? 'observation' then now() else last_checked_at end,
+      next_due_at=now()+interval '60 minutes',
+      failures=case when r ? 'error' then failures+1 else 0 end,
+      last_error=case when r ? 'error' then 'case_check_failed' else null end where case_id=c.id;
+    checked:=checked+1;
+  end loop;
+  return jsonb_build_object('checked',checked,'queued',queued);
+end $$;
 do $$ declare t text; f record; begin
   foreach t in array array['marketplace_case_sync_control','marketplace_case_cache_revision'] loop
     execute format('alter table public.%I enable row level security',t);
@@ -221,8 +282,8 @@ do $$ declare t text; f record; begin
     execute format('grant select,insert,update,delete on public.%I to service_role',t);
   end loop;
   for f in select oid::regprocedure signature from pg_proc where pronamespace='public'::regnamespace and proname in
-    ('case_business_canonical','case_observation_business','case_observation_fingerprint','persist_marketplace_case_before_cache','persist_marketplace_case','bump_marketplace_case_cache_revision',
-     'begin_marketplace_case_refresh','finish_marketplace_case_refresh','marketplace_case_has_pending_event','enqueue_due_marketplace_cases','claim_marketplace_activity_queue') loop
+    ('case_business_date','case_business_canonical','case_business_set','case_observation_business','case_observation_fingerprint','persist_marketplace_case_before_cache','persist_marketplace_case','bump_marketplace_case_cache_revision','claim_marketplace_case_checks','finish_marketplace_case_checks',
+     'begin_marketplace_case_refresh','finish_marketplace_case_refresh','marketplace_case_has_pending_event','claim_marketplace_activity_queue') loop
     execute format('revoke all on function %s from public,anon,authenticated',f.signature);
     execute format('grant execute on function %s to service_role',f.signature);
   end loop;

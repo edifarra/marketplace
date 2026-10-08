@@ -1,29 +1,31 @@
-import { getMercadoLivreResource, MarketplaceAccountConfig } from "./mercado-livre";
+import { getValidMercadoLivreAccessToken, mlGet, MarketplaceAccountConfig } from "./mercado-livre";
 import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { claimBuyerId, claimSeller } from "./marketplace-claim-domain";
 
 export async function loadMercadoLivreClaimBundle(id: string, account: MarketplaceAccountConfig,
-  get: (path: string) => Promise<Record<string, any>> = path => getMercadoLivreResource(path, account, AbortSignal.timeout(20_000))) {
+  get?: (path: string) => Promise<Record<string, any>>) {
+  let token: Promise<string> | undefined;
+  const read = get || (async (path: string) => mlGet(path, await (token ||= getValidMercadoLivreAccessToken(account)), {}, AbortSignal.timeout(20_000)));
   const root = `/post-purchase/v1/claims/${encodeURIComponent(id)}`;
-  const detail = await get(root);
+  const detail = await read(root);
   if (String(detail.id) !== id) throw new Error("Claim retornado não corresponde ao evento.");
   const [reason,reputation,messages,actions,statuses,resolutions] = await Promise.all([
-    detail.reason_id ? get(`/post-purchase/v1/claims/reasons/${encodeURIComponent(detail.reason_id)}`) : Promise.resolve({}),
-    get(`${root}/affects-reputation`),get(`${root}/messages`),get(`${root}/actions-history`),get(`${root}/status-history`),get(`${root}/expected-resolutions`)
+    detail.reason_id ? read(`/post-purchase/v1/claims/reasons/${encodeURIComponent(detail.reason_id)}`) : Promise.resolve({}),
+    read(`${root}/affects-reputation`),read(`${root}/messages`),read(`${root}/actions-history`),read(`${root}/status-history`),read(`${root}/expected-resolutions`)
   ]);
   const sellerId=String(account.seller_id || account.account_id || "");
   const buyerId=claimBuyerId(detail);
   let buyer: Record<string,any> | null=null;
   if(detail.resource === "order" && buyerId && claimSeller(detail,sellerId)) {
-    const order=await get(`/orders/${encodeURIComponent(String(detail.resource_id))}`);
+    const order=await read(`/orders/${encodeURIComponent(String(detail.resource_id))}`);
     if(String(order.id)!==String(detail.resource_id) || String(order.seller?.id)!==sellerId || String(order.buyer?.id)!==buyerId) throw new Error("Identidade do pedido diverge do claim.");
     buyer={id:buyerId,site_id:detail.site_id,nickname:order.buyer.nickname || null,
       display_name:[order.buyer.first_name,order.buyer.last_name].filter(Boolean).join(" ") || order.buyer.nickname || null,
       billing_info_id:order.buyer.billing_info?.id || null,products:(order.order_items || []).map((i:any)=>({title:i.item?.title,quantity:i.quantity,amount:i.unit_price})),
       order_amount:order.total_amount,paid_amount:order.paid_amount,currency:order.currency_id};
     if(buyer.billing_info_id && detail.site_id) {
-      const billing=await get(`/orders/billing-info/${encodeURIComponent(detail.site_id)}/${encodeURIComponent(buyer.billing_info_id)}`);
+      const billing=await read(`/orders/billing-info/${encodeURIComponent(detail.site_id)}/${encodeURIComponent(buyer.billing_info_id)}`);
       if(String(billing.buyer?.cust_id)!==buyerId || String(billing.seller?.cust_id)!==sellerId) throw new Error("Identidade fiscal diverge do pedido.");
       const b=billing.buyer.billing_info || {};
       buyer={...buyer,legal_name:b.name || null,document_type:b.identification?.type || null,document_number:b.identification?.number || null,
@@ -31,7 +33,7 @@ export async function loadMercadoLivreClaimBundle(id: string, account: Marketpla
     }
   }
   const associated=Array.isArray(detail.related_entities) && detail.related_entities.some((e:any)=>e === "return" || e?.type === "return");
-  const ret=associated ? await get(`/post-purchase/v2/claims/${encodeURIComponent(id)}/returns`) : null;
+  const ret=associated ? await read(`/post-purchase/v2/claims/${encodeURIComponent(id)}/returns`) : null;
   // Deliberately no available-offers request here: that resource belongs to the explicit click only.
   return {...detail,__case_enrichment:{reason,reputation,messages,actions,statuses,resolutions,buyer,return:ret}};
 }

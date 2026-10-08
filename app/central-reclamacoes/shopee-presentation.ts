@@ -13,23 +13,32 @@ function stage(state: Row): number | null {
 export function shopeeTimeline(row: Row, events: Row[], deadlines: Row[] = []) {
   // A default logistics state alone can also appear on refund-only requests.
   const buyerShipping = deadlines.some(d => d.purpose === "buyer_return_shipping" && d.responsible === "buyer" && d.value);
-  const current = stage({ ...row, logistics_status: row.reverse_logistics?.status, buyer_shipping_required: buyerShipping });
+  const sellerDue = deadlines.some(d => d.purpose === "seller_response" && d.responsible === "seller" && d.value);
+  const validation = row.status === "PROCESSING" && row.validation_type === "seller_validation" && row.reverse_logistics?.status === "LOGISTICS_DELIVERY_DONE" && sellerDue;
+  const current = stage({ ...row, stage: row.stage || (validation ? "seller_validation" : null), logistics_status: row.reverse_logistics?.status, buyer_shipping_required: buyerShipping });
   const known = new Set<number>();
-  const dates = new Map<number, string>();
+  const dates = new Map<number, { at: string; label: string }>();
   for (const event of events) {
     const index = stage(event.state || {});
     if (index == null) continue;
     known.add(index);
-    // Local observation time is never presented as the official transition date.
-    if (event.official_at && Number.isFinite(Date.parse(event.official_at)) &&
-        (!dates.has(index) || Date.parse(event.official_at) < Date.parse(dates.get(index)!))) dates.set(index, event.official_at);
+    // Old state_observed.official_at came from detail.update_time, not stage occurrence.
   }
+  const milestones: Row[] = Array.isArray(row.return_milestones) ? row.return_milestones : [];
+  const first = (kind: string) => milestones.filter(m => m.kind === kind && m.source === "shopee:push29" && Number.isFinite(Date.parse(m.at))).sort((a,b) => Date.parse(a.at)-Date.parse(b.at))[0];
+  const registered = first("request_registered"), posted = first("buyer_posted"), pending = first("buyer_shipping_pending"), finalized = first("finalized");
+  if (row.return_created_at && Number.isFinite(Date.parse(row.return_created_at))) dates.set(0, { at: row.return_created_at, label: "Solicitado em" });
+  else if (registered) dates.set(0, { at: registered.at, label: "Notificação da solicitação" });
+  if (dates.has(0)) known.add(0);
+  if (posted) { known.add(1); dates.set(1, { at: posted.at, label: "Postagem confirmada em" }); }
+  else if (pending) dates.set(1, { at: pending.at, label: "Aguardando postagem desde" });
+  if (finalized) dates.set(3, { at: finalized.at, label: "Finalizado em" });
   return { ambiguous: current == null, steps: labels.map((label, index) => {
     let progress: Progress = "pending";
     if (index === current) progress = "current";
-    else if ((index === 0 && (current != null || known.has(0))) || (known.has(index) && current != null && index < current)) progress = "complete";
+    else if ((index === 0 && (current != null || known.has(0))) || (index === 1 && posted && current !== 1) || (known.has(index) && current != null && index < current)) progress = "complete";
     else if (current == null || (current > index)) progress = "unknown";
-    return { label, progress, date: dates.get(index) || null };
+    return { label, progress, date: dates.get(index)?.at || null, dateLabel: dates.get(index)?.label || null };
   }) };
 }
 export function evidenceUrl(reference: unknown): string | null {

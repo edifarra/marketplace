@@ -6,7 +6,7 @@
 .notice { padding:12px 14px; background:#f8fafc; color:#667085; border-radius:9px; font-size:13px; }
 .list { display:grid; overflow-x:auto; }
 .case { border-bottom:1px solid #eaecf0; min-width:0; }
-.caseRow { position:relative; width:100%; display:grid; grid-template-columns:140px minmax(290px,1.5fr) minmax(180px,1fr) minmax(220px,1fr); gap:18px; padding:22px 26px 22px 0; text-align:left; border:0; border-radius:0; color:inherit; background:white; align-items:start; cursor:pointer; font-size:12px; }
+.caseRow { position:relative; width:100%; display:grid; grid-template-columns:minmax(0,140px) minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr); gap:18px; padding:22px 26px 22px 0; text-align:left; border:0; border-radius:0; color:inherit; background:white; align-items:start; cursor:pointer; font-size:12px; }
 .caseRow:hover,.caseRow[aria-expanded=true] { background:#f8fafc; }
 .caseRow:focus-visible { outline:2px solid #2e90fa; outline-offset:-2px; }
 .marketplace { display:flex; align-items:center; gap:8px; font-size:12px; }
@@ -22,13 +22,20 @@
 .chevron { position:absolute; right:4px; top:28px; font-size:22px; color:#667085; transition:transform .18s; }.rotated { transform:rotate(180deg); }
 .expansion { padding:20px; background:#f8fafc; border-top:1px solid #e4e7ec; animation:reveal .18s ease-out; }
 @keyframes reveal { from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)} }
-.drilldown { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start; }
+.drilldown { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:stretch; }
 .chatPanel,.detailCard { padding:16px; border:1px solid #e4e7ec; border-radius:10px; background:white; min-width:0; }
 .chatPanel h2,.detailCard h2 { margin:0 0 16px; font-size:16px; }
-.chatScroll { height:620px; overflow-y:auto; display:grid; align-content:start; gap:12px; padding:12px; background:#f8fafc; border-radius:8px; overscroll-behavior:contain; }
+.chatScroll { flex:1 1 0; height:0; min-height:14rem; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding:12px; background:#f8fafc; border-radius:8px; overscroll-behavior:contain; }
 .messageText { white-space:pre-wrap; overflow-wrap:anywhere; margin-top:5px; }
 .readOnly { color:#667085; font-size:12px; margin-bottom:0; }
-.rightColumn { display:grid; gap:16px; }
+.rightColumn { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.rightColumn>.detailCard { flex-shrink:0; }
+.rightColumn>.timelinePanel { flex:1 0 auto; }
+.chatPanel { display:flex; flex-direction:column; min-height:0; }
+.chatScroll>* { flex-shrink:0; }
+.detailHeader { grid-column:1 / -1; min-width:0; overflow-wrap:anywhere; }
+.detailHeader h2 { margin:0; font-size:16px; }
+.detailHeader p { margin-bottom:0; }
 .generalFields { display:grid; gap:8px; font-size:12px; margin:0; }
 .generalFields>div { display:grid; grid-template-columns:140px minmax(0,1fr); gap:9px; }
 .generalFields dt { color:#667085; }.generalFields dd { margin:0; overflow-wrap:anywhere; }
@@ -42,12 +49,11 @@
 .modalBackdrop { position:fixed; inset:0; z-index:1000; background:rgba(16,24,40,.5); display:grid; place-items:center; padding:24px; }
 .modal { background:white; border-radius:12px; padding:24px; width:min(620px,100%); max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px #10182833; }
 .modal select { display:block; width:100%; margin-top:8px; }
-@media(max-width:750px) { .drilldown { grid-template-columns:minmax(0,1fr); }.chatScroll { height:560px; } }
+@media(max-width:750px) { .drilldown { grid-template-columns:minmax(0,1fr); }.chatScroll { flex:none; height:auto; max-height:34rem; min-height:0; } }
 @media(prefers-reduced-motion:reduce) { .expansion { animation:none; }.chevron { transition:none; } }
 
 .fullWidth { grid-column:1 / -1; }
 
-.leftColumn { display:grid; gap:16px; min-width:0; }
 .timelinePanel :where(p,span,small,time,li,div) { font-weight:400; }
 .compactTimeline { list-style:none; padding:0; margin:0; display:grid; }
 .compactTimeline li { display:flex; gap:10px; padding:0 0 16px; color:#667085; position:relative; }
@@ -58,12 +64,16 @@
 .compactTimeline li[data-progress=current] { color:#c45500; }
 .compactTimeline li[data-progress=current] .stepDot { background:#fff3e6; }
 .compactTimeline li[data-progress=complete] { color:#027a48; }
-.eventTimeline { display:grid; gap:12px; }
+.eventTimeline { display:grid; align-content:start; gap:12px; max-height:28rem; overflow-y:auto; overscroll-behavior:contain; padding-right:6px; }
 .timelineEvent { display:grid; grid-template-columns:115px minmax(0,1fr); gap:12px; font-size:12px; border-left:2px solid #d0d5dd; padding-left:10px; }
 .timelineEvent time { color:#667085; }
 .timelineEvent>div { display:grid; gap:4px; overflow-wrap:anywhere; }
 .evidenceGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
 .evidenceGrid img,.evidenceGrid video { width:100%; height:120px; object-fit:contain; border-radius:8px; background:#f2f4f7; }
 .evidenceGrid a { display:block; font-size:12px; }
-@media(max-width:1000px) { .caseRow { grid-template-columns:minmax(0,1fr) minmax(0,2fr); }.drilldown { grid-template-columns:minmax(0,1fr); } }
-@media(max-width:550px) { .caseRow { grid-template-columns:minmax(0,1fr); padding-left:8px; }.expansion { padding:10px; }.generalFields>div { grid-template-columns:minmax(0,1fr); gap:3px; }.timelineEvent { grid-template-columns:minmax(0,1fr); }.chatScroll { height:420px; } }
+@media(max-width:1000px) { .caseRow { grid-template-columns:minmax(0,1fr) minmax(0,2fr); } }
+@media(max-width:550px) { .caseRow { grid-template-columns:minmax(0,1fr); padding-left:8px; }.expansion { padding:10px; }.generalFields>div { grid-template-columns:minmax(0,1fr); gap:3px; }.timelineEvent { grid-template-columns:minmax(0,1fr); }.chatScroll { max-height:26rem; } }
+
+.actionButtons { display:flex; flex-wrap:nowrap; gap:8px; align-items:stretch; }
+.actionButtons button { flex:1 1 0; min-width:0; border-radius:10px; white-space:normal; overflow-wrap:anywhere; padding:10px 8px; }
+@media(max-width:750px) { .actionButtons { flex-wrap:wrap; }.actionButtons button { flex-basis:160px; } }

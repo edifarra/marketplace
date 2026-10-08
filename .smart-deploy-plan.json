@@ -8,10 +8,18 @@
     "app/central-reclamacoes/case-grid.tsx",
     "app/central-reclamacoes/case-timeline.tsx",
     "app/central-reclamacoes/cases.module.css",
+    "app/central-reclamacoes/claim-controls.tsx",
+    "app/central-reclamacoes/shopee-actions.tsx",
     "app/central-reclamacoes/shopee-presentation.ts",
+    "docs/central-reclamacoes-auditoria-shopee.md",
     "docs/central-reclamacoes-layout-local.md",
     "lib/marketplace-case-detail.ts",
-    "tests/marketplace-case-layout.test.ts"
+    "lib/marketplace-case-domain.ts",
+    "lib/shopee-return-milestones.ts",
+    "scripts/preview-marketplace-case-layout.ts",
+    "tests/marketplace-case-layout.test.ts",
+    "tests/marketplace-conversation-scope.test.ts",
+    "tests/shopee-return-audit.test.ts"
   ],
   "dependenciesChanged": false
 }

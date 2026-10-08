@@ -1,5 +1,6 @@
 type Row = Record<string, any>;
 import { claimOfficialEvents, officialClaimMessages } from "./marketplace-claim-timeline";
+import { shopeeReturnPushMilestones } from "./shopee-return-milestones";
 export type CaseObservation = {
   marketplace: string; marketplace_account_id: string; case_type: string; external_case_id: string;
   source: string; source_key: string; observed_at: string; official_at: string | null; order_at: string;
@@ -96,6 +97,11 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
     enrichment: { state: detail ? "partial" : "incomplete", obtained_at: detail ? observed : null, source, error: null }
   };
   snapshot.capabilities_known = shopee ? Array.isArray(d.follow_up_action_list) : Array.isArray(seller?.available_actions);
+  if (shopee) {
+    if (detail && officialDate(d.create_time)) snapshot.return_created_at = officialDate(d.create_time);
+    const milestones = shopeeReturnPushMilestones(p);
+    if (milestones.length) snapshot.return_milestones = milestones;
+  }
   const evidence: Row[] = [];
   // These are references from a return detail, not attachments copied from Chat.
   if (shopee && detail && Array.isArray(d.image)) {
@@ -103,6 +109,17 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
       if (typeof reference === "string" && reference && !/access_token|refresh_token/i.test(reference)) {
         evidence.push({ media_type: "image", reference, metadata: { source, observed_at: observed } });
       }
+    }
+  }
+  // Real detail response verified: buyer_videos[].video_url + thumbnail_url.
+  if (shopee && detail && Array.isArray(d.buyer_videos)) {
+    for (const video of d.buyer_videos) {
+      const safeUrl = (value: unknown) => {
+        if (typeof value !== "string" || /access_token|refresh_token/i.test(value)) return null;
+        try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password ? url.href : null; } catch { return null; }
+      };
+      const reference = safeUrl(video?.video_url);
+      if (reference) evidence.push({ media_type: "video", reference, metadata: { source, observed_at: observed, thumbnail_url: safeUrl(video.thumbnail_url) } });
     }
   }
   // No automatic inference from open/closed or from Shopee reputation.

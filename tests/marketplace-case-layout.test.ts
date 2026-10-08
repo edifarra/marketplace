@@ -5,6 +5,7 @@ import { shopeeTimeline, evidenceUrl } from "../app/central-reclamacoes/shopee-p
 import { elements, loadPage, textContent, memoryDatabase } from "./helpers/page-harness";
 import * as display from "../app/central-reclamacoes/case-display";
 import * as presentation from "../app/central-reclamacoes/case-presentation";
+const hooks = { useState: (initial: any) => [initial, () => {}], useRef: () => ({ current: null }), useLayoutEffect: () => {} };
 import { loadCaseDetail } from "../lib/marketplace-case-detail";
 
 test("detail reuses the existing read to expose refund, currency and stage without remote calls", async () => {
@@ -36,11 +37,11 @@ test("Shopee keeps ambiguous and skipped stages unconfirmed, never assumes compl
   assert.equal(steps[1].progress, "complete");
   assert.equal(steps[1].date, null);
   assert.equal(steps[2].progress, "current");
-  assert.equal(shopeeTimeline({ status: "REQUESTED" }, [{ state: { status: "REQUESTED" }, official_at: "2026-10-01T00:00:00Z" }]).steps[0].date, "2026-10-01T00:00:00Z");
+  assert.equal(shopeeTimeline({ status: "REQUESTED" }, [{ state: { status: "REQUESTED" }, official_at: "2026-10-01T00:00:00Z" }]).steps[0].date, null);
 });
 
 test("both timeline renders contain no bold nodes and ML preserves all event information", () => {
-  const { CaseTimeline } = loadPage("app/central-reclamacoes/case-timeline.tsx", { "./case-display": display, "./case-presentation": presentation, "./shopee-presentation": { shopeeTimeline } });
+  const { CaseTimeline } = loadPage("app/central-reclamacoes/case-timeline.tsx", { react: hooks, "./case-display": display, "./case-presentation": presentation, "./shopee-presentation": { shopeeTimeline } });
   for (const marketplace of ["shopee", "mercado_livre"]) {
     const tree = CaseTimeline({ row: { marketplace, status: "REQUESTED" }, events: [{ id: "1", event_type: "Produto entregue", official_at: "2026-10-01T00:00:00Z", state: { responsible: "seller" } }, { id: "2", event_type: "Reclamação aberta", state: {} }] });
     const nodes = elements(tree);
@@ -52,7 +53,7 @@ test("both timeline renders contain no bold nodes and ML preserves all event inf
 
 test("evidence previews use safe URLs; images enlarge and videos never autoplay", () => {
   for (const value of ["javascript:alert(1)", "http://example.com/a.jpg", "opaque-reference", "https://user:pass@example.com/a", "https://example.com/?access_token=secret"]) assert.equal(evidenceUrl(value), null);
-  const { CaseEvidence } = loadPage("app/central-reclamacoes/case-evidence.tsx", { "./shopee-presentation": { evidenceUrl } });
+  const { CaseEvidence } = loadPage("app/central-reclamacoes/case-evidence.tsx", { react: hooks, "./shopee-presentation": { evidenceUrl } });
   const nodes = elements(CaseEvidence({ evidence: [{ id: "1", media_type: "image", reference: "https://example.com/photo.jpg" }, { id: "2", media_type: "video", reference: "https://example.com/video.mp4" }, { id: "3", media_type: "image", reference: "opaque" }] }));
   assert.ok(nodes.some(n => n.type === "img"));
   const video = nodes.find(n => n.type === "video");
@@ -65,11 +66,16 @@ test("actual detail keeps chat history left and timeline after buyer on right, p
   const mocks = { react: { useState: (initial: any) => [initial === null ? data : initial, () => {}], useRef: () => ({ current: null }), useEffect: () => {}, useLayoutEffect: () => {}, useCallback: (fn: any) => fn }, "./case-display": display, "./case-presentation": presentation, "@/lib/marketplace-case-context": {}, "./cases.module.css": { __esModule: true, default: new Proxy({}, { get: (_t, key) => key }) } };
   const { CaseDetail } = loadPage("app/central-reclamacoes/case-grid.tsx", mocks);
   const tree = CaseDetail({ id: "case-1" }); const nodes = elements(tree);
-  const right = nodes.find(n => n.props.className === "rightColumn"); const left = nodes.find(n => n.props.className === "leftColumn");
+  const right = nodes.find(n => n.props.className === "rightColumn"); const left = nodes.find(n => n.props.className === "chatPanel");
   assert.ok(right); assert.ok(left);
+  assert.equal(nodes.some(n => n.props.label === "Resultado solicitado"), false);
+  const history = nodes.find(n => n.props["data-panel"] === "previous-history");
+  assert.ok(history); assert.equal(elements(history).filter(n => n.type === "a").length, 1);
+  assert.ok(textContent(history).includes("Históricos anteriores relacionados ao Pedido"));
+  assert.ok(nodes.some(n => n.props["data-panel"] === "actions"));
   assert.ok(elements(right).some(n => n.type === "test-component:CaseTimeline"));
   assert.equal(elements(left).some(n => n.type === "test-component:CaseTimeline"), false);
-  for (const label of ["Reembolso solicitado", "Resultado solicitado", "Motivo da devolução", "Descrição do comprador"]) assert.ok(elements(left).some(n => n.props.label === label));
+  for (const label of ["Reembolso solicitado", "Motivo da devolução", "Descrição do comprador"]) assert.ok(elements(left).some(n => n.props.label === label));
   for (const label of ["ID do Caso", "Código de retorno", "Modalidade de envio"]) assert.ok(elements(right).some(n => n.props.label === label));
   data.row.marketplace = "mercado_livre";
   const ml = elements(CaseDetail({ id: "case-1" }));

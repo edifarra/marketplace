@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { assertChatReplyChannel } from "../lib/marketplace-conversation-scope";
 import { prepareConversationRows } from "../lib/marketplace-conversation-view";
 import { latestConversationCursor, mergeConversationDelta, takeConversationChangeBatch } from "../lib/marketplace-conversation-delta";
-import { caseContextMessages, safeClaimConversation, loadCaseDetail } from "../lib/marketplace-case-detail";
+import { safeClaimConversation, loadCaseDetail } from "../lib/marketplace-case-detail";
 import { normalizeCase } from "../lib/marketplace-case-domain";
 
 const view = { tab: "all" as const, marketplace: "", store: "", status: "", sla: "", search: "", from: "", to: "", unread: "" };
@@ -36,11 +36,6 @@ test("polling removes a previously leaked case, advances its cursor and retains 
   const batch = takeConversationChangeBatch([claim({ updated_at: "2026-10-07T13:00:00Z" })], 100);
   assert.equal(latestConversationCursor(batch.rows).updatedAt, "2026-10-07T13:00:00Z");
   assert.deepEqual(mergeConversationDelta([...rows, leaked], [], ["claim"], view, 25).map(r => r.id), ["normal"]);
-});
-test("previous history is context; later normal messages are never classified as case messages", () => {
-  assert.deepEqual(caseContextMessages(normal().messages, "2026-10-07T00:00:00Z").map(m => m.id), ["before"]);
-  assert.equal(caseContextMessages(normal().messages, null).length, 2);
-  assert.equal(caseContextMessages([{ sent_at: null }], "2026-10-07T00:00:00Z").length, 0);
 });
 test("Shopee return event does not convert the buyer conversation, even when the same conversation ID is reused", () => {
   const event = normalizeCase({ id: "event", marketplace: "shopee", raw_payload: { code: 29, data: { return_sn: "R1", order_sn: "order" } } }, "account")!;
@@ -78,7 +73,7 @@ test("initial and incremental hydration use the same allowlist; event cursor inc
   assert.doesNotMatch(sql.slice(sql.indexOf("with watermark"), sql.indexOf("), individual")), /conversation_type/);
 });
 
-test("case detail reads official messages and prior context separately, with account/order boundaries", async () => {
+test("case detail reads only official messages, without an automatic prior-history preview", async () => {
   const calls: Array<{ table: string; filters: any[] }> = [];
   const db: any = { from(table: string) {
     const call = { table, filters: [] as any[] }; calls.push(call);
@@ -95,9 +90,11 @@ test("case detail reads official messages and prior context separately, with acc
   const detail = await loadCaseDetail("case", db);
   assert.equal(detail?.messageScope, "case");
   assert.deepEqual(detail?.messages.map(m => m.id), ["official"]);
-  assert.deepEqual(detail?.contextMessages.map(m => m.id), ["before"]);
+  assert.equal("contextMessages" in detail!, false);
+  assert.equal(calls.filter(c => c.table === "marketplace_conversation_messages").length, 1);
   for (const call of calls.filter(c => c.table === "marketplace_conversations")) {
     assert.ok(call.filters.some(f => f[0] === "eq" && f[1] === "marketplace_account_id" && f[2] === "account"));
   }
-  assert.ok(calls.some(c => c.filters.some(f => f[0] === "lt" && f[1] === "sent_at")));
+  assert.equal(calls.some(c => c.filters.some(f => f[0] === "lt" && f[1] === "sent_at")), false);
+  assert.equal(calls.some(c => c.table === "marketplace_conversations" && c.filters.some(f => f[0] === "in")), false);
 });

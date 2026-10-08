@@ -18,6 +18,7 @@ const { ClaimControls } = loadPage("app/central-reclamacoes/claim-controls.tsx",
 let fixture: any;
 const { CaseDetail } = loadPage("app/central-reclamacoes/case-grid.tsx", { ...shared,
   react: { ...hooks, useState: (initial: any) => [initial === null ? fixture : initial, () => {}] },
+  "./case-detail-cache": { detailCacheKey: () => "fixture" },
   "./case-timeline": { CaseTimeline }, "./case-evidence": { CaseEvidence }, "./shopee-actions": { ShopeeActions }, "./claim-controls": { ClaimControls }, "@/lib/marketplace-case-context": {},
 });
 const style = readFileSync("app/central-reclamacoes/cases.module.css", "utf8");

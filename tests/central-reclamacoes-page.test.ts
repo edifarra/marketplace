@@ -20,7 +20,7 @@ function pageHarness() {
       };
     },
   };
-  const module = loadPage("app/central-reclamacoes/page.tsx", { "@/lib/marketplace-case-list": loader });
+  const module = loadPage("app/central-reclamacoes/page.tsx", { "@/lib/marketplace-case-list": loader, "@/lib/marketplace-case-read-cache": { caseReadScope: async () => ({ scope: "test-user", revision: "1" }), cachedCaseList: loader.loadCaseList } });
   return { page: module.default, inputs };
 }
 

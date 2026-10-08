@@ -4,6 +4,7 @@ import { syncMarketplaceConversationsSafetyNet } from "../lib/marketplace-conver
 import { processOutgoingActivities } from "../lib/outgoing-activities";
 import workerDefaults from "./marketplace-worker-defaults.json";
 import { reconcileMarketplaceClaims } from "../lib/marketplace-claim-service";
+import { scheduleCaseReconciliation, CASE_RECONCILIATION_MS } from "../lib/marketplace-case-reconciliation";
 
 loadEnvConfig(process.cwd());
 
@@ -35,6 +36,7 @@ export async function runMarketplaceWorker() {
   let emptyCycles = 0;
   let errorCycles = 0;
   let lastConversationSyncAt = 0;
+  let lastCaseSyncAt = 0;
 
   log("worker_started", {
     pid: process.pid,
@@ -56,6 +58,12 @@ export async function runMarketplaceWorker() {
       }
       const result = await processMarketplaceQueue(batchSize);
       const outgoing = await processOutgoingActivities(batchSize);
+      // Webhooks/outgoing operations are drained before planning hourly safety reads.
+      if (Date.now() - lastCaseSyncAt >= CASE_RECONCILIATION_MS) {
+        const cases = await scheduleCaseReconciliation();
+        lastCaseSyncAt = Date.now();
+        log("marketplace_case_reconciliation_scheduled", cases);
+      }
       errorCycles = 0;
 
       if (result.claimed > 0 || outgoing.claimed > 0) {

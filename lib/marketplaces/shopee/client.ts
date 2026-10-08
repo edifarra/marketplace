@@ -16,6 +16,7 @@ type ShopeeRequestOptions = {
   method?: "GET" | "POST";
   body?: Record<string, unknown>;
   rawBody?: string;
+  signal?: AbortSignal;
   query?: Record<string, string | number | null | undefined>;
 };
 
@@ -88,7 +89,7 @@ export class ShopeeClient {
 
   async getReturnDetail(accessToken: string, shopId: string | number, returnSn: string) {
     return this.signedRequest<Record<string, unknown>>("/api/v2/returns/get_return_detail", {
-      accessToken, shopId, query: { return_sn: returnSn }
+      accessToken, shopId, query: { return_sn: returnSn }, signal: AbortSignal.timeout(20_000)
     });
   }
 
@@ -445,7 +446,8 @@ export class ShopeeClient {
     const response = await fetch(`${this.baseUrl}${path}?${params.toString()}`, {
       method: options.method || "GET",
       headers: { "content-type": "application/json" },
-      body: options.method === "POST" ? (options.rawBody ?? JSON.stringify(options.body || {})) : undefined
+      body: options.method === "POST" ? (options.rawBody ?? JSON.stringify(options.body || {})) : undefined,
+      signal: options.signal
     });
     const responseText = await response.text();
     let json: Record<string, any> = {};

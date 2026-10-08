@@ -4,7 +4,7 @@ import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { claimBuyerId, claimSeller } from "./marketplace-claim-domain";
 
 export async function loadMercadoLivreClaimBundle(id: string, account: MarketplaceAccountConfig,
-  get: (path: string) => Promise<Record<string, any>> = path => getMercadoLivreResource(path, account)) {
+  get: (path: string) => Promise<Record<string, any>> = path => getMercadoLivreResource(path, account, AbortSignal.timeout(20_000))) {
   const root = `/post-purchase/v1/claims/${encodeURIComponent(id)}`;
   const detail = await get(root);
   if (String(detail.id) !== id) throw new Error("Claim retornado não corresponde ao evento.");

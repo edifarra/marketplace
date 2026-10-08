@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "./supabase-admin";
 import { appendActivityHistory } from "./marketplace-queue";
 import { CaseObservation, caseReference, normalizeCase, transitionState } from "./marketplace-case-domain";
+import { withCaseRefreshLease } from "./marketplace-case-reconciliation";
 
 type Row = Record<string, any>;
 type CaseDependencies = {
@@ -10,6 +11,7 @@ type CaseDependencies = {
   enrich: (id: string) => Promise<Row>;
   failure: (caseId: string, activity: Row) => Promise<void>;
   history: (activityId: string, stage: string, status: string, details: Row) => Promise<void>;
+  refresh?: (caseId: string, run: () => Promise<string>) => Promise<string>;
 };
 
 export async function persistCaseObservation(o: CaseObservation, db = supabaseAdmin()) {
@@ -25,11 +27,14 @@ export async function processCaseEvent(activity: Row, accountId: string, deps: C
   await deps.history(String(activity.id), "case_persisted", "success", { caseId, externalCaseId: local.external_case_id });
   if (!await deps.eligible(activity) || await deps.enriched(caseId, `${activity.id}:detail`)) return caseId;
   try {
-    const detail = await deps.enrich(local.external_case_id);
-    const enriched = normalizeCase(activity, accountId, detail)!;
-    await deps.persist(enriched);
-    await deps.history(String(activity.id), "case_enriched", "success", { caseId });
-    return caseId;
+    const run = async () => {
+      const detail = await deps.enrich(local.external_case_id);
+      const enriched = normalizeCase(activity, accountId, detail)!;
+      await deps.persist(enriched);
+      await deps.history(String(activity.id), "case_enriched", "success", { caseId });
+      return caseId;
+    };
+    return deps.refresh ? await deps.refresh(caseId, run) : await run();
   } catch {
     // Persist only a fixed error code: marketplace exceptions can contain signed URLs or credentials.
     await deps.failure(caseId, activity);
@@ -51,6 +56,7 @@ export async function processNewCaseEvent(activity: Row, accountId: string, enri
       return Boolean(data);
     },
     enrich,
+    refresh: (id, run) => withCaseRefreshLease(id, run, db),
     failure: async (id, a) => {
       // Do not replace enrichment belonging to an already newer event.
       await db.from("marketplace_cases").update({ enrichment: { state: "error", source: "new_event",

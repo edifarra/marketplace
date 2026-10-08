@@ -64,7 +64,7 @@ test("evidence previews use safe URLs; images enlarge and videos never autoplay"
 test("actual detail keeps chat history left and timeline after buyer on right, preserving fields", () => {
   const data = { row: { marketplace: "shopee", external_case_id: "return-1", reason_code: "FUNCTIONAL_DMG", refund_amount: 25, currency: "BRL", buyer_description: "Não funciona", buyer_name: "Ana", reverse_logistics: { tracking: "BR123", modality: "Coleta" } }, messages: [], items: [], deadlines: [], timeline: [], evidence: [], actions: [] };
   const mocks = { react: { useState: (initial: any) => [initial === null ? data : initial, () => {}], useRef: () => ({ current: null }), useEffect: () => {}, useLayoutEffect: () => {}, useCallback: (fn: any) => fn }, "./case-display": display, "./case-presentation": presentation, "@/lib/marketplace-case-context": {}, "./cases.module.css": { __esModule: true, default: new Proxy({}, { get: (_t, key) => key }) } };
-  const { CaseDetail } = loadPage("app/central-reclamacoes/case-grid.tsx", mocks);
+  const { CaseDetail } = loadPage("app/central-reclamacoes/case-grid.tsx", { ...mocks, "./case-detail-cache": { detailCacheKey: () => "test" } });
   const tree = CaseDetail({ id: "case-1" }); const nodes = elements(tree);
   const right = nodes.find(n => n.props.className === "rightColumn"); const left = nodes.find(n => n.props.className === "chatPanel");
   assert.ok(right); assert.ok(left);

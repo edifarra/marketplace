@@ -8,13 +8,14 @@ import { CaseTimeline } from "./case-timeline";
 import { CaseEvidence } from "./case-evidence";
 import { ClaimControls } from "./claim-controls";
 import styles from "./cases.module.css";
+import { detailCacheKey, readCaseCache, updateCaseCache } from "./case-detail-cache";
 import { buyerFields, displayFields, humanLabel, presentValue, returnFields } from "./case-presentation";
 type Row = Record<string, any>;
 function Photo({ product }: { product: Row | null }) {
   const image = caseImage(product);
   return image ? <Image unoptimized width={66} height={66} src={image} alt={product?.title || "Produto"} loading="lazy"/> : <span className={styles.noImage}>Sem foto</span>;
 }
-export function CaseGrid({ rows, initialId }: { rows: Row[]; initialId?: string }) {
+export function CaseGrid({ rows, initialId, cacheScope = "", cacheRevision = "" }: { rows: Row[]; initialId?: string; cacheScope?: string; cacheRevision?: string }) {
   const [expanded, setExpanded] = useState<string | null>(initialId && rows.some(r => r.id === initialId) ? initialId : null);
   const [details, setDetails] = useState<Record<string, Row>>({});
   const onDetail = useCallback((detail: Row) => {
@@ -32,33 +33,33 @@ export function CaseGrid({ rows, initialId }: { rows: Row[]; initialId?: string 
       <span className={styles.situation}><span>{caseStatusLabel(row)}</span>{row.marketplace === "mercado_livre" ? sellerDeadline(row,row.deadlines) && <span>Prazo: <strong className={styles.deadline}>{caseDate(sellerDeadline(row,row.deadlines))}</strong></span> : row.deadlines.length > 0 && <span>Prazo: {row.deadlines.map(deadlineLabel).join("; ")}</span>}<span>Precisa de ação: {caseAttention(row) === "ACTION_REQUIRED" ? "Sim" : "Não"}</span><span>Última atualização local: {caseDate(row.updated_at)}</span><span className={`${styles.badge} ${styles[row.group]}`}>{row.groupLabel}</span></span>
       <span className={`${styles.chevron} ${expanded === row.id ? styles.rotated : ""}`} aria-hidden="true">⌄</span>
     </button>
-    {expanded === row.id && <div id={`detail-${row.id}`} className={styles.expansion}><CaseDetail id={row.id} onDetail={onDetail} showHeader={false}/></div>}
+    {expanded === row.id && <div id={`detail-${row.id}`} className={styles.expansion}><CaseDetail id={row.id} initialRow={initialRow} cacheScope={cacheScope} cacheRevision={cacheRevision} onDetail={onDetail} showHeader={false}/></div>}
   </article>; })}</div>;
 }
 function Field({ label, value }: { label: string; value: any }) {
   if (!presentValue(value)) return null;
   return <div><dt>{label}</dt><dd className={label === "Prazo vendedor" ? styles.sellerDeadline : undefined}>{presentValue(value)}</dd></div>;
 }
-export function CaseDetail({ id, onDetail, showHeader = true }: { id: string; onDetail?: (detail: Row) => void; showHeader?: boolean }) {
-  const [data, setData] = useState<Row | null>(null);
+export function CaseDetail({ id, onDetail, showHeader = true, initialRow, initialData, cacheScope = "", cacheRevision = "" }: { id: string; onDetail?: (detail: Row) => void; showHeader?: boolean; initialRow?: Row; initialData?: Row; cacheScope?: string; cacheRevision?: string }) {
+  const [data, setData] = useState<Row | null>(initialData || null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [olderLoading, setOlderLoading] = useState(false);
   const chat = useRef<HTMLDivElement>(null);
-  const loadedId = useRef<string | null>(null);
+  const loadedId = useRef<string | null>(initialData ? id : null);
   const anchor = useRef<{ height: number; top: number } | null>(null);
+  const cacheKey = detailCacheKey(cacheScope, cacheRevision, initialRow || { id });
+  const changeDetail = useCallback((value: Row) => { updateCaseCache(cacheKey, value); setData(value); }, [cacheKey]);
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
     if (loadedId.current !== id) { setData(null); loadedId.current = id; }
     setError("");
-    fetch(`/api/central-reclamacoes/${id}`, { cache: "no-store", signal: controller.signal }).then(async response => {
-      if (!response.ok) throw new Error("Não foi possível ler os detalhes locais do Caso.");
-      const result = await response.json(); if (!controller.signal.aborted) setData(result);
-    }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    if (initialData && retry === 0) updateCaseCache(cacheKey, initialData, false);
+    readCaseCache(cacheKey, id).then(result => { if (active) setData(result); }).catch(e => { if (active) setError(e.message); });
     const refresh = () => setRetry(n => n + 1);
     window.addEventListener("focus", refresh);
-    return () => { controller.abort(); window.removeEventListener("focus", refresh); };
-  }, [id, retry]);
+    return () => { active = false; window.removeEventListener("focus", refresh); };
+  }, [id, retry, cacheKey, initialData]);
   useEffect(() => { if (data) onDetail?.(data); }, [data, onDetail]);
   useLayoutEffect(() => {
     if (!chat.current || !data) return;
@@ -89,7 +90,7 @@ export function CaseDetail({ id, onDetail, showHeader = true }: { id: string; on
     <section className={styles.chatPanel}><h2>{data.messageScope === "case" ? "Mensagens do caso" : "Histórico normal — contexto do pedido"}</h2><div className={styles.chatScroll} ref={chat} role="log" aria-label="Histórico local da conversa">{data.messageScope === "order_context" && <p className="muted">Este histórico pertence ao chat normal do pedido. As mensagens não foram classificadas como mensagens da devolução.</p>}{isClaim && <div className={styles.claimContext}><strong>{row.status === "closed" ? "Reclamação encerrada" : "Reclamação aberta"} nº {row.external_case_id}{row.reputation_impact === "not_affected" ? " · Não afetou sua reputação" : row.reputation_impact === "affected" ? " · Afeta sua reputação" : ""}</strong>{caseReason(row) && <p>Motivo: {caseReason(row)}</p>}{claimDescription(row) && <p>Descrição: {claimDescription(row)}</p>}</div>}{row.marketplace === "shopee" && <section className={styles.claimContext} aria-label="Solicitado pelo comprador"><h3>Solicitado pelo comprador</h3><dl className={styles.generalFields}><Field label="Reembolso solicitado" value={row.refund_amount != null ? row.currency ? caseMoney(row.refund_amount, row.currency) : `${row.refund_amount} (moeda não informada)` : "Não disponível nos dados locais"}/><Field label="Motivo da devolução" value={caseReason(row) || row.reason_code || "Não disponível nos dados locais"}/><Field label="Descrição do comprador" value={row.buyer_description || "Não disponível nos dados locais"}/></dl><CaseEvidence evidence={data.evidence || []}/></section>}
       {data.olderMessages && <button type="button" className="secondary" onClick={older} disabled={olderLoading}>{olderLoading ? "Carregando…" : "Carregar mensagens anteriores"}</button>}
       {!data.conversation ? <p className="muted">Nenhuma conversa vinculada a este Caso.</p> : !data.messages.length ? <p className="muted">A conversa vinculada não tem mensagens locais disponíveis.</p> : data.messages.map((message: Row) => <div key={message.id} className={`chat-message ${["incoming", "outgoing"].includes(message.direction) ? message.direction : "system"}`}><strong>{message.sender_name || (message.direction === "outgoing" ? "Vendedor" : message.direction === "incoming" ? "Comprador" : "Sistema")}</strong><div className={styles.messageText}>{message.text || `${message.message_type || "Conteúdo"} — conteúdo textual não informado`}</div><small>{caseDate(message.sent_at || message.created_at)}</small>{message.status === "blocked" && <small>Mensagem moderada pelo Mercado Livre</small>}{message.raw_data?.attachments?.length > 0 && <small>{message.raw_data.attachments.length} anexo(s) recebido(s) · metadados preservados</small>}</div>)}
-    </div>{isClaim ? <ClaimControls id={id} data={data} mode="chat" onChange={setData}/> : <p className={styles.readOnly}>Somente leitura · envio ainda não habilitado</p>}{error && <p role="alert" className="form-error">{error}</p>}</section>
+    </div>{isClaim ? <ClaimControls id={id} data={data} mode="chat" onChange={changeDetail}/> : <p className={styles.readOnly}>Somente leitura · envio ainda não habilitado</p>}{error && <p role="alert" className="form-error">{error}</p>}</section>
     <div className={styles.rightColumn}><section className={styles.detailCard}><h2>Gerais</h2><button type="button" className="secondary" onClick={() => setRetry(n => n + 1)}>Atualizar dados locais</button><dl className={styles.generalFields}>
       {displayFields([
         ["ID do Caso", row.external_case_id], ["Venda/pedido", row.order_id || row.sale?.order_id],
@@ -107,6 +108,6 @@ export function CaseDetail({ id, onDetail, showHeader = true }: { id: string; on
     </div>
 
     <section className={styles.detailCard} data-panel="previous-history"><h2>Históricos anteriores relacionados ao Pedido</h2><a href={"/chats-perguntas?" + new URLSearchParams({ tab: "all", marketplace: row.marketplace, store: row.marketplace_account_id, ...(row.order_id || row.sale?.order_id || row.buyer_name ? { search: row.order_id || row.sale?.order_id || row.buyer_name } : {}) })}>Consultar histórico em Chats e Perguntas</a></section>
-    <section className={styles.detailCard} data-panel="actions"><h2>Ações</h2>{isClaim ? <ClaimControls id={id} data={data} mode="actions" onChange={setData}/> : row.marketplace === "shopee" ? <ShopeeActions row={row} deadlines={data.deadlines}/> : data.actions?.length ? <><p className="muted">Registro histórico · execução ainda não habilitada nesta etapa.</p><ul>{data.actions.map((action: Row) => <li key={action.id}>{humanLabel(action.action_code) || "Ação registrada pelo marketplace"} · observado em {caseDate(action.observed_at)} · {action.mandatory === true ? "Obrigatória (oficial)" : action.mandatory === false ? "Opcional (oficial)" : "Obrigatoriedade não informada"}</li>)}</ul></> : <p className="muted">Nenhuma ação oficial disponível no momento.</p>}</section>
+    <section className={styles.detailCard} data-panel="actions"><h2>Ações</h2>{isClaim ? <ClaimControls id={id} data={data} mode="actions" onChange={changeDetail}/> : row.marketplace === "shopee" ? <ShopeeActions row={row} deadlines={data.deadlines}/> : data.actions?.length ? <><p className="muted">Registro histórico · execução ainda não habilitada nesta etapa.</p><ul>{data.actions.map((action: Row) => <li key={action.id}>{humanLabel(action.action_code) || "Ação registrada pelo marketplace"} · observado em {caseDate(action.observed_at)} · {action.mandatory === true ? "Obrigatória (oficial)" : action.mandatory === false ? "Opcional (oficial)" : "Obrigatoriedade não informada"}</li>)}</ul></> : <p className="muted">Nenhuma ação oficial disponível no momento.</p>}</section>
   </div>;
 }

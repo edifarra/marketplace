@@ -27,7 +27,7 @@ export function caseGroup(row: Row): CaseGroup {
   const ongoing = row.marketplace === "mercado_livre" ? ["open", "opened", "reopened"].includes(row.status) : ["REQUESTED", "PROCESSING", "ACCEPTED", "JUDGING", "SELLER_DISPUTE"].includes(row.status);
   return ongoing ? "ongoing" : "unknown";
 }
-export const CASE_LIST_SELECT = `id,marketplace,marketplace_account_id,external_case_id,case_type,reverse_logistics,responsible,order_id,status,needs_action,reputation_impact,updated_at,official_updated_at,snapshot_order_at,reason:content->>reason,reason_name:content->>reason_name,reason_code:content->>reason_code,current_actions:content->current_actions,buyer_description:content->>buyer_description,validation_type:content->>validation_type,buyer_name:content->>buyer_name,related_claim_id:content->>related_claim_id,
+export const CASE_LIST_SELECT = `id,marketplace,marketplace_account_id,external_case_id,case_type,reverse_logistics,responsible,order_id,status,needs_action,reputation_impact,updated_at,official_updated_at,snapshot_order_at,read_control:marketplace_case_sync_control(case_revision),reason:content->>reason,reason_name:content->>reason_name,reason_code:content->>reason_code,current_actions:content->current_actions,buyer_description:content->>buyer_description,validation_type:content->>validation_type,buyer_name:content->>buyer_name,related_claim_id:content->>related_claim_id,
   conversation:marketplace_conversations!conversation_id(buyer_name),
   account:config_marketplace_accounts!marketplace_account_id(id,name,nickname,marketplace),
   product:products!product_id(id,sku,title,product_images(url,cloudinary_url,position)),

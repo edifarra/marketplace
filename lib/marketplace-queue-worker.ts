@@ -13,6 +13,7 @@ import { processMercadoLivreConversationNotification, processShopeeConversationN
 import { caseReference, normalizeCase } from "./marketplace-case-domain";
 import { persistCaseObservation, processCaseAndOrders, processNewCaseEvent } from "./marketplace-cases";
 import { enrichMercadoLivreClaim, enrichShopeeReturn } from "./marketplace-case-enrichment";
+import { processCaseReconciliation } from "./marketplace-case-reconciliation";
 
 const SHOPEE_ORDER_PUSH_CODES = new Set([3, 4, 15, 29, 30, 37, 47]);
 const SHOPEE_ACCOUNT_PUSH_CODES = new Set([1, 2, 12]);
@@ -32,7 +33,9 @@ export async function processMarketplaceQueue(limit = 10) {
   const results: Array<Record<string, unknown>> = [];
   for (const activity of activities) {
     try {
-      const result = activity.marketplace === "shopee"
+      const result = activity.event_type === "case_reconcile"
+        ? await completeQueuedActivity(String(activity.id), "Reconciliação local do caso concluída.", await processCaseReconciliation(activity))
+        : activity.marketplace === "shopee"
         ? await processShopeeActivity(activity)
         : activity.marketplace === "mercado_livre"
           ? await processMercadoLivreActivity(activity)

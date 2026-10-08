@@ -13,7 +13,7 @@ export function runSmartTests(files, { root = process.cwd(), env = process.env, 
     if (result.error) throw new Error(formatSpawnError(result.error));
     if (result.status !== 0) throw new Error(`Test command failed (${result.status ?? result.signal}).`);
   };
-  if (files.some(file => ['marketplace-cases-sql.test.mjs', 'shopee-chat-management-sql.test.mjs', 'marketplace-conversation-scope-sql.test.mjs'].includes(path.basename(file)))) {
+  if (files.some(file => ['marketplace-cases-sql.test.mjs', 'marketplace-case-reconciliation-sql.test.mjs', 'shopee-chat-management-sql.test.mjs', 'marketplace-conversation-scope-sql.test.mjs'].includes(path.basename(file)))) {
     // Isolated test-only installation: never changes the project lockfile or VPS dependencies.
     const prefix = path.join(temporary, 'marketplace-case-sql-test');
     const packageFile = path.join(prefix, 'node_modules/@electric-sql/pglite/package.json');

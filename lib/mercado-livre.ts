@@ -69,10 +69,10 @@ export async function getMercadoLivreItem(itemId: string, account: MarketplaceAc
   return mlGet(`/items/${encodeURIComponent(itemId)}`, accessToken) as Promise<Record<string, any>>;
 }
 
-export async function getMercadoLivreResource(resource: string, account: MarketplaceAccountConfig) {
+export async function getMercadoLivreResource(resource: string, account: MarketplaceAccountConfig, signal?: AbortSignal) {
   const accessToken = await getValidMercadoLivreAccessToken(account);
   const path = resource.startsWith("/") ? resource : `/${resource}`;
-  return mlGet(path, accessToken) as Promise<Record<string, any>>;
+  return mlGet(path, accessToken, {}, signal) as Promise<Record<string, any>>;
 }
 
 export async function answerMercadoLivreQuestion(questionId: string, text: string, account: MarketplaceAccountConfig) {
@@ -411,9 +411,10 @@ async function putMercadoLivreItem(listingId: string, accessToken: string, paylo
   return json;
 }
 
-export async function mlGet(path: string, accessToken: string, extraHeaders: Record<string, string> = {}) {
+export async function mlGet(path: string, accessToken: string, extraHeaders: Record<string, string> = {}, signal?: AbortSignal) {
   const response = await fetch(`${ML_API}${path}`, {
     headers: { authorization: `Bearer ${accessToken}`, ...extraHeaders },
+    signal,
     cache: "no-store"
   });
   const json = await response.json().catch(() => ({}));

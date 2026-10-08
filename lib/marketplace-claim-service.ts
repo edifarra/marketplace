@@ -120,7 +120,7 @@ export async function reconcileMarketplaceClaims(db=supabaseAdmin()) {
   const pending=await db.from("outgoing_marketplace_activities").select("id,source_id,requested_data,attempt_count")
     .eq("activity_type","claim_action").in("remote_execution_state",["sending","uncertain","succeeded"]).lt("updated_at",new Date(Date.now()-60000).toISOString()).order("updated_at").limit(10).throwOnError();
   for(const operation of pending.data || [])try{await executeMarketplaceClaimActivity(operation,db);}catch{await db.from("outgoing_marketplace_activities").update({updated_at:new Date().toISOString()}).eq("id",operation.id).throwOnError();}
-  const cases=await db.from("marketplace_cases").select("id,marketplace_account_id,external_case_id,order_id,updated_at").eq("marketplace","mercado_livre").eq("case_type","claim").eq("status","opened").order("updated_at").limit(5).throwOnError();
-  for(const row of cases.data || [])try{const account=await accountFor(row);const bundle=await loadMercadoLivreClaimBundle(row.external_case_id,account);await persistClaimBundle(row,bundle,`reconcile:${row.id}:${Date.now()}`,db);}catch{/* Existing event retries and next safety-net pass retain local data. */}
-  return {operations:pending.data?.length || 0,cases:cases.data?.length || 0};
+  // Open-case safety checks moved to the hourly incoming queue. Uncertain financial
+  // confirmation retains the existing faster cadence and never replays a POST.
+  return {operations:pending.data?.length || 0,cases:0};
 }

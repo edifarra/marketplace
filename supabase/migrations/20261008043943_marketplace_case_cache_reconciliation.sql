@@ -186,7 +186,7 @@ language plpgsql security invoker set search_path=public,pg_temp as $$
 begin
   update marketplace_case_sync_control set lease_owner=null,lease_until=null,
     last_checked_at=case when p_success then now() else last_checked_at end,
-    next_due_at=case when p_success is null then next_due_at else date_trunc('hour',now())+interval '60 minutes' end,
+    next_due_at=case when p_success is null then next_due_at else now()+interval '60 minutes' end,
     failures=case when p_success then 0 when p_success=false then failures+1 else failures end,
     last_error=case when p_success then null when p_success=false then 'case_refresh_failed' else last_error end
     where case_id=p_case_id and lease_owner=p_owner;

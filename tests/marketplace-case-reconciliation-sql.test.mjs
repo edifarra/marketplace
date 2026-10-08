@@ -63,6 +63,7 @@ test('durable lease excludes webhook/reconciliation overlap, releases after fail
  await db.query("update marketplace_case_sync_control set lease_until=now()-interval '1 second' where case_id=$1",[id]);assert.equal(await begin(uuid(12)),true);
  assert.equal((await db.query('select finish_marketplace_case_refresh($1,$2,true) allowed',[id,uuid(11)])).rows[0].allowed,false);
  await db.query('select finish_marketplace_case_refresh($1,$2,true)',[id,uuid(12)]);
+ assert.equal((await db.query("select next_due_at>=last_checked_at+interval '60 minutes' valid from marketplace_case_sync_control where case_id=$1",[id])).rows[0].valid,true);
  for(const role of ['anon','authenticated'])assert.equal((await db.query("select has_function_privilege($1,'claim_marketplace_case_checks(uuid,integer)','EXECUTE') allowed",[role])).rows[0].allowed,false);
 });
 test('real pending webhook suppresses the safety job and queue claim gives notifications priority',async()=>{

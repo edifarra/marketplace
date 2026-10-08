@@ -28,7 +28,7 @@ async function readChildren(db: ReturnType<typeof supabaseAdmin>, table: string,
   }
 }
 export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: { at: string; id: string; sent: string | null }) {
-  const result = await db.from("marketplace_cases").select(`${CASE_LIST_SELECT},resolution,claim_created_at:content->>claim_created_at,buyer_data:content->buyer_data,current_claim:content->current_claim,seller_proof_status:content->>seller_proof_status,negotiation_status:content->>negotiation_status`).eq("id", id).maybeSingle().throwOnError();
+  const result = await db.from("marketplace_cases").select(`${CASE_LIST_SELECT},resolution,stage,refund_amount:content->refund_amount,currency:content->>currency,claim_created_at:content->>claim_created_at,buyer_data:content->buyer_data,current_claim:content->current_claim,seller_proof_status:content->>seller_proof_status,negotiation_status:content->>negotiation_status`).eq("id", id).maybeSingle().throwOnError();
   const row = result.data as unknown as Row | null;
   if (!row) return null;
   const sale = row.sale?.marketplace === row.marketplace && (!row.order_id || row.sale.order_id === row.order_id) ? row.sale : null;

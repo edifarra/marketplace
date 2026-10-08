@@ -15,7 +15,7 @@ export function reputationLabel(row: any) {
   return row.marketplace === "shopee" ? "" : ({affected:"Afeta sua reputação",not_affected:"Não afeta sua reputação",not_applies:"Não se aplica à reputação"} as Record<string,string>)[row.reputation_impact] || "";
 }
 export function caseReason(row:any) {
-  return ({repentant_buyer:"O comprador se arrependeu"} as Record<string,string>)[row.reason_name] || humanLabel(row.reason) || humanLabel(row.reason_code) || "";
+  return ({repentant_buyer:"O comprador se arrependeu"} as Record<string,string>)[row.reason_name] || humanLabel(row.reason) || humanLabel(row.reason_code) || (row.marketplace === "shopee" ? row.reason_code || "" : "");
 }
 export function caseHeaderRow(initial:any, detail:any) {
   if (!detail) return initial;

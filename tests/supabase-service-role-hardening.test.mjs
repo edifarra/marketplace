@@ -15,7 +15,7 @@ test("runtime administrativo nao aceita fallback para anon", () => {
     "app/fotos/page.tsx",
     "lib/migration-stock.ts",
     "lib/auth.ts",
-    "middleware.ts"
+    "proxy.ts"
   ]) {
     assert.doesNotMatch(read(relativePath), anonKeyPattern, relativePath);
   }
@@ -33,7 +33,7 @@ test("paginas e migracao de estoque usam somente o cliente administrativo", () =
 
 test("autenticacao exige service role explicitamente", () => {
   assert.match(read("lib/auth.ts"), /if \(!process\.env\.SUPABASE_SERVICE_ROLE_KEY\)/);
-  const middleware = read("middleware.ts");
+  const middleware = read("proxy.ts");
   assert.match(middleware, /const key = process\.env\.SUPABASE_SERVICE_ROLE_KEY;/);
   assert.doesNotMatch(middleware, /SERVICE_ROLE_KEY\s*\|\|/);
 });

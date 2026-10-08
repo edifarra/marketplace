@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ["playwright-core"],
   experimental: {
-    serverComponentsExternalPackages: ["playwright-core"],
+
     serverActions: {
       bodySizeLimit: "50mb"
     }

@@ -15,38 +15,40 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
-  params: {
+  params: Promise<{
     section: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     q?: string;
     edit?: string;
     erro?: string;
     novo?: string;
     sucesso?: string;
-  };
+  }>;
 };
 
 type ConfigurationPageData = Awaited<ReturnType<typeof getConfigurationPageData>>;
 
 export default async function ConfigurationSectionPage({ params, searchParams }: PageProps) {
   noStore();
+  const resolvedParams = await params;
+  const query = await searchParams;
 
-  if (!isConfigSection(params.section)) {
+  if (!isConfigSection(resolvedParams.section)) {
     notFound();
   }
 
-  const section = params.section as ConfigSection;
-  const data = await getConfigurationPageData(section, searchParams?.q || "", searchParams?.edit);
+  const section = resolvedParams.section as ConfigSection;
+  const data = await getConfigurationPageData(section, query?.q || "", query?.edit);
   const { definition } = data;
   const marketplaceFirst = section === "marketplace";
-  const newMarketplace = normalizeNewMarketplace(searchParams?.novo);
+  const newMarketplace = normalizeNewMarketplace(query?.novo);
 
   if (section === "tipo") {
     const mappings = await supabaseAdmin().from("marketplace_category_mappings").select("*").order("internal_category").throwOnError();
     return <main className="shell"><Sidebar/><section className="main"><div className="topbar"><div><h1>Configurações: Tipo</h1><div className="subtitle">Tipos, categorias, atributos, medidas e templates.</div></div></div>
-      {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}{searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
-      <TypeConfiguration rows={data.rows} mappings={(mappings.data || []) as any} editRow={data.editRow} showForm={Boolean(data.editRow || searchParams?.novo)}/>
+      {query?.erro && <div className="form-error">{query.erro}</div>}{query?.sucesso && <div className="form-success">{query.sucesso}</div>}
+      <TypeConfiguration rows={data.rows} mappings={(mappings.data || []) as any} editRow={data.editRow} showForm={Boolean(data.editRow || query?.novo)}/>
     </section></main>;
   }
 
@@ -62,8 +64,8 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
           </div>
         </div>
 
-        {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
-        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
+        {query?.erro && <div className="form-error">{query.erro}</div>}
+        {query?.sucesso && <div className="form-success">{query.sucesso}</div>}
         {section === "marketplace" && (
           <section className="card form-card">
             <h2>Conectar nova conta</h2>
@@ -86,13 +88,13 @@ export default async function ConfigurationSectionPage({ params, searchParams }:
           </>
         ) : marketplaceFirst ? (
           <>
-            <ConfigurationTable section={section} data={data} searchQuery={searchParams?.q || ""} />
+            <ConfigurationTable section={section} data={data} searchQuery={query?.q || ""} />
             <ConfigurationForm section={section} data={data} newMarketplace={newMarketplace} />
           </>
         ) : (
           <>
             <ConfigurationForm section={section} data={data} newMarketplace={newMarketplace} />
-            <ConfigurationTable section={section} data={data} searchQuery={searchParams?.q || ""} />
+            <ConfigurationTable section={section} data={data} searchQuery={query?.q || ""} />
           </>
         )}
       </section>

@@ -85,7 +85,7 @@ export async function ensureInitialMaster() {
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  const token = cookies().get(AUTH_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(AUTH_COOKIE_NAME)?.value;
   const payload = await verifySessionToken(token);
   if (!payload) return null;
   return loadSessionUser(payload);
@@ -121,14 +121,14 @@ export async function setSessionCookie(user: AuthUser) {
     isMaster: user.isMaster,
     sessionVersion: user.sessionVersion
   });
-  cookies().set(AUTH_COOKIE_NAME, token, {
+  (await cookies()).set(AUTH_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: getSessionMaxAgeSeconds()
   });
-  cookies().set(AUTH_SEEN_COOKIE_NAME, "1", {
+  (await cookies()).set(AUTH_SEEN_COOKIE_NAME, "1", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

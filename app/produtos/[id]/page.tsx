@@ -88,10 +88,12 @@ export default async function ProductDetailPage({
   params,
   searchParams
 }: {
-  params: { id: string };
-  searchParams?: { erro?: string; sucesso?: string; returnTo?: string; fila?: string; aguardando?: string };
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ erro?: string; sucesso?: string; returnTo?: string; fila?: string; aguardando?: string }>;
 }) {
-  const product = await getProduct(params.id);
+  const resolvedParams = await params;
+  const query = await searchParams;
+  const product = await getProduct(resolvedParams.id);
 
   if (!product) {
     return (
@@ -106,7 +108,7 @@ export default async function ProductDetailPage({
 
   const typed = product as ProductDetail;
   const supabase = supabaseAdmin();
-  const requestedReturn = String(searchParams?.returnTo || "/produtos");
+  const requestedReturn = String(query?.returnTo || "/produtos");
   const returnTo = requestedReturn.startsWith("/produtos") && !requestedReturn.startsWith("//") ? requestedReturn : "/produtos";
   const integrations = buildIntegrationRows(typed);
   const temporaryImages = await recoverTemporaryImagesWhenCloudinaryIsUnavailable(typed.id, typed.product_images || []);
@@ -159,9 +161,9 @@ export default async function ProductDetailPage({
     <main className="shell">
       <Sidebar />
       <section className="main">
-        {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
-        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
-        {searchParams?.fila && <ProductQueueWaiter activityIds={searchParams.fila.split(",").filter(Boolean)} returnTo={actionReturnTo} initialMessage={searchParams.aguardando || "Envio registrado. Aguardando execução da fila..."} />}
+        {query?.erro && <div className="form-error">{query.erro}</div>}
+        {query?.sucesso && <div className="form-success">{query.sucesso}</div>}
+        {query?.fila && <ProductQueueWaiter activityIds={query.fila.split(",").filter(Boolean)} returnTo={actionReturnTo} initialMessage={query.aguardando || "Envio registrado. Aguardando execução da fila..."} />}
 
         <ProductEditor product={editable as unknown as Record<string, string | number | null>}
           types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}`, marketplaceCategory: String(item.marketplace_category || ""), boardCodeRequired: isBoardCodeRequired(item, categoryMappings.data || []) }))}

@@ -11,12 +11,13 @@ import { createShopeeClient, getShopeeOAuthConfig } from "@/lib/shopee-oauth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
   try {
     const { data: sale } = await supabaseAdmin()
       .from("venda")
       .select("id,marketplace,order_id,shipment_id,status_original,raw_data")
-      .eq("id", params.id)
+      .eq("id", resolvedParams.id)
       .single()
       .throwOnError();
 

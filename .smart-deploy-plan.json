@@ -1,10 +1,35 @@
 {
   "schemaVersion": 1,
-  "base": "2f5643432959149d89a10dec832b6c3051d9edf4",
+  "base": "e56cb31acc6b5ed064fe807ac35c301cca969d9e",
   "files": [
+    ".eslintrc.json",
     ".smart-deploy-plan.json",
-    "scripts/smart-deploy-support.mjs",
-    "tests/smart-commit.test.mjs"
+    "app/api/central-reclamacoes/[id]/actions/route.ts",
+    "app/api/central-reclamacoes/[id]/operations/[operationId]/route.ts",
+    "app/api/central-reclamacoes/[id]/route.ts",
+    "app/api/chats/attachments/[messageId]/route.ts",
+    "app/api/marketplace-categories/[marketplace]/route.ts",
+    "app/api/vendas/[id]/etiqueta/route.ts",
+    "app/api/vendas/[id]/imagem/route.ts",
+    "app/api/vendas/[id]/preparar-envio/route.ts",
+    "app/atividades-marketplace/[id]/page.tsx",
+    "app/atividades-marketplace/enviadas/[id]/page.tsx",
+    "app/central-reclamacoes/[id]/page.tsx",
+    "app/configuracoes/[section]/page.tsx",
+    "app/login/actions.ts",
+    "app/produtos/[id]/page.tsx",
+    "eslint.config.mjs",
+    "lib/auth.ts",
+    "lib/google-drive-auth.ts",
+    "lib/local-images.ts",
+    "next-env.d.ts",
+    "next.config.mjs",
+    "package-lock.json",
+    "package.json",
+    "proxy.ts",
+    "tests/shopee-chat-management.test.ts",
+    "tests/supabase-service-role-hardening.test.mjs",
+    "tsconfig.json"
   ],
-  "dependenciesChanged": false
+  "dependenciesChanged": true
 }

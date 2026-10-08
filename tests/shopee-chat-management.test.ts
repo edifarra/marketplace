@@ -130,7 +130,7 @@ Object.assign(globalThis, { React });
 test("menu Shopee exibe Excluir chat e Marcar como lido sem simular silenciamento", () => {
   const row:any={id:"c1",marketplace:"shopee",external_conversation_id:conversationId,conversation_type:"chat",requires_response:false,unread:true,status:"answered",messages:[],buyer_name:"Cliente teste",last_message_at:"2026-10-05T12:00:00Z",shopee_last_message_id:messageId};
   const props={rows:[row],initialCursor:{id:"c1",updatedAt:"2026-10-05T12:00:00Z"},view,pageSize:25};
-  const renderGrid = (value: typeof props) => renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: { refresh() {}, push() {}, replace() {}, back() {}, forward() {}, prefetch: async () => {} } }, React.createElement(ConversationGrid,value)));
+  const renderGrid = (value: typeof props) => renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: { bfcacheId: "test", refresh() {}, push() {}, replace() {}, back() {}, forward() {}, prefetch: async () => {} } }, React.createElement(ConversationGrid,value)));
   const html=renderGrid(props);
   assert.ok(html.includes("Excluir chat"));assert.ok(html.includes("Marcar como lido"));assert.ok(html.includes("não dispensa responder"));assert.ok(!html.includes("Silenciar"));
   const ml=renderGrid({...props,rows:[{...row,marketplace:"mercado_livre"}]});assert.ok(!ml.includes("Excluir chat"));

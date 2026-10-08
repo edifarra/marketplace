@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "fs/promises";
 import path from "path";
 
 export type LocalImageFile = {
@@ -95,8 +95,8 @@ export async function readLocalImageSize(localUrl: string) {
     return 0;
   }
 
-  const bytes = await readFile(target).catch(() => null);
-  return bytes?.length || 0;
+  const info = await stat(/* turbopackIgnore: true */ target).catch(() => null);
+  return info?.size || 0;
 }
 
 function toLocalUrl(absolutePath: string) {

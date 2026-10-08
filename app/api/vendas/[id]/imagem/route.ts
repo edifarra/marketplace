@@ -8,11 +8,12 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
   try {
     const sku = new URL(request.url).searchParams.get("sku")?.trim() || "";
     const { data: sale } = await supabaseAdmin().from("venda")
-      .select("marketplace,raw_data").eq("id", params.id).single().throwOnError();
+      .select("marketplace,raw_data").eq("id", resolvedParams.id).single().throwOnError();
 
     const raw = (sale.raw_data || {}) as Record<string, any>;
     const sourceItem = findSourceItem(raw, sku);

@@ -27,7 +27,7 @@ export async function loginAction(formData: FormData) {
     returnError("A autenticacao ainda nao foi configurada.");
   }
 
-  const clientKey = headers().get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  const clientKey = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   if (isRateLimited(clientKey)) returnError("Muitas tentativas. Aguarde alguns minutos e tente novamente.");
 
   try {
@@ -71,8 +71,8 @@ export async function loginAction(formData: FormData) {
 }
 
 export async function logoutAction() {
-  cookies().delete(AUTH_COOKIE_NAME);
-  cookies().delete(AUTH_SEEN_COOKIE_NAME);
+  (await cookies()).delete(AUTH_COOKIE_NAME);
+  (await cookies()).delete(AUTH_SEEN_COOKIE_NAME);
   redirect("/login");
 }
 

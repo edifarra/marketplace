@@ -6,9 +6,10 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest, { params }: { params: { messageId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ messageId: string }> }) {
+  const resolvedParams = await params;
   const index = Number(request.nextUrl.searchParams.get("index") || "0");
-  return serveMercadoLivreAttachment(params.messageId, index, {
+  return serveMercadoLivreAttachment(resolvedParams.messageId, index, {
     authenticated: async () => Boolean(await getCurrentUser()),
     loadMessage: async messageId => {
       const result = await supabaseAdmin().from("marketplace_conversation_messages")

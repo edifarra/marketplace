@@ -11,7 +11,7 @@
     "test:ml-item-moderation": "tsx --require ./scripts/register-server-only.cjs scripts/test-mercado-livre-item-moderation.ts",
     "test:ml-managed-title": "tsx scripts/regression-mercado-livre-managed-title.ts",
     "test:ml-post-sale": "tsx scripts/regression-mercado-livre-post-sale.ts",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:product-photo-flow": "tsx --test tests/cloudinary-upload-policy.test.ts tests/marketplace-image-recovery.test.ts tests/product-image-replacement.test.ts tests/marketplace-stock-reactivation.test.ts",
     "test:smart-change-classifier": "node --test tests/smart-*.test.mjs",
@@ -23,10 +23,10 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
     "@vercel/functions": "^3.7.6",
-    "next": "^14.2.35",
+    "next": "16.4.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sharp": "^0.34.5",
+    "sharp": "0.35.5",
     "tsx": "^4.23.13",
     "zod": "^3.23.8"
   },
@@ -34,8 +34,8 @@
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.35",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.0",
     "typescript": "^5.6.3"
   }
 }

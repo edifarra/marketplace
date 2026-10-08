@@ -27,7 +27,7 @@ const TECHNICAL_API_PATHS = [
   "/api/pipeline/run"
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname === "/api/pipeline/run") {
     const payload = await verifySessionToken(request.cookies.get(AUTH_COOKIE_NAME)?.value);

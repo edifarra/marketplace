@@ -2,10 +2,11 @@ import { Sidebar } from "@/app/components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatSaoPauloDateTime } from "@/lib/date-time";
 export const dynamic = "force-dynamic";
-export default async function SentActivityDetail({params}:{params:{id:string}}){
+export default async function SentActivityDetail({params}:{params: Promise<{ id: string }>}){
+  const { id } = await params;
   const db=supabaseAdmin(); const [activity,history]=await Promise.all([
-    db.from("outgoing_marketplace_activities").select("*,config_marketplace_accounts(name,nickname)").eq("id",params.id).maybeSingle(),
-    db.from("outgoing_marketplace_activity_history").select("*").eq("activity_id",params.id).order("created_at")]);
+    db.from("outgoing_marketplace_activities").select("*,config_marketplace_accounts(name,nickname)").eq("id",id).maybeSingle(),
+    db.from("outgoing_marketplace_activity_history").select("*").eq("activity_id",id).order("created_at")]);
   const row=activity.data;
   return <main className="shell"><Sidebar/><section className="main"><h1>Detalhe da atividade enviada</h1><a className="secondary" href="/atividades-marketplace/enviadas">Voltar</a>
     {!row?<section className="card section">Atividade não encontrada.</section>:<><section className="card section"><h2>{row.sku} — {row.product_name||"Produto"}</h2><div className="activity-change-grid"><div><span>Informação anterior</span><pre className="product-description">{JSON.stringify(row.previous_data,null,2)}</pre></div><div><span>Informação solicitada</span><pre className="product-description">{JSON.stringify(row.requested_data,null,2)}</pre></div><div><span>Informação confirmada</span><pre className="product-description">{JSON.stringify(row.confirmed_data,null,2)}</pre></div></div>{row.processing_error&&<div className="form-error">{row.processing_error}</div>}</section>

@@ -111,7 +111,7 @@ async function loadGoogleServiceAccount(): Promise<GoogleServiceAccount> {
   }
 
   const filePath = process.env.GOOGLE_SERVICE_ACCOUNT_FILE?.trim() || join(process.cwd(), "service-account.json");
-  const file = await readFile(filePath, "utf8");
+  const file = await readFile(/* turbopackIgnore: true */ filePath, "utf8");
   return JSON.parse(file) as GoogleServiceAccount;
 }
 

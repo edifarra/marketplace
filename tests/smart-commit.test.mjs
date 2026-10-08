@@ -88,3 +88,45 @@ test('automatic commit rejects manual trailers, missing state and unstaged sourc
   assert.equal(cli('smart-commit', ['-m', 'no state']).status, 1);
   assert.equal(git(['rev-parse', 'HEAD']), before);
 });
+
+test('zero-diff requires confirmed state and pending commits preserve metadata validation', context => {
+  const { root, git, cli, base } = fixture(context);
+
+  fs.writeFileSync(path.join(root, 'README.md'), 'first change');
+  git(['add', '.']);
+
+  const result = cli('smart-commit', ['-m', 'first valid deployment']);
+  assert.equal(result.status, 0, result.stderr);
+
+  const target = git(['rev-parse', 'HEAD']);
+
+  fs.writeFileSync(
+    path.join(root, '.smart-deploy-state.json'),
+    JSON.stringify({ commit: target })
+  );
+
+  assert.doesNotThrow(() => assertDeploymentMetadata(root, target, target));
+  assert.equal(cli('smart-deploy', ['--dry-run']).status, 0);
+  assert.equal(cli('smart-check').status, 0);
+
+  fs.writeFileSync(
+    path.join(root, '.smart-deploy-state.json'),
+    JSON.stringify({ commit: base })
+  );
+
+  assert.throws(
+    () => assertDeploymentMetadata(root, target, target),
+    /confirmed deployment state/
+  );
+
+  fs.writeFileSync(path.join(root, 'README.md'), 'second change');
+  git(['add', '.']);
+  git(['commit', '-m', 'commit without trailers']);
+
+  const pending = git(['rev-parse', 'HEAD']);
+
+  assert.throws(
+    () => assertDeploymentMetadata(root, pending, base),
+    /exactly one valid Smart-Deploy-Base/
+  );
+});

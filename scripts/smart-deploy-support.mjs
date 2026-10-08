@@ -17,6 +17,13 @@ export function commitBaseline(root, target) {
 }
 export function assertDeploymentMetadata(root, target, base) {
   git(['merge-base', '--is-ancestor', base, target], { cwd: root });
+  if (base === target) {
+    const state = readJson(path.join(root, '.smart-deploy-state.json'));
+    if (state?.commit !== target) {
+      throw new Error('Zero-diff baseline requires confirmed deployment state.');
+    }
+    return null;
+  }
   if (commitBaseline(root, target) !== base) throw new Error('Commit trailer must match selected baseline.');
   return assertCommitPlan(root, target, base, classifyRange(root, base, target));
 }

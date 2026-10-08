@@ -1,33 +1,10 @@
 {
   "schemaVersion": 1,
-  "base": "575b46c562cd2d7cbb0c50cdf64d1f34bd0620fb",
+  "base": "2f5643432959149d89a10dec832b6c3051d9edf4",
   "files": [
     ".smart-deploy-plan.json",
-    "AGENTS.md",
-    "app/api/chats/changes/route.ts",
-    "app/central-reclamacoes/case-grid.tsx",
-    "app/chats-perguntas/page.tsx",
-    "docs/marketplace-chat-case-separation.md",
-    "docs/smart-deploy-commit-recovery.md",
-    "lib/marketplace-case-detail.ts",
-    "lib/marketplace-conversation-scope.ts",
-    "lib/marketplace-conversation-view.ts",
-    "lib/marketplace-conversations.ts",
-    "package.json",
-    "scripts/smart-check.mjs",
-    "scripts/smart-commit.mjs",
     "scripts/smart-deploy-support.mjs",
-    "scripts/smart-deploy.mjs",
-    "scripts/smart-test-runner.mjs",
-    "supabase/migrations/20261007233251_separate_chat_and_case_conversations.sql",
-    "tests/conversation-product-links.test.ts",
-    "tests/marketplace-conversation-scope-sql.test.mjs",
-    "tests/marketplace-conversation-scope.test.ts",
-    "tests/shopee-chat-management.test.ts",
-    "tests/smart-commit.test.mjs",
-    "tests/smart-execution-policy.test.mjs",
-    "tests/smart-git.test.mjs",
-    "tests/smart-test-runner.test.mjs"
+    "tests/smart-commit.test.mjs"
   ],
   "dependenciesChanged": false
 }

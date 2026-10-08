@@ -8,9 +8,10 @@ const PAGE_SIZE = 50;
 
 type Filters = { store: string; order: string; type: string };
 
-export default async function ActivitiesPage({ searchParams }: { searchParams?: { page?: string; store?: string; order?: string; type?: string } }) {
-  const page = Math.max(1, Number(searchParams?.page || 1));
-  const filters: Filters = { store: String(searchParams?.store || ""), order: String(searchParams?.order || "").trim(), type: String(searchParams?.type || "") };
+export default async function ActivitiesPage({ searchParams }: { searchParams?: Promise<{ page?: string; store?: string; order?: string; type?: string }> }) {
+  const urlParams = (await searchParams) ?? {};
+  const page = Math.max(1, Number(urlParams?.page || 1));
+  const filters: Filters = { store: String(urlParams?.store || ""), order: String(urlParams?.order || "").trim(), type: String(urlParams?.type || "") };
   const db = supabaseAdmin();
   const retentionCutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
   const [activityResult, accountResult] = await Promise.all([

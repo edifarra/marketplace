@@ -6,10 +6,11 @@ import { PasswordField } from "./password-field";
 export const dynamic = "force-dynamic";
 
 type LoginPageProps = {
-  searchParams?: { erro?: string; next?: string; sessao?: string };
+  searchParams?: Promise<{ erro?: string; next?: string; sessao?: string }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const urlParams = (await searchParams) ?? {};
   const authConfigured = isAuthConfigured();
   const missingConfiguration = getMissingAuthConfiguration();
   let compactLogo = "";
@@ -24,9 +25,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     compactLogo = value("SYSTEM_COMPACT_LOGO_URL");
     fullLogo = value("SYSTEM_FULL_LOGO_URL");
   }
-  const message = searchParams?.sessao === "expirada"
+  const message = urlParams?.sessao === "expirada"
     ? "Sua sessao expirou. Entre novamente."
-    : searchParams?.erro;
+    : urlParams?.erro;
 
   return (
     <main className="login-shell">
@@ -43,7 +44,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         )}
         {message && <div className="form-error">{message}</div>}
         <form action={loginAction} className="config-form">
-          <input type="hidden" name="next" value={searchParams?.next || "/"} />
+          <input type="hidden" name="next" value={urlParams?.next || "/"} />
           <label>
             E-mail
             <input name="email" type="email" autoComplete="username" required autoFocus disabled={!authConfigured} />

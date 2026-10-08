@@ -14,9 +14,10 @@ type Sale = {
   created_at: string; updated_at: string; status_venda: { internal_status?: string; description?: string } | null;
 };
 
-export default async function SalesPage({ searchParams }: { searchParams?: { orderId?: string; sku?: string } }) {
-  const orderIdFilter = String(searchParams?.orderId || "").trim().toLocaleUpperCase("pt-BR");
-  const skuFilter = normalizeSku(searchParams?.sku);
+export default async function SalesPage({ searchParams }: { searchParams?: Promise<{ orderId?: string; sku?: string }> }) {
+  const urlParams = (await searchParams) ?? {};
+  const orderIdFilter = String(urlParams?.orderId || "").trim().toLocaleUpperCase("pt-BR");
+  const skuFilter = normalizeSku(urlParams?.sku);
   const db = supabaseAdmin();
   const [{ data: sales }, { data: items }, { data: accounts }, { data: products }, { data: inventoryAudits }] = await Promise.all([
     db.from("venda").select("id,marketplace,order_id,status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,shipment_id,raw_data,created_at,updated_at,status_venda(internal_status,description)").order("data_venda", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
@@ -137,8 +138,8 @@ export default async function SalesPage({ searchParams }: { searchParams?: { ord
           <div className="row-actions"><button className="secondary" type="submit">Aplicar</button><a className="secondary link-button" href="/vendas">Limpar filtros</a></div>
         </div>
         <div className="form-grid">
-          <label>ID do Pedido<input name="orderId" placeholder="Ex.: 260803B7UJXWWW" defaultValue={searchParams?.orderId || ""} /></label>
-          <label>SKU do Produto<input name="sku" placeholder="Ex.: 345TC" defaultValue={searchParams?.sku || ""} /></label>
+          <label>ID do Pedido<input name="orderId" placeholder="Ex.: 260803B7UJXWWW" defaultValue={urlParams?.orderId || ""} /></label>
+          <label>SKU do Produto<input name="sku" placeholder="Ex.: 345TC" defaultValue={urlParams?.sku || ""} /></label>
         </div>
       </form>
     </section>

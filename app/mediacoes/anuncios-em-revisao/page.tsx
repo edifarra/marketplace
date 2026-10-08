@@ -1,5 +1,6 @@
 import { ListingModerationsPage } from "../listing-moderations-page";
 export const dynamic = "force-dynamic";
-export default function ReviewingListingsPage({ searchParams }: { searchParams?: { page?: string; store?: string; marketplace?: string; search?: string } }) {
-  return <ListingModerationsPage classification="review" searchParams={searchParams} />;
+export default async function ReviewingListingsPage({ searchParams }: { searchParams?: Promise<{ page?: string; store?: string; marketplace?: string; search?: string }> }) {
+  const urlParams = (await searchParams) ?? {};
+  return <ListingModerationsPage classification="review" searchParams={urlParams} />;
 }

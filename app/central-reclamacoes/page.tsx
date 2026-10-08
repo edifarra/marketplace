@@ -11,9 +11,10 @@ const labels = { action: "Precisa de ação", ongoing: "Em andamento / aguardand
 function href(filters: CaseFilters, updates: CaseFilters) {
   return `${path}?${new URLSearchParams(Object.entries({ ...filters, ...updates }).filter(([, v]) => Boolean(v)) as [string, string][])}`;
 }
-export default async function CasesPage({ searchParams = {} }: { searchParams?: CaseFilters }) {
+export default async function CasesPage({ searchParams }: { searchParams?: Promise<CaseFilters> }) {
+  const filtersInput = (await searchParams) ?? {};
   let result: Awaited<ReturnType<typeof loadCaseList>> | undefined;
-  try { result = await loadCaseList(searchParams); } catch { /* Keep failures distinct from an empty list. */ }
+  try { result = await loadCaseList(filtersInput); } catch { /* Keep failures distinct from an empty list. */ }
   if (!result) return <main className="shell"><Sidebar /><section className="main"><div className="topbar"><h1>Central de Reclamações e Devoluções</h1></div><div className="form-error" role="alert">Não foi possível ler os Casos persistidos. Verifique a conexão e a configuração do Supabase.</div><Link href={path} className="secondary">Tentar novamente</Link></section></main>;
   const { rows, products, accounts, filters, counts, contextCounts, total, page, pages } = result;
   const all = Object.values(counts).reduce((n, v) => n + v, 0);

@@ -7,10 +7,11 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
 type Params = { page?: string; sku?: string; type?: string; store?: string; from?: string; to?: string };
 
-export default async function SentActivities({ searchParams }: { searchParams?: Params }) {
+export default async function SentActivities({ searchParams }: { searchParams?: Promise<Params> }) {
+  const urlParams = (await searchParams) ?? {};
   const db = supabaseAdmin();
-  const page = Math.max(1, Number(searchParams?.page || 1));
-  const filters = { sku: String(searchParams?.sku || "").trim(), type: String(searchParams?.type || ""), store: String(searchParams?.store || ""), from: String(searchParams?.from || ""), to: String(searchParams?.to || "") };
+  const page = Math.max(1, Number(urlParams?.page || 1));
+  const filters = { sku: String(urlParams?.sku || "").trim(), type: String(urlParams?.type || ""), store: String(urlParams?.store || ""), from: String(urlParams?.from || ""), to: String(urlParams?.to || "") };
   let query = db.from("outgoing_marketplace_activities").select("*,config_marketplace_accounts(name,nickname)", { count: "exact" });
   if (filters.sku) query = query.ilike("sku", `%${filters.sku.replace(/[%_]/g, "")}%`);
   if (filters.type) query = query.eq("activity_type", filters.type);

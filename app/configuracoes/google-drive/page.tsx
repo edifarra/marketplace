@@ -11,14 +11,15 @@ import { getGoogleDriveConfigPageData } from "@/lib/google-drive-config";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     q?: string;
     edit?: string;
     erro?: string;
-  };
+  }>;
 };
 
 export default async function GoogleDriveConfigPage({ searchParams }: PageProps) {
+  const urlParams = (await searchParams) ?? {};
   const {
     settings,
     folders,
@@ -27,7 +28,7 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
     testStatus,
     testResult,
     serverConnection
-  } = await getGoogleDriveConfigPageData(searchParams?.q || "", searchParams?.edit);
+  } = await getGoogleDriveConfigPageData(urlParams?.q || "", urlParams?.edit);
 
   return (
     <main className="shell">
@@ -43,7 +44,7 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
           </div>
         </div>
 
-        {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
+        {urlParams?.erro && <div className="form-error">{urlParams.erro}</div>}
         {setupError && <div className="form-error">{setupError}</div>}
 
         <section className="card form-card">
@@ -163,7 +164,7 @@ export default async function GoogleDriveConfigPage({ searchParams }: PageProps)
               </div>
             </div>
             <form className="search-form" action="/configuracoes/google-drive">
-              <input name="q" placeholder="Buscar pasta" defaultValue={searchParams?.q || ""} />
+              <input name="q" placeholder="Buscar pasta" defaultValue={urlParams?.q || ""} />
               <button className="secondary" type="submit">Buscar</button>
             </form>
           </div>

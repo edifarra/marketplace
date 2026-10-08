@@ -7,13 +7,14 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 export const dynamic = "force-dynamic";
 
 type IntegracoesPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     erro?: string;
     sucesso?: string;
-  };
+  }>;
 };
 
 export default async function IntegracoesPage({ searchParams }: IntegracoesPageProps) {
+  const urlParams = (await searchParams) ?? {};
   noStore();
   const supabase = supabaseAdmin();
 
@@ -24,7 +25,7 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
 
   const settingMap = new Map((settings ?? []).map((row) => [row.key, row.value]));
   const mode = String(settingMap.get("PRODUCT_SEND_TARGET") || "TINY");
-  const errorMessage = searchParams?.erro || "";
+  const errorMessage = urlParams?.erro || "";
   const automaticSend = String(settingMap.get("ENVIAR_PRODUTOS_AUTOMATICO") || "NÃO").trim().toUpperCase() === "SIM";
 
   return (
@@ -39,7 +40,7 @@ export default async function IntegracoesPage({ searchParams }: IntegracoesPageP
         </div>
 
         {errorMessage && <div className="form-error">{errorMessage}</div>}
-        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
+        {urlParams?.sucesso && <div className="form-success">{urlParams.sucesso}</div>}
 
         <section className="card form-card">
           <h2>Destino de envio</h2>

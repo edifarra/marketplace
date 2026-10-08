@@ -14,14 +14,15 @@ import {
 export const dynamic = "force-dynamic";
 type Params = { page?: string; tab?: string; marketplace?: string; store?: string; status?: string; sla?: string; search?: string; from?: string; to?: string; unread?: string };
 
-export default async function ChatsQuestionsPage({ searchParams }: { searchParams?: Params }) {
+export default async function ChatsQuestionsPage({ searchParams }: { searchParams?: Promise<Params> }) {
+  const urlParams = (await searchParams) ?? {};
   const db = supabaseAdmin();
-  const page = Math.max(1, Number(searchParams?.page || 1));
-  const tab = searchParams?.tab === "all" ? "all" : "today";
+  const page = Math.max(1, Number(urlParams?.page || 1));
+  const tab = urlParams?.tab === "all" ? "all" : "today";
   const filters = {
-    marketplace: String(searchParams?.marketplace || ""), store: String(searchParams?.store || ""), status: String(searchParams?.status || ""),
-    sla: String(searchParams?.sla || ""), search: String(searchParams?.search || "").trim(), from: String(searchParams?.from || ""),
-    to: String(searchParams?.to || ""), unread: String(searchParams?.unread || "")
+    marketplace: String(urlParams?.marketplace || ""), store: String(urlParams?.store || ""), status: String(urlParams?.status || ""),
+    sla: String(urlParams?.sla || ""), search: String(urlParams?.search || "").trim(), from: String(urlParams?.from || ""),
+    to: String(urlParams?.to || ""), unread: String(urlParams?.unread || "")
   };
   const [accounts, settings] = await Promise.all([
     db.from("config_marketplace_accounts").select("id,name,nickname,marketplace").eq("active", true).order("name"),

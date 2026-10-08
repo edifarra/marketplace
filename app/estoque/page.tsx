@@ -24,13 +24,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     view?: string;
     erro?: string;
     sucesso?: string;
     status?: string;
     stock?: string;
-  };
+  }>;
 };
 
 const views: Array<{ key: MigrationStockView; title: string; description: string }> = [
@@ -57,9 +57,10 @@ const views: Array<{ key: MigrationStockView; title: string; description: string
 ];
 
 export default async function StockPage({ searchParams }: PageProps) {
-  const selectedView = parseView(searchParams?.view);
-  const selectedStatus = parseStatus(searchParams?.status);
-  const selectedStock = parseStock(searchParams?.stock);
+  const urlParams = (await searchParams) ?? {};
+  const selectedView = parseView(urlParams?.view);
+  const selectedStatus = parseStatus(urlParams?.status);
+  const selectedStock = parseStock(urlParams?.stock);
   const data = await getMigrationStockData(selectedView, selectedStatus, selectedStock);
 
   return (
@@ -74,8 +75,8 @@ export default async function StockPage({ searchParams }: PageProps) {
           <a className="secondary" href="/configuracoes/marketplace">Configurar MarketPlace</a>
         </div>
 
-        {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
-        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
+        {urlParams?.erro && <div className="form-error">{urlParams.erro}</div>}
+        {urlParams?.sucesso && <div className="form-success">{urlParams.sucesso}</div>}
         {data.errors.length > 0 && (
           <section className="form-error">
             {data.errors.map((error) => (

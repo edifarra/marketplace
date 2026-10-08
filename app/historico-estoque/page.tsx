@@ -4,10 +4,11 @@ import { InventoryLastQuery } from "./inventory-last-query";
 
 export const dynamic = "force-dynamic";
 
-export default async function InventoryHistoryPage({ searchParams }: { searchParams?: { busca?: string; produto?: string } }) {
+export default async function InventoryHistoryPage({ searchParams }: { searchParams?: Promise<{ busca?: string; produto?: string }> }) {
+  const urlParams = (await searchParams) ?? {};
   const db = supabaseAdmin();
-  const search = String(searchParams?.busca || "").trim();
-  const productId = String(searchParams?.produto || "").trim();
+  const search = String(urlParams?.busca || "").trim();
+  const productId = String(urlParams?.produto || "").trim();
   let products: Array<{ id: string; sku: string; title: string }> = [];
   if (productId) {
     const result = await db.from("products").select("id,sku,title").eq("id", productId).limit(1).throwOnError();

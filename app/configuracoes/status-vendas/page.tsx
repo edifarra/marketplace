@@ -5,7 +5,7 @@ import { StatusMappingsTable } from "./status-mappings-table";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type Props = { searchParams?: { marketplace?: string; sucesso?: string; erro?: string } };
+type Props = { searchParams?: Promise<{ marketplace?: string; sucesso?: string; erro?: string }> };
 
 const MARKETPLACES = [
   ["mercado_livre", "Mercado Livre"],
@@ -13,7 +13,8 @@ const MARKETPLACES = [
 ] as const;
 
 export default async function SaleStatusMappingsPage({ searchParams }: Props) {
-  const requestedMarketplace = String(searchParams?.marketplace || "mercado_livre");
+  const urlParams = (await searchParams) ?? {};
+  const requestedMarketplace = String(urlParams?.marketplace || "mercado_livre");
   const marketplace = MARKETPLACES.some(([value]) => value === requestedMarketplace)
     ? requestedMarketplace
     : "mercado_livre";
@@ -26,8 +27,8 @@ export default async function SaleStatusMappingsPage({ searchParams }: Props) {
       <div className="subtitle">Configure os status de cada marketplace e abra somente os substatus que precisar revisar.</div>
     </div></div>
 
-    {searchParams?.sucesso && <div className="message success">{searchParams.sucesso}</div>}
-    {(searchParams?.erro || error) && <div className="message error">{searchParams?.erro || error?.message}</div>}
+    {urlParams?.sucesso && <div className="message success">{urlParams.sucesso}</div>}
+    {(urlParams?.erro || error) && <div className="message error">{urlParams?.erro || error?.message}</div>}
 
     <section className="section card">
       <div className="status-marketplace-picker">

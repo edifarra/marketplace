@@ -67,18 +67,19 @@ type ProductFilters = {
   sort: "recent" | "updated" | "sku" | "name";
 };
 
-export default async function ProductsPage({ searchParams }: { searchParams?: { q?: string; page?: string; erro?: string; sucesso?: string; aguardando?: string; fila?: string; status?: string; marketplace?: string; brand?: string; type?: string; availableStock?: string; sort?: string } }) {
+export default async function ProductsPage({ searchParams }: { searchParams?: Promise<{ q?: string; page?: string; erro?: string; sucesso?: string; aguardando?: string; fila?: string; status?: string; marketplace?: string; brand?: string; type?: string; availableStock?: string; sort?: string }> }) {
+  const urlParams = (await searchParams) ?? {};
   noStore();
   const filters: ProductFilters = {
-    q: searchParams?.q?.trim() || "",
-    status: searchParams?.status?.trim() || "",
-    marketplace: searchParams?.marketplace === "unlinked" || searchParams?.marketplace === "tiny_only" || searchParams?.marketplace === "marketplace_linked" ? searchParams.marketplace : "",
-    brand: searchParams?.brand?.trim() || "",
-    type: searchParams?.type?.trim() || "",
-    availableStock: searchParams?.availableStock === "positive" || searchParams?.availableStock === "zero" ? searchParams.availableStock : "",
-    sort: parseSort(searchParams?.sort)
+    q: urlParams?.q?.trim() || "",
+    status: urlParams?.status?.trim() || "",
+    marketplace: urlParams?.marketplace === "unlinked" || urlParams?.marketplace === "tiny_only" || urlParams?.marketplace === "marketplace_linked" ? urlParams.marketplace : "",
+    brand: urlParams?.brand?.trim() || "",
+    type: urlParams?.type?.trim() || "",
+    availableStock: urlParams?.availableStock === "positive" || urlParams?.availableStock === "zero" ? urlParams.availableStock : "",
+    sort: parseSort(urlParams?.sort)
   };
-  const requestedPage = Math.max(1, Math.trunc(Number(searchParams?.page || 1)));
+  const requestedPage = Math.max(1, Math.trunc(Number(urlParams?.page || 1)));
   const [{ products, error, total, page, totalPages }, filterOptions, actionConfiguration] = await Promise.all([
     getProducts(requestedPage, filters),
     getProductFilterOptions(),
@@ -122,9 +123,9 @@ export default async function ProductsPage({ searchParams }: { searchParams?: { 
         </section>
 
         <section className="card">
-          {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
-          {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
-          {searchParams?.fila && <ProductQueueWaiter activityIds={searchParams.fila.split(",").filter(Boolean)} returnTo={returnTo} initialMessage={searchParams.aguardando || "Envio registrado. Aguardando execução da fila..."} />}
+          {urlParams?.erro && <div className="form-error">{urlParams.erro}</div>}
+          {urlParams?.sucesso && <div className="form-success">{urlParams.sucesso}</div>}
+          {urlParams?.fila && <ProductQueueWaiter activityIds={urlParams.fila.split(",").filter(Boolean)} returnTo={returnTo} initialMessage={urlParams.aguardando || "Envio registrado. Aguardando execução da fila..."} />}
           {error && <div className="form-error">Erro ao carregar produtos: {error}</div>}
           <div className="table-toolbar">
             <div>

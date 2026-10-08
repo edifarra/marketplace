@@ -9,8 +9,9 @@ export const dynamic = "force-dynamic";
 export default async function UsersPage({
   searchParams
 }: {
-  searchParams?: { erro?: string; sucesso?: string };
+  searchParams?: Promise<{ erro?: string; sucesso?: string }>;
 }) {
+  const urlParams = (await searchParams) ?? {};
   if (!(await requireMaster())) redirect("/acesso-negado");
   const [{ data: users, error }, { data: branding }] = await Promise.all([
     supabaseAdmin().from("app_users").select("id,name,email,is_master,active,last_login_at,created_at").order("created_at"),
@@ -25,8 +26,8 @@ export default async function UsersPage({
         <div className="topbar">
           <div><h1>Usuarios</h1><div className="subtitle">Criacao e gerenciamento basico de acessos.</div></div>
         </div>
-        {searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
-        {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}
+        {urlParams?.erro && <div className="form-error">{urlParams.erro}</div>}
+        {urlParams?.sucesso && <div className="form-success">{urlParams.sucesso}</div>}
 
         <section className="section card">
           <h2>Configurações da Empresa / Sistema</h2>

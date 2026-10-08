@@ -8,13 +8,14 @@ import { saveTelegramAction, testTelegramAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function TelegramPage({ searchParams }: { searchParams?: { sucesso?: string; erro?: string } }) {
+export default async function TelegramPage({ searchParams }: { searchParams?: Promise<{ sucesso?: string; erro?: string }> }) {
+  const urlParams = (await searchParams) ?? {};
   if (!(await requireMaster())) redirect("/acesso-negado");
   const config = await getTelegramConfig();
   const history = await supabaseAdmin().from("telegram_notification_history").select("*").order("created_at", { ascending: false }).limit(100);
   return <main className="shell"><Sidebar/><section className="main">
     <div className="topbar"><div><h1>Configurações: Notificações Telegram</h1><div className="subtitle">Conexão segura com o bot e regras dos alertas de vendas e despacho.</div></div></div>
-    {searchParams?.sucesso && <div className="form-success">{searchParams.sucesso}</div>}{searchParams?.erro && <div className="form-error">{searchParams.erro}</div>}
+    {urlParams?.sucesso && <div className="form-success">{urlParams.sucesso}</div>}{urlParams?.erro && <div className="form-error">{urlParams.erro}</div>}
     <form action={saveTelegramAction} className="config-form">
       <section className="card form-card"><h2>Configuração do Telegram</h2><div className="form-grid">
         <Toggle name="enabled" label="Ativar notificações Telegram" checked={config.enabled}/>

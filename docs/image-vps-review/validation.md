@@ -14,6 +14,8 @@ Validação real somente de leitura: SELECT do SKU **1096AU**, três referência
 
 Os resultados de `npm run check:smart` e `npm run deploy:smart -- --dry-run`, obrigatoriamente posteriores ao commit, são informados na mensagem final. O dry-run não confirma status remoto, não publica e não certifica READY.
 
+A validação Smart também foi executada com o baseline confirmado explícito para cobrir todo o commit. Ela encontrou duas falhas de fixtures em testes de parâmetros de páginas: o mock não reconhecia o novo seletor. O fixture foi atualizado para usar a função real. As falhas iniciais de testes Git temporários no sandbox foram resolvidas executando a mesma validação com permissão para criar esses repositórios de teste.
+
 ## Arquivos da tarefa
 
 ```text
@@ -42,6 +44,7 @@ scripts/prepare-vps-image-review.mjs
 tests/cloudinary-upload-policy.test.ts
 tests/marketplace-image-recovery.test.ts
 tests/product-vps-images.test.ts
+tests/search-params-pages.test.ts
 docs/image-vps-review/README.md
 docs/image-vps-review/validation.md
 docs/image-vps-review/1096AU-before.json

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
 import { elements, loadPage, memoryDatabase, textContent } from "./helpers/page-harness";
+import { productImageUrl } from "../lib/product-image-source";
 
 type Fixture = ReturnType<typeof fixture>;
 function fixture() {
@@ -41,6 +42,7 @@ function fixture() {
     "@/lib/marketplace-conversation-page": { MARKETPLACE_CONVERSATION_PAGE_SIZE: 25, MARKETPLACE_CONVERSATION_PAGE_SELECT: "id", normalizeMarketplaceConversationPagePlan: (value: any) => value },
     "@/lib/shopee-message-product-cards": { enrichShopeeMessageProductCards: async (_db: unknown, rows: any[]) => rows },
     "@/lib/product-action-rules": {}, "@/lib/marketplace-attributes": {}, "@/lib/marketplace-image-validation": {},
+    "@/lib/product-image-source": { productImageUrl },
     "@/lib/sales-fulfillment": { deferredShipping: () => null, overduePrintedLabel: () => false,
       saleShippingAction: () => null, saleLabelPrintedAt: () => null, extractSaleShipping: () => ({}) },
   };

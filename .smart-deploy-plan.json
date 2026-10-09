@@ -31,7 +31,8 @@
     "scripts/prepare-vps-image-review.mjs",
     "tests/cloudinary-upload-policy.test.ts",
     "tests/marketplace-image-recovery.test.ts",
-    "tests/product-vps-images.test.ts"
+    "tests/product-vps-images.test.ts",
+    "tests/search-params-pages.test.ts"
   ],
   "dependenciesChanged": false
 }

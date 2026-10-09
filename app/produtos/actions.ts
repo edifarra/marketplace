@@ -156,7 +156,22 @@ export async function removeProductIntegrationAction(formData: FormData) {
 
   let result: Awaited<ReturnType<typeof removeProductIntegration>>;
   try {
+    if ((integration === "MERCADO_LIVRE" || integration === "SHOPEE") && externalId && !accountId) {
+      if (deleteExternal) {
+        throw new Error("Este anuncio esta sem conta vinculada. Corrija o vinculo antes de excluir no marketplace ou remova apenas o vinculo do sistema.");
+      }
+      const marketplace = integration === "MERCADO_LIVRE" ? "mercado_livre" : "shopee";
+      // An orphan can be unlinked locally without guessing an external owner.
+      const removed = await supabaseAdmin().from("listings").delete()
+        .eq("product_id", productId).eq("marketplace", marketplace)
+        .eq("external_listing_id", externalId).is("marketplace_account_id", null)
+        .select("id").throwOnError();
+      result = { ok: Boolean(removed.data?.length), productId, message: removed.data?.length
+        ? "Vinculo sem conta removido apenas do sistema."
+        : "Vinculo sem conta nao encontrado. Atualize a pagina para consultar os vinculos atuais." };
+    } else {
     result = await removeProductIntegration(productId, integration, deleteExternal, externalId, accountId);
+    }
   } catch (error) {
     redirect(`/produtos/${productId}?erro=${encodeURIComponent(error instanceof Error ? error.message : String(error))}`);
   }

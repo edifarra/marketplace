@@ -1,0 +1,65 @@
+[
+  {
+    "listingId": "ae459c23-d24f-433e-a057-316e6f34224f",
+    "productId": "2f1021b3-c03b-4e47-8f91-ba5e746dd829",
+    "sku": "991PP.031225",
+    "externalId": "MLB6002956662",
+    "accountId": "d2382091-5a7f-4abf-a9ed-b357d4d1ce92",
+    "account": "ML-ED",
+    "sellerId": 187049698,
+    "status": "closed",
+    "price": 229.99,
+    "stock": 0,
+    "applied": true
+  },
+  {
+    "listingId": "0da46a9d-2c4c-48fe-ad7e-a2e862f1343d",
+    "productId": "f5f32782-9eac-4de8-9540-51b259b652d2",
+    "sku": "1195PP",
+    "externalId": "MLB4713071675",
+    "accountId": "d2382091-5a7f-4abf-a9ed-b357d4d1ce92",
+    "account": "ML-ED",
+    "sellerId": 187049698,
+    "status": "closed",
+    "price": 429,
+    "stock": 0,
+    "applied": true
+  },
+  {
+    "listingId": "37e1755b-2a5d-4feb-8e04-ef0c8871516f",
+    "productId": "b1b32433-35ae-4c16-bf91-48a373288b8a",
+    "sku": "1227PP",
+    "externalId": "MLB6922677758",
+    "accountId": "d2382091-5a7f-4abf-a9ed-b357d4d1ce92",
+    "account": "ML-ED",
+    "sellerId": 187049698,
+    "status": "closed",
+    "price": 189,
+    "stock": 0,
+    "applied": true
+  },
+  {
+    "listingId": "23e9d703-b9af-433e-8f86-1fd763bf63b1",
+    "productId": "e6391a45-ecc8-457c-b33f-7c5b7b36a217",
+    "sku": "990PP.031225",
+    "externalId": "MLB4343515795",
+    "accountId": "d2382091-5a7f-4abf-a9ed-b357d4d1ce92",
+    "account": "ML-ED",
+    "sellerId": 187049698,
+    "status": "closed",
+    "price": 189.99,
+    "stock": 0,
+    "applied": true
+  },
+  {
+    "listingId": "2bf69166-c594-451c-8ca8-ded6cbcd1d81",
+    "externalId": "MLB5512448586",
+    "sku": "GIR181-RosaSilicone",
+    "account": "ML-GI",
+    "status": "active",
+    "canonicalProductId": "74c0c169-3fd9-4654-9bd2-bfe7a51b7fd5",
+    "variationId": "189130164829",
+    "action": "remove_duplicate_orphan_preserve_canonical_variation",
+    "applied": true
+  }
+]

@@ -93,6 +93,30 @@ export async function uploadProductImageToCloudinary(input: {
   return withCloudinaryUploadFallback(accounts, account => uploadProductImageWithAccount(input, account));
 }
 
+/** The deterministic ID binds source URL, source bytes and the required incoming treatment. */
+export async function uploadMarketplaceCover(bytes: Uint8Array, publicId: string): Promise<string> {
+  return uploadMarketplaceCoverWithAccount(bytes, publicId, { ...await getCloudinarySettings(), reserve: false });
+}
+
+export async function uploadMarketplaceCoverWithAccount(bytes: Uint8Array, publicId: string, account: CloudinaryCredentials): Promise<string> {
+  validateMarketplaceSourceBuffer(Buffer.from(bytes));
+  const { cloudName, apiKey, apiSecret } = account;
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const transformation = "e_background_removal,b_white/q_auto:good,f_jpg";
+  const params = { public_id: publicId, overwrite: "false", transformation, timestamp };
+  const form = new FormData();
+  form.set("file", new Blob([new Uint8Array(bytes)]), "cover.jpg");
+  for (const [key, value] of Object.entries(params)) form.set(key, value);
+  form.set("api_key", apiKey);
+  form.set("signature", signCloudinaryParams(params, apiSecret));
+  const response = await fetchWithTimeout(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }, CLOUDINARY_REQUEST_TIMEOUT_MS, "tratamento da Foto 1");
+  const result = await response.json() as Partial<CloudinaryUploadResult> & { error?: { message?: string } };
+  if (!response.ok || !result.secure_url || result.public_id !== publicId) throw new Error(result.error?.message || "Cloudinary não confirmou o tratamento da Foto 1.");
+  const errors = validateMarketplaceImage({ bytes: result.bytes, width: result.width, height: result.height });
+  if (errors.length) throw new Error(`Transformação da Foto 1 fora do padrão: ${errors.join(" ")}`);
+  return result.secure_url;
+}
+
 export async function withCloudinaryUploadFallback<T>(
   accounts: { primary: CloudinaryCredentials; reserve: CloudinaryCredentials | null },
   operation: (account: CloudinaryCredentials) => Promise<T>

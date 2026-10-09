@@ -1,3 +1,4 @@
+import { productImageUrl } from "./product-image-source";
 import { supabaseAdmin } from "./supabase-admin";
 import { buildProductDescription } from "./dynamic-product-description";
 
@@ -497,7 +498,7 @@ function buildTinyProductPayload(product: Record<string, unknown>, settings: Tin
   const inventory = (product.inventory || {}) as Record<string, unknown>;
   const images = ([...((product.product_images || []) as Array<Record<string, unknown>>)])
     .sort((a, b) => Number(a.position || 0) - Number(b.position || 0))
-    .map((image) => String(image.cloudinary_url || image.url || image.local_url || ""))
+    .map((image) => productImageUrl(image))
     .map(toTinyImageUrl)
     .filter(Boolean);
   const productValue = (key: string) => product[key] ?? type[key];

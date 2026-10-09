@@ -28,9 +28,9 @@ test("apenas Shopee continua funcionando", () => {
   assert.deepEqual(ordered.map(account => account.id), ["s1"]);
 });
 
-test("Cloudinary valido continua sendo usado antes dos marketplaces", () => {
-  assert.match(temporaryRecoverySource, /if \(!unavailable\) return null;/);
-  assert.ok(temporaryRecoverySource.indexOf("if (!unavailable) return null;") < temporaryRecoverySource.indexOf('from("product_marketplaces")'));
+test("original selecionada disponivel evita recuperacao de marketplaces", () => {
+  assert.match(temporaryRecoverySource, /imageIsAvailable\(productImageUrl\(image\)\)/);
+  assert.ok(temporaryRecoverySource.indexOf("if (currentImages.length && !unavailablePositions.length) return null;") < temporaryRecoverySource.indexOf('from("product_marketplaces")'));
 });
 
 test("falha ou ausencia de imagem Shopee cai para ML e nenhuma fonte preserva o fallback", () => {

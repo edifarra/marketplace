@@ -1,0 +1,60 @@
+{
+  "observedAt": "2026-10-09T04:49:39.543Z",
+  "product": {
+    "id": "19e9ed14-197c-44fb-ad64-7e98836aaea4",
+    "sku": "1096AU",
+    "product_images": [
+      {
+        "id": "462d1f24-303f-483c-b4cd-b233a5b38471",
+        "url": "https://res.cloudinary.com/dknfrkqol/image/upload/e_background_removal,b_white,q_auto:good,f_jpg,w_800,h_800,c_limit/produtos/AI/1096AUAU_AWS-TV-50-BL-02-A_01.jpg",
+        "position": 1,
+        "local_url": "https://api.gestaomarketplace.tech/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_01.jpg",
+        "local_path": "/var/www/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_01.jpg",
+        "product_id": "19e9ed14-197c-44fb-ad64-7e98836aaea4",
+        "original_name": "AUAI_Aws-tv-50-bl-02-a_01",
+        "cloudinary_url": "https://res.cloudinary.com/dknfrkqol/image/upload/e_background_removal,b_white,q_auto:good,f_jpg,w_800,h_800,c_limit/produtos/AI/1096AUAU_AWS-TV-50-BL-02-A_01.jpg"
+      },
+      {
+        "id": "43217e37-30fe-40a4-ad1f-8f801b04d5a4",
+        "url": "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/AI/1096AUAU_AWS-TV-50-BL-02-A_02",
+        "position": 2,
+        "local_url": "https://api.gestaomarketplace.tech/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_02.jpg",
+        "local_path": "/var/www/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_02.jpg",
+        "product_id": "19e9ed14-197c-44fb-ad64-7e98836aaea4",
+        "original_name": "AUAI_Aws-tv-50-bl-02-a_02",
+        "cloudinary_url": "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/AI/1096AUAU_AWS-TV-50-BL-02-A_02"
+      },
+      {
+        "id": "1fe1f8d3-c183-4516-aa06-e8a83b20e929",
+        "url": "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/AI/1096AUAU_AWS-TV-50-BL-02-A_03",
+        "position": 3,
+        "local_url": "https://api.gestaomarketplace.tech/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_03.jpg",
+        "local_path": "/var/www/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_03.jpg",
+        "product_id": "19e9ed14-197c-44fb-ad64-7e98836aaea4",
+        "original_name": "AUAI_Aws-tv-50-bl-02-a_03",
+        "cloudinary_url": "https://res.cloudinary.com/dknfrkqol/image/upload/q_auto:good,w_800,h_800,c_limit,f_auto/produtos/AI/1096AUAU_AWS-TV-50-BL-02-A_03"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "position": 1,
+      "url": "https://api.gestaomarketplace.tech/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_01.jpg",
+      "status": 200,
+      "contentType": "image/jpeg"
+    },
+    {
+      "position": 2,
+      "url": "https://api.gestaomarketplace.tech/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_02.jpg",
+      "status": 200,
+      "contentType": "image/jpeg"
+    },
+    {
+      "position": 3,
+      "url": "https://api.gestaomarketplace.tech/Imagens/Legado/AUAI_Aws-tv-50-bl-02-a_03.jpg",
+      "status": 200,
+      "contentType": "image/jpeg"
+    }
+  ],
+  "productionWrites": 0
+}

@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { caseDate, caseImage, caseMoney, caseReason, caseHeaderRow, claimDescription, sellerDeadline, caseStatusLabel, deadlineLabel, reputationLabel } from "./case-display";
+import { ProductThumbnail } from "../components/product-thumbnail";
+import { caseDate, caseMoney, caseReason, caseHeaderRow, claimDescription, sellerDeadline, caseStatusLabel, deadlineLabel, reputationLabel } from "./case-display";
 import { caseAttention, caseContext } from "@/lib/marketplace-case-context";
 import { ShopeeActions } from "./shopee-actions";
 import { CaseTimeline } from "./case-timeline";
@@ -12,8 +13,8 @@ import { detailCacheKey, readCaseCache, updateCaseCache } from "./case-detail-ca
 import { buyerFields, displayFields, humanLabel, presentValue, returnFields } from "./case-presentation";
 type Row = Record<string, any>;
 function Photo({ product }: { product: Row | null }) {
-  const image = caseImage(product);
-  return image ? <Image unoptimized width={66} height={66} src={image} alt={product?.title || "Produto"} loading="lazy"/> : <span className={styles.noImage}>Sem foto</span>;
+  const image = [...(product?.product_images || [])].sort((a, b) => a.position - b.position)[0];
+  return <ProductThumbnail width={66} height={66} image={image} alt={product?.title || "Produto"} />;
 }
 export function CaseGrid({ rows, initialId, cacheScope = "", cacheRevision = "" }: { rows: Row[]; initialId?: string; cacheScope?: string; cacheRevision?: string }) {
   const [expanded, setExpanded] = useState<string | null>(initialId && rows.some(r => r.id === initialId) ? initialId : null);

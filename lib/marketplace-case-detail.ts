@@ -31,7 +31,7 @@ export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: 
   const skus = [...new Set<string>([...(sale?.items || []).map((i: Row) => i.sku), ...(row.item?.sku ? [row.item.sku] : [])])];
   const products: Row[] = [];
   for (let offset = 0; offset < skus.length; offset += 100) {
-    const r = await db.from("products").select("id,sku,title,product_images(url,cloudinary_url,position)").in("sku", skus.slice(offset, offset + 100)).throwOnError();
+    const r = await db.from("products").select("id,sku,title,product_images(url,local_url,cloudinary_url,position)").in("sku", skus.slice(offset, offset + 100)).throwOnError();
     products.push(...(r.data || []));
   }
   const [conversations, observations, timeline, actions, evidence] = await Promise.all([

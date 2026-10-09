@@ -1,3 +1,4 @@
+import { productImageUrl } from "./product-image-source";
 import { deleteCloudinaryResource, uploadProductImageToCloudinary } from "./cloudinary";
 import { nextSku } from "./pipeline";
 import { supabaseAdmin } from "./supabase-admin";
@@ -49,7 +50,7 @@ export async function cloneProduct(productId: string): Promise<ClonedProduct> {
     cloneId = String(insert.data.id);
 
     for (const image of imagesResult.data || []) {
-      const sourceUrl = String(image.cloudinary_url || image.url || image.local_url || "");
+      const sourceUrl = productImageUrl(image);
       if (!sourceUrl) continue;
       const response = await fetch(sourceUrl, { cache: "no-store" });
       if (!response.ok) throw new Error(`Nao foi possivel copiar a foto ${image.original_name}: ${response.status}.`);

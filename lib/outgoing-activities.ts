@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "./supabase-admin";
+import { prepareMarketplaceImages } from "./prepare-marketplace-images";
+import { activityNeedsProductImages, prepareActivityImageRequest } from "./product-image-source";
 import { getMercadoLivreAccountById, getValidMercadoLivreAccessToken } from "./mercado-livre";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
@@ -95,6 +97,11 @@ export async function processOutgoingActivities(limit = 10) {
           results.push({ id: activity.id, ok: true, skipped: true });
           continue;
         }
+      }
+      if (activityNeedsProductImages(activity)) {
+        activity.requested_data = await prepareActivityImageRequest(activity, prepareMarketplaceImages);
+        await db.from("outgoing_marketplace_activities").update({ requested_data: activity.requested_data })
+          .eq("id", activity.id).throwOnError();
       }
       const confirmed: Record<string, any> = await executeAndConfirm(activity);
       await db.from("outgoing_marketplace_activities").update({ status: "completed", confirmed_data: confirmed,

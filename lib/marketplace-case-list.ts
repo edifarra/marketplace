@@ -30,7 +30,7 @@ export function caseGroup(row: Row): CaseGroup {
 export const CASE_LIST_SELECT = `id,marketplace,marketplace_account_id,external_case_id,case_type,reverse_logistics,responsible,order_id,status,needs_action,reputation_impact,updated_at,official_updated_at,snapshot_order_at,read_control:marketplace_case_sync_control(case_revision),reason:content->>reason,reason_name:content->>reason_name,reason_code:content->>reason_code,current_actions:content->current_actions,buyer_description:content->>buyer_description,validation_type:content->>validation_type,buyer_name:content->>buyer_name,related_claim_id:content->>related_claim_id,
   conversation:marketplace_conversations!conversation_id(buyer_name),
   account:config_marketplace_accounts!marketplace_account_id(id,name,nickname,marketplace),
-  product:products!product_id(id,sku,title,product_images(url,cloudinary_url,position)),
+  product:products!product_id(id,sku,title,product_images(url,local_url,cloudinary_url,position)),
   item:venda_item!venda_item_id(id,venda_id,sku,quantidade,valor_total),
   sale:venda!venda_id(id,marketplace,order_id,items:venda_item(id,sku,quantidade,valor_total))`;
 const SELECT = CASE_LIST_SELECT;
@@ -141,7 +141,7 @@ export async function loadCaseList(input: CaseFilters, db = supabaseAdmin()) {
   const saleSkus = [...new Set(rows.flatMap(r => [...(r.sale?.items || []).map((i: Row) => String(i.sku)), ...(r.item?.sku ? [String(r.item.sku)] : [])]))];
   const products: Row[] = [];
   for (let i = 0; i < saleSkus.length; i += 100) {
-    const result = await db.from("products").select("id,sku,title,product_images(url,cloudinary_url,position)").in("sku", saleSkus.slice(i, i + 100)).throwOnError();
+    const result = await db.from("products").select("id,sku,title,product_images(url,local_url,cloudinary_url,position)").in("sku", saleSkus.slice(i, i + 100)).throwOnError();
     products.push(...(result.data || []));
   }
   return { rows, products, accounts, counts, contextCounts, total, pages, page, filters:{...filters,buyer,site:buyer ? site : ""} };

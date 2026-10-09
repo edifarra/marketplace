@@ -1,4 +1,5 @@
 import { humanLabel } from "./case-presentation";
+import { productImageUrl } from "@/lib/product-image-source";
 export function caseDate(value: string | null | undefined) {
   if (!value || !Number.isFinite(Date.parse(value))) return "Não informado";
   return new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -8,8 +9,8 @@ export function caseMoney(value: number | null | undefined,currency="BRL") {
 }
 export function caseImage(product: any) {
   const cover = [...(product?.product_images || [])].sort((a, b) => a.position - b.position)[0];
-  const url = cover?.cloudinary_url || cover?.url || "";
-  return url.startsWith("/uploads/") || /^https:\/\/res\.cloudinary\.com\//.test(url) ? url : "";
+  const url = productImageUrl(cover);
+  return url.startsWith("/uploads/") || /^https:\/\//.test(url) ? url : "";
 }
 export function reputationLabel(row: any) {
   return row.marketplace === "shopee" ? "" : ({affected:"Afeta sua reputação",not_affected:"Não afeta sua reputação",not_applies:"Não se aplica à reputação"} as Record<string,string>)[row.reputation_impact] || "";

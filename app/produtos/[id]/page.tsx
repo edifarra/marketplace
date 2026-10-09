@@ -1,3 +1,4 @@
+import { productImageUrl } from "@/lib/product-image-source";
 import { Sidebar } from "@/app/components/sidebar";
 import { resendProductIntegrationAction } from "../actions";
 import { IntegrationDeleteButton } from "./integration-delete-button";
@@ -169,7 +170,7 @@ export default async function ProductDetailPage({
           types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}`, marketplaceCategory: String(item.marketplace_category || ""), boardCodeRequired: isBoardCodeRequired(item, categoryMappings.data || []) }))}
           brands={(brands.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.name}` }))}
           specials={(specials.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.notes || item.include_description || item.code}` }))}
-          images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: image.cloudinary_url || image.local_url || image.url || "", position: image.position, bytes: Number(image.bytes || 0), width: Number(image.width_px || 0), height: Number(image.height_px || 0) })).filter(image => image.url)}
+          images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: productImageUrl(image), position: image.position, bytes: Number(image.bytes || 0), width: Number(image.width_px || 0), height: Number(image.height_px || 0) }))}
           temporaryImages={temporaryImages}
           categoryMappings={editorCategoryMappings as any}
           marketplaceLinks={{
@@ -545,4 +546,3 @@ function removeSpecialFragments(description: string, configuredRemovals: string)
 
   return result.replace(/(?:<br\s*\/?>\s*){2,}/gi, "<br>").trim();
 }
-

@@ -22,6 +22,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       if (shopeeImage) return proxyImage(shopeeImage);
     }
     if (sale.marketplace === "mercado_livre") {
+      const snapshotImage = String(sourceItem?.item?.secure_thumbnail || sourceItem?.item?.thumbnail
+        || sourceItem?.item?.pictures?.[0]?.secure_url || sourceItem?.item?.pictures?.[0]?.url || "");
+      if (snapshotImage) return proxyImage(snapshotImage);
       const itemId = String(sourceItem?.item?.id || sourceItem?.item_id || "");
       if (itemId) {
         const payload = (raw.payload || raw) as Record<string, any>;

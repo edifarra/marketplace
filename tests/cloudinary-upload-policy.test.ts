@@ -9,9 +9,31 @@ import {
   deleteCloudinaryResourceWithAccounts,
   isCloudinaryQuotaOrBillingError,
   uploadProductImageWithAccount,
+  uploadMarketplaceCoverWithAccount,
   withCloudinaryUploadFallback,
   type CloudinaryCredentials
 } from "../lib/cloudinary";
+
+test("tratamento VPS usa identidade determinística, não sobrescreve e exige branco e remoção de fundo", async () => {
+  const originalFetch = globalThis.fetch;
+  const png = Buffer.alloc(24);
+  png.set([0x89, 0x50, 0x4e, 0x47]);
+  png.writeUInt32BE(800, 16); png.writeUInt32BE(800, 20);
+  const id = "marketplace-covers/white-bg-v1_test";
+  globalThis.fetch = (async (_input, init) => {
+    const form = init?.body as FormData;
+    assert.equal(form.get("transformation"), "e_background_removal,b_white/q_auto:good,f_jpg");
+    assert.equal(form.get("overwrite"), "false");
+    assert.equal(form.get("public_id"), id);
+    assert.ok(form.get("signature"));
+    return Response.json({ public_id: id, secure_url: `https://res.cloudinary.com/main/image/upload/v1/${id}.jpg`, bytes: 150_000, width: 800, height: 800 });
+  }) as typeof fetch;
+  try {
+    assert.equal(await uploadMarketplaceCoverWithAccount(png, id, account("main", false)), `https://res.cloudinary.com/main/image/upload/v1/${id}.jpg`);
+    globalThis.fetch = async () => Response.json({ error: { message: "background removal failed" } }, { status: 400 });
+    await assert.rejects(uploadMarketplaceCoverWithAccount(png, id, account("main", false)), /background removal failed/);
+  } finally { globalThis.fetch = originalFetch; }
+});
 
 test("URL persistida e a secure_url direta do asset armazenado", () => {
   const secureUrl = "https://res.cloudinary.com/conta/image/upload/v1/produtos/X/master.jpg";

@@ -1,4 +1,5 @@
 "use server";
+import { productImageUrl, imageIsAvailable } from "@/lib/product-image-source";
 
 import { deleteProductById, inspectProductDeletion } from "@/lib/products";
 import { removeProductIntegration, sendProductToConfiguredTarget } from "@/lib/product-sender";
@@ -272,7 +273,7 @@ export async function updateProductDetailsAction(formData: FormData) {
     redirect(detailError("Preencha os campos obrigatórios com valores válidos."));
   }
   const db = supabaseAdmin();
-  const current = await db.from("products").select("*,product_images(id,original_name,url,cloudinary_url,cloudinary_public_id,cloudinary_asset_id,position,bytes,width_px,height_px)").eq("id", productId).single().throwOnError();
+  const current = await db.from("products").select("*,product_images(id,original_name,url,local_url,cloudinary_url,cloudinary_public_id,cloudinary_asset_id,position,bytes,width_px,height_px)").eq("id", productId).single().throwOnError();
   const awaitingPrice = ["pending_price", "manual_price"].includes(String(current.data.status));
   const titleChanged = String(current.data.title || "") !== title;
   const requestedInternalCategory = text("marketplaceCategory");
@@ -349,7 +350,7 @@ export async function updateProductDetailsAction(formData: FormData) {
   const keptIds = imageSequence.filter(token => token.startsWith("existing:")).map(token => token.slice("existing:".length));
   const newKeys = imageSequence.filter(token => token.startsWith("new:")).map(token => token.slice("new:".length));
   const remoteKeys = imageSequence.filter(token => token.startsWith("remote:")).map(token => token.slice("remote:".length));
-  const existingImages = (current.data.product_images || []) as Array<{ id: string; original_name: string; url?: string | null; cloudinary_url?: string | null; cloudinary_public_id?: string | null; cloudinary_asset_id?: string | null; cloudinary_cloud_name?: string | null; position: number; bytes?: number | null; width_px?: number | null; height_px?: number | null }>;
+  const existingImages = (current.data.product_images || []) as Array<{ id: string; original_name: string; url?: string | null; local_url?: string | null; cloudinary_url?: string | null; cloudinary_public_id?: string | null; cloudinary_asset_id?: string | null; cloudinary_cloud_name?: string | null; position: number; bytes?: number | null; width_px?: number | null; height_px?: number | null }>;
   type PreparedImage = { key: string; name: string; url: string; publicId: string; assetId?: string | null; cloudName: string; bytes: number; width: number; height: number; position: number };
   let preparedImages: PreparedImage[] = [];
   try { preparedImages = JSON.parse(text("preparedImages") || "[]") as PreparedImage[]; } catch { redirect(detailError("Os dados das fotos processadas ficaram inconsistentes. Envie as fotos novamente.")); }

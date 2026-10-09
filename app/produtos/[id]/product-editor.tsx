@@ -5,6 +5,7 @@ import { updateProductDetailsAction } from "../actions";
 import { ExternalProductActionSubmit } from "../product-action-submit";
 import { SynchronizeProductButton } from "../synchronize-product-button";
 import { PriceInput } from "../price-input";
+import { mergeRecoveredImages } from "@/lib/product-image-source";
 
 type Option = { code: string; label: string; marketplaceCategory?: string; boardCodeRequired?: boolean };
 type ImageItem = { id: string; name: string; url: string; position: number; bytes: number; width: number; height: number };
@@ -46,9 +47,11 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
   const availableStock = Number(product.estoque_disponivel || 0);
   const [dirty, setDirty] = useState(Boolean(temporaryImages));
   const [pendingHref, setPendingHref] = useState("");
-  const [ordered, setOrdered] = useState<EditorImage[]>(temporaryImages
-    ? temporaryImages.images.map(image => ({ ...image, kind: "remote" as const }))
-    : [...images].sort((a, b) => a.position - b.position).map(image => ({ ...image, kind: "existing" as const })));
+  const [ordered, setOrdered] = useState<EditorImage[]>(() => {
+    const originals = images.map(image => ({ ...image, kind: "existing" as const }));
+    if (!temporaryImages) return originals.sort((a, b) => Number(a.position) - Number(b.position));
+    return mergeRecoveredImages(originals, temporaryImages.images.map(image => ({ ...image, kind: "remote" as const })));
+  });
   const storedCategories = (product.marketplace_categories || {}) as unknown as Record<string,any>;
   const storedAttributes = (product.marketplace_attributes || {}) as unknown as Record<string,any>;
   const [typeCode, setTypeCode] = useState(String(product.type_code || ""));
@@ -283,7 +286,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
       selected.forEach((image, index) => queuePrepareImage(image.key, image.file, startPosition + index + 1));
       if (selected.length) setDirty(true);
     }} />
-    {temporaryImages && <div className="form-success">As fotos foram recuperadas temporariamente do {temporaryImages.marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee"} porque uma ou mais fotos do Cloudinary não estavam disponíveis. Somente as fotos exibidas serão gravadas ao salvar.{temporaryImages.totalRemoteImages > 6 ? ` O anúncio possui ${temporaryImages.totalRemoteImages} fotos; as excedentes ao limite de 6 serão removidas dos marketplaces.` : ""}</div>}
+    {temporaryImages && <div className="form-success">As fotos indisponíveis foram recuperadas temporariamente do {temporaryImages.marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee"}. As originais disponíveis foram mantidas. Ao salvar, as substituições exibidas serão gravadas e enviadas aos anúncios vinculados conforme o fluxo de atualização.</div>}
     {ordered.some(image => image.kind === "new") && <div className="form-success">As novas fotos podem ser ordenadas ou excluídas antes de salvar. Somente a sequência exibida abaixo será gravada.</div>}
     <div className="editable-image-grid">
       {ordered.map((image, index) => { const errors = image.kind === "new" ? validateNewImageSource(image) : []; const key = imageKey(image); return <figure className={`editable-product-image${errors.length ? " invalid-product-image" : ""}`} key={key}>

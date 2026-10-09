@@ -4,6 +4,7 @@ import { getMercadoLivreAccountById, getMercadoLivreItem } from "./mercado-livre
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { getValidShopeeAccessToken, type ShopeeAccountConfig } from "./shopee";
 import { supabaseAdmin } from "./supabase-admin";
+import { productImageUrl, imageIsAvailable, type ProductImageSource } from "./product-image-source";
 
 const MAX_IMAGES = 6;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
@@ -26,15 +27,16 @@ export type TemporaryMarketplaceImageSet = {
   accountId: string;
   listingId: string;
   totalRemoteImages: number;
+  unavailablePositions: number[];
 };
 
 export async function recoverTemporaryImagesWhenCloudinaryIsUnavailable(
   productId: string,
-  currentImages: Array<{ cloudinary_url?: string | null }>
+  currentImages: ProductImageSource[]
 ): Promise<TemporaryMarketplaceImageSet | null> {
-  const unavailable = currentImages.length === 0
-    || (await Promise.all(currentImages.map(image => isReachableCloudinaryUrl(image.cloudinary_url)))).some(reachable => !reachable);
-  if (!unavailable) return null;
+  const reachable = await Promise.all(currentImages.map(image => imageIsAvailable(productImageUrl(image))));
+  const unavailablePositions = currentImages.filter((_, index) => !reachable[index]).map(image => Number(image.position));
+  if (currentImages.length && !unavailablePositions.length) return null;
 
   const db = supabaseAdmin();
   const [linksResult, accountsResult] = await Promise.all([
@@ -63,8 +65,12 @@ export async function recoverTemporaryImagesWhenCloudinaryIsUnavailable(
         ? extractMercadoLivreImageUrls((link.raw_data || {}) as Record<string, unknown>)
         : extractMarketplaceImageUrls((link.raw_data || {}) as Record<string, unknown>);
       if (!urls.length) continue;
-      const images = await Promise.all(urls.slice(0, MAX_IMAGES).map((url, index) => inspectRemoteImage(url, index + 1)));
-      return { images, marketplace, accountId, listingId, totalRemoteImages: urls.length };
+      const candidates = urls.slice(0, MAX_IMAGES).map((url, index) => ({ url, position: index + 1 }))
+        .filter(image => !currentImages.length || unavailablePositions.includes(image.position));
+      const inspected = await Promise.allSettled(candidates.map(image => inspectRemoteImage(image.url, image.position)));
+      const images = inspected.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+      if (!images.length) continue;
+      return { images, marketplace, accountId, listingId, totalRemoteImages: urls.length, unavailablePositions };
     } catch {
       // Uma integracao indisponivel nao impede tentar a proxima conta vinculada.
     }
@@ -110,25 +116,16 @@ async function fetchCurrentMarketplaceImageUrls(marketplace: Marketplace, accoun
 }
 
 async function inspectRemoteImage(url: string, position: number): Promise<TemporaryMarketplaceImage> {
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new Error(`Falha ao baixar temporariamente a foto do anuncio (${response.status}).`);
   const declaredSize = Number(response.headers.get("content-length") || 0);
   if (declaredSize > MAX_SOURCE_BYTES) throw new Error("A foto do anuncio excede 8 MB.");
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > MAX_SOURCE_BYTES) throw new Error("A foto do anuncio excede 8 MB.");
   const dimensions = readImageDimensions(bytes);
+  if (!dimensions.width || !dimensions.height) throw new Error("A foto recuperada não é uma imagem válida.");
   return { key: String(position - 1), name: `marketplace-${String(position).padStart(2, "0")}.jpg`, url,
     position, bytes: bytes.byteLength, width: dimensions.width, height: dimensions.height };
-}
-
-async function isReachableCloudinaryUrl(url: string | null | undefined) {
-  if (!url || !/^https?:\/\//i.test(url)) return false;
-  try {
-    const response = await fetch(url, { method: "HEAD", cache: "no-store" });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
 
 export function orderMarketplaceAccounts<T extends { marketplace?: unknown; name?: unknown; created_at?: unknown }>(accounts: T[]) {

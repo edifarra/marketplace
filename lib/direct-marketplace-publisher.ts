@@ -1,3 +1,4 @@
+import { prepareMarketplaceImages } from "./prepare-marketplace-images";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
 import { supabaseAdmin } from "./supabase-admin";
 import { htmlToPlainText } from "./html-to-plain-text";
@@ -10,7 +11,7 @@ import { hasMercadoLivreFamily, pendingManagedTitleRecovery } from "./mercado-li
 export async function publishProductDirectly(productId: string, processImmediately = true) {
   const db = supabaseAdmin();
   const [productResult, inventoryResult, accountsResult, listingLinks, marketplaceLinks] = await Promise.all([
-    db.from("products").select("*,product_images(position,url,cloudinary_url)").eq("id", productId).single().throwOnError(),
+    db.from("products").select("*,product_images(id,position,url,local_url,cloudinary_url)").eq("id", productId).single().throwOnError(),
     db.from("estoque").select("estoque_disponivel").eq("product_id", productId).single().throwOnError(),
     db.from("config_marketplace_accounts").select("id,name,marketplace").in("marketplace", ["mercado_livre", "shopee"]).eq("active", true).throwOnError(),
     db.from("listings").select("marketplace_account_id,external_listing_id").eq("product_id", productId).not("external_listing_id", "is", null).throwOnError(),
@@ -45,8 +46,7 @@ export async function publishProductDirectly(productId: string, processImmediate
   const description = htmlToPlainText(buildProductDescription(effective, typeResult.data, brandResult.data, specialResult.data));
   const partNumber = String(product.board_code || product.model || "").trim();
   const boardCode = String(product.board_code || "").trim();
-  const images = (product.product_images || []).sort((a: any,b: any) => a.position-b.position)
-    .map((image: any) => image.cloudinary_url || image.url).filter(Boolean);
+  const images = await prepareMarketplaceImages(productId);
   const activityIds: string[] = [];
   for (const account of missingAccounts) {
     if (account.marketplace === "shopee") {
@@ -100,7 +100,7 @@ export async function publishProductDirectly(productId: string, processImmediate
 export async function enqueueDirectListingUpdates(productId: string, target?: { accountId?: string; listingId?: string; marketplace?: string }, processImmediately = true, changes?: { title?: boolean; price?: boolean; attributes?: boolean; images?: boolean; stock?: number; reactivatePausedOnManualSave?: boolean }) {
   const db = supabaseAdmin();
   const [productResult, linksResult, listingLinksResult] = await Promise.all([
-    db.from("products").select("*,product_images(position,url,cloudinary_url)").eq("id", productId).single().throwOnError(),
+    db.from("products").select("*,product_images(id,position,url,local_url,cloudinary_url)").eq("id", productId).single().throwOnError(),
     db.from("product_marketplaces").select("marketplace,marketplace_account_id,marketplace_product_id,titulo_marketplace,valor_marketplace,family_id,family_name,user_product_id,raw_data")
       .eq("product_id", productId).eq("existe_no_marketplace", true).throwOnError(),
     db.from("listings").select("marketplace,marketplace_account_id,external_listing_id,price,paused_by_stock_control")
@@ -124,10 +124,7 @@ export async function enqueueDirectListingUpdates(productId: string, target?: { 
   const product = productResult.data;
   const fullAttributeUpdate = !changes || Boolean(changes.attributes);
   const imageUrls = changes?.images
-    ? [...(product.product_images || [])]
-      .sort((left, right) => Number(left.position || 0) - Number(right.position || 0))
-      .slice(0, 6)
-      .map(image => String(image.cloudinary_url || image.url || "")).filter(Boolean)
+    ? await prepareMarketplaceImages(productId)
     : undefined;
   if (changes?.images && !imageUrls?.length) throw new Error("O anuncio deve possuir pelo menos uma foto.");
   const [inventoryResult, typeResult, brandResult, specialResult, marketplaceState] = await Promise.all([

@@ -1,3 +1,5 @@
+import { productImageUrl } from "@/lib/product-image-source";
+import { ProductThumbnail } from "../components/product-thumbnail";
 import Image from "next/image";
 import Link from "next/link";
 import { Sidebar } from "../components/sidebar";
@@ -381,20 +383,19 @@ async function getProductImages(supabase: ReturnType<typeof supabaseAdmin>, prod
 
 function ProductThumb({ product }: { product: ProductRow }) {
   const image = [...(product.product_images || [])].sort((a, b) => a.position - b.position)[0];
-  const src = image?.cloudinary_url || image?.url || image?.local_url;
+  const src = productImageUrl(image);
 
   if (!src) {
     return <span className="product-thumb-placeholder">01</span>;
   }
 
   return (
-    <Image
+    <ProductThumbnail
       className="product-thumb"
-      src={src}
+      image={image}
       alt={image.original_name}
       width={42}
       height={42}
-      unoptimized
     />
   );
 }

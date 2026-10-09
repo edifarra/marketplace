@@ -23,15 +23,10 @@ export default async function SalesPage({ searchParams }: { searchParams?: Promi
     db.from("venda").select("id,marketplace,order_id,status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,shipment_id,raw_data,created_at,updated_at,status_venda(internal_status,description)").order("data_venda", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
     db.from("venda_item").select("venda_id,sku,quantidade,valor_unitario,valor_total"),
     db.from("config_marketplace_accounts").select("id,name,nickname,marketplace,seller_id,account_id,shop_id"),
-    db.from("products").select("sku,title,product_images(original_name,url,cloudinary_url,position)"),
+    db.from("products").select("sku,title"),
     db.from("venda_estoque_auditoria").select("venda_id,sku,status,mensagem,estoque_fisico,estoque_disponivel,reservas_ativas,estoque_disponivel_esperado,checked_at")
   ]);
   const productTitles = new Map((products || []).map((product) => [normalizeSku(product.sku), String(product.title || "")]));
-  const productImages = new Map((products || []).map((product) => {
-    const images = Array.isArray(product.product_images) ? product.product_images : [];
-    const cover = [...images].sort((left, right) => Number(left.position || 0) - Number(right.position || 0))[0];
-    return [normalizeSku(product.sku), String(cover?.cloudinary_url || cover?.url || "")];
-  }));
   const shippingTodayCount = ((sales || []) as unknown as Sale[])
     .filter(isEffectiveSale)
     .filter((sale) => !deferredShipping(sale) && !overduePrintedLabel(sale) && Boolean(saleShippingAction(sale)))
@@ -116,8 +111,7 @@ export default async function SalesPage({ searchParams }: { searchParams?: Promi
         quantity: Number(item.quantidade || 0),
         unitValue: money(Number(item.valor_unitario || 0)),
         totalValue: money(Number(item.valor_total || 0)),
-        imageUrl: productImages.get(normalizeSku(item.sku))
-          || `/api/vendas/${sale.id}/imagem?sku=${encodeURIComponent(String(item.sku || ""))}`
+        imageUrl: `/api/vendas/${sale.id}/imagem?sku=${encodeURIComponent(String(item.sku || ""))}`
       })),
       shippingHistory
     };

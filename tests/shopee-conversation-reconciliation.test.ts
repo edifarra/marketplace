@@ -66,7 +66,7 @@ test("retries do mesmo webchat_push mantêm roteamento determinístico e reconci
 });
 
 test("uma conta cria um único contexto e reutiliza-o em todas as conversas", () => {
-  const incremental = source.slice(source.indexOf("async function syncShopeeConversationsIncremental"), source.indexOf("async function firstLocalMercadoLivreOrder"));
+  const incremental = source.slice(source.indexOf("async function syncShopeeConversationsIncremental"), source.indexOf("function resolveReplyRecipient"));
   assert.equal(incremental.match(/shopeeContext\(account\)/g)?.length, 1);
   assert.match(incremental, /syncShopeeCandidates\(account, context, candidates, snapshots(?:, 1, cache)?\)/);
   const prepare = source.slice(source.indexOf("async function prepareShopeeConversation"), source.indexOf("async function persistPreparedShopeeConversation"));

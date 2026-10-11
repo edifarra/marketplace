@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(process.cwd(), "lib/marketplace-convers
 const shopeeSource = fs.readFileSync(path.join(process.cwd(), "lib/shopee.ts"), "utf8");
 
 test("selects mínimos são específicos por fluxo", () => {
-  assert.match(source, /conversationType === "post_sale"[\s\S]*?"id,conversation_path,pack_id,seller_id,raw_data"[\s\S]*?: "id,external_conversation_id,raw_data"/);
+  assert.match(source, /conversationType === "post_sale"[\s\S]*?"id,marketplace_account_id,order_id,conversation_path,pack_id,seller_id,raw_data"[\s\S]*?: "id,external_conversation_id,raw_data"/);
   const pendingShopee = source.slice(source.indexOf("async function pendingShopeeReconciliationRows"), source.indexOf("async function markMercadoLivreConversationReconciled"));
   assert.match(pendingShopee, /select\("id,external_conversation_id,raw_data"\)/);
   const orderLoader = source.slice(source.indexOf("async function loadOrderProducts"), source.indexOf("async function loadMercadoLivreBuyer"));

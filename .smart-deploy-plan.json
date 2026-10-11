@@ -22,9 +22,11 @@
     "tests/claim-return-service.test.ts",
     "tests/claim-return-ui.test.ts",
     "tests/marketplace-claim-operations.test.ts",
+    "tests/marketplace-reconciliation-phase-one.test.ts",
     "tests/marketplace-special-messages.test.ts",
     "tests/mercado-livre-pack-persistence.test.ts",
-    "tests/mercado-livre-pack-resolution.test.ts"
+    "tests/mercado-livre-pack-resolution.test.ts",
+    "tests/shopee-conversation-reconciliation.test.ts"
   ],
   "dependenciesChanged": false
 }

@@ -8,6 +8,7 @@
     "app/central-reclamacoes/case-grid.tsx",
     "app/central-reclamacoes/claim-controls.tsx",
     "app/central-reclamacoes/prior-chat-history.tsx",
+    "app/components/sidebar.tsx",
     "app/produtos/product-queue-waiter.tsx",
     "docs/claim-return-audit.md",
     "docs/marketplace-claim-prior-chat-history.md",

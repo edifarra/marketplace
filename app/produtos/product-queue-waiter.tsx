@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ML_PHOTO_PENDING_MESSAGE } from "../../lib/mercado-livre-picture-confirmation";
 import { useRouter } from "next/navigation";
 
-type Activity = { id: string; status: string; processing_error?: string | null };
+type Activity = { id: string; status: string; processing_error?: string | null; confirmed_data?: { pictureConfirmation?: { processingPending?: boolean } } };
 
 export function ProductQueueWaiter({ activityIds, returnTo, initialMessage }: { activityIds: string[]; returnTo: string; initialMessage: string }) {
   const router = useRouter();
@@ -26,7 +27,7 @@ export function ProductQueueWaiter({ activityIds, returnTo, initialMessage }: { 
           return;
         }
         if (activities.length === activityIds.length && activities.every(item => item.status === "completed")) {
-          router.replace(`${returnTo}${returnTo.includes("?") ? "&" : "?"}sucesso=${encodeURIComponent("Fila concluída e vínculo atualizado com sucesso.")}`);
+          router.replace(`${returnTo}${returnTo.includes("?") ? "&" : "?"}sucesso=${encodeURIComponent(activities.some(item => item.confirmed_data?.pictureConfirmation?.processingPending) ? ML_PHOTO_PENDING_MESSAGE : "Fila concluída e vínculo atualizado com sucesso.")}`);
           router.refresh();
           return;
         }

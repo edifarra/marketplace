@@ -28,6 +28,11 @@ export function hasProcessingMercadoLivrePictures(value: unknown) {
     || String(picture.url || "").toLowerCase().includes("processing-image"));
 }
 
+export function hasUnreadyMercadoLivrePictures(value: unknown) {
+  return hasProcessingMercadoLivrePictures(value) || summarizeMercadoLivrePictures(value).some(picture =>
+    !picture.url || /error|fail|reject/i.test(picture.status || ""));
+}
+
 export function compareMercadoLivrePictures(
   requestedSources: string[],
   updatePicturesValue: unknown,
@@ -36,11 +41,13 @@ export function compareMercadoLivrePictures(
   const updatePictures = summarizeMercadoLivrePictures(updatePicturesValue);
   const finalPictures = summarizeMercadoLivrePictures(finalPicturesValue);
   const finalIds = new Set(finalPictures.map((picture) => picture.id).filter(Boolean));
+  const matchedIds = new Set<string>();
   const missingPositions = requestedSources.flatMap((source, index) => {
     const updatePicture = updatePictures[index];
     const existsInFinal = updatePicture?.id
-      ? finalIds.has(updatePicture.id)
-      : index < finalPictures.length;
+      ? finalIds.has(updatePicture.id) && !matchedIds.has(updatePicture.id)
+      : finalPictures.some(picture => picture.source === source || picture.url === source);
+    if (existsInFinal && updatePicture?.id) matchedIds.add(updatePicture.id);
     return existsInFinal ? [] : [{ position: index + 1, source }];
   });
 
@@ -54,4 +61,12 @@ export function compareMercadoLivrePictures(
     missingPositions,
     matches: finalPictures.length === requestedSources.length && missingPositions.length === 0,
   };
+}
+
+export const ML_PHOTO_OFFSETS_MS = [30_000, 120_000, 600_000, 3_600_000, 21_600_000] as const;
+export const ML_PHOTO_PENDING_MESSAGE = "Produto atualizado com sucesso. Fotos ainda em processamento pelo Mercado Livre.";
+
+export function nextMercadoLivrePhotoCheck(acceptedAt: string, completedChecks: number) {
+  const offset = ML_PHOTO_OFFSETS_MS[completedChecks];
+  return offset === undefined ? null : new Date(Date.parse(acceptedAt) + offset).toISOString();
 }

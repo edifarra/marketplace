@@ -104,3 +104,8 @@ test("offer reads occur only in explicit preparation/validation; listing/detail/
   assert.match(ui,/onClick=\{\(\)=>prepare\(action\)\}/);assert.match(ui,/setSelected\(""\)/);
   for(const path of ["../lib/marketplace-case-list.ts","../lib/marketplace-case-detail.ts","../lib/marketplace-case-enrichment.ts"])assert.doesNotMatch(readFileSync(new URL(path,import.meta.url),"utf8"),/get\([^\n]*partial-refund\/available-offers/);
 });
+
+test("worker compares JSONB products semantically, retaining financial validation",async()=>{
+  const f=fixture("allow_return");f.op.requested_data.context.products=[{amount:100,title:"Produto",quantity:1}];
+  await executeClaimOperation(f.deps);assert.equal(f.posts(),1);assert.equal(f.op.remote_execution_state,"confirmed");
+});

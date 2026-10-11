@@ -8,6 +8,14 @@ import { persistCaseObservation } from "./marketplace-cases";
 import { ClaimAction,ClaimError,ClaimRow,claimBuyerId,validPartialOffers,validateClaimAction,validatePartialOffer,claimPayload } from "./marketplace-claim-domain";
 import { ClaimOperation,ClaimRemoteError,executeClaimOperation } from "./marketplace-claim-operations";
 
+import { ClaimReturnCostCache } from "./claim-return-cost";
+import { currentClaimActions } from "./marketplace-claim-domain";
+const returnCosts = new ClaimReturnCostCache();
+export async function readClaimReturnCost(id:string, fresh=false) {
+  const row=await loadClaimCase(id), account=await accountFor(row);
+  if(!currentClaimActions(row.content?.current_claim || {},String(account.seller_id || account.account_id)).some((a:ClaimRow)=>a.action === "allow_return"))return null;
+  return returnCosts.read(JSON.stringify([row.marketplace_account_id,id,row.updated_at]),()=>getMercadoLivreResource(`/post-purchase/v1/claims/${encodeURIComponent(row.external_case_id)}/charges/return-cost`,account,AbortSignal.timeout(20000)),fresh);
+}
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const canonical=(v:any):string => JSON.stringify(v && typeof v === "object" ? Array.isArray(v) ? v.map(x=>JSON.parse(canonical(x))) : Object.fromEntries(Object.keys(v).sort().map(k=>[k,JSON.parse(canonical(v[k]))])) : v ?? null);
 const digest=(v:any)=>createHash("sha256").update(canonical(v)).digest("hex");
@@ -45,7 +53,8 @@ export async function prepareClaimAction(id:string,action:ClaimAction,userId:str
   if(!context.currency || !Number.isFinite(context.orderAmount) || !Number.isFinite(context.paidAmount) || !context.products.length)
     throw new ClaimError("Os dados da compra estão incompletos. Atualize o caso antes de confirmar uma ação.");
   const offers=action === "allow_partial_refund" ? await getMercadoLivreResource(`/post-purchase/v1/claims/${row.external_case_id}/partial-refund/available-offers`,account) : null;
-  return {context,token:signature(context),offers:offers ? validPartialOffers(offers) : [],currency:offers?.currency_id || context.currency};
+  const returnCost=action === "allow_return" ? await readClaimReturnCost(id,true) : null;
+  return {returnCost,context,token:signature(context),offers:offers ? validPartialOffers(offers) : [],currency:offers?.currency_id || context.currency};
 }
 export async function queueClaimOperation(id:string,input:ClaimRow,userId:string,operatorName:string,db=supabaseAdmin()) {
   if(!uuid.test(input.operationId || ""))throw new ClaimError("Identificação da operação inválida.",400);
@@ -71,7 +80,7 @@ export async function queueClaimOperation(id:string,input:ClaimRow,userId:string
   const requested={action:context.action,context,parameters,operatorId:userId,operatorName,requestedAt:new Date().toISOString(),operationId:input.operationId,
     fingerprint:digest([row.marketplace_account_id,id,context.revision,context.action,parameters])};
   const result=await db.rpc("enqueue_marketplace_claim_operation",{p_case_id:id,p_operation_id:input.operationId,p_request:requested});
-  if(result.error)throw new ClaimError(/unique|active/i.test(result.error.message) ? "Já existe uma operação em processamento nesta reclamação. Aguarde a confirmação." : "Não foi possível registrar a operação. Atualize o caso.");
+  if(result.error){console.error("claim_enqueue_failed",{caseId:id,operationId:input.operationId,code:result.error.code});throw new ClaimError(/unique|active/i.test(result.error.message) ? "Já existe uma operação em processamento nesta reclamação. Aguarde a confirmação." : "Não foi possível registrar a operação na fila. Tente novamente com esta confirmação.",503);}
   return String(result.data);
 }
 export async function persistClaimBundle(row:ClaimRow,bundle:ClaimRow,key:string,db=supabaseAdmin()) {

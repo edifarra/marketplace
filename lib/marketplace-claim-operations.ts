@@ -43,7 +43,7 @@ export async function executeClaimOperation(deps: ClaimOperationDependencies) {
       validateClaimAction(bundle,request.context,request.action);
       const buyer=bundle.__case_enrichment?.buyer || {};
       if(bundle.last_updated !== request.context.revision || buyer.currency !== request.context.currency || buyer.order_amount !== request.context.orderAmount
-        || buyer.paid_amount !== request.context.paidAmount || JSON.stringify(buyer.products)!==JSON.stringify(request.context.products)) throw new ClaimError("O pedido ou a reclamação mudou após a confirmação. Reabra a ação.");
+        || buyer.paid_amount !== request.context.paidAmount || stableClaimValue(buyer.products)!==stableClaimValue(request.context.products)) throw new ClaimError("O pedido ou a reclamação mudou após a confirmação. Reabra a ação.");
       if(request.action === "allow_partial_refund") validatePartialOffer(await deps.offers(),request.parameters.offer);
       claimPayload(request.action,request.parameters);
       await deps.baseline(operationBaseline(bundle));

@@ -393,7 +393,7 @@ async function persistMercadoLivreQuestion(question: Record<string, any>, accoun
   return conversation;
 }
 
-async function persistMercadoLivrePostSale(remote: Record<string, any>, account: Account, context: Record<string, any> = {}, cache?: ReconciliationRoundCache) {
+export async function persistMercadoLivrePostSale(remote: Record<string, any>, account: Account, context: Record<string, any> = {}, cache?: ReconciliationRoundCache) {
   const db = supabaseAdmin();
   const sellerId = String(context.sellerId || account.seller_id || account.account_id || "");
   const messages = normalizeMercadoLivrePostSale(remote, sellerId, account.id).sort((a, b) => a.sentAt.localeCompare(b.sentAt));

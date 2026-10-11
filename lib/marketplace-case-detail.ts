@@ -3,6 +3,7 @@ import { supabaseAdmin } from "./supabase-admin";
 import { CASE_LIST_SELECT, caseSaleItems, knownCaseDeadlines } from "./marketplace-case-list";
 import { orderedClaimTimeline,saleOfficialEvents } from "./marketplace-claim-timeline";
 import { shopeeReturnPushMilestones } from "./shopee-return-milestones";
+import { priorClaimChatMessages } from "./marketplace-claim-chat-history";
 type Row = Record<string, any>;
 export function safeClaimConversation(candidates:Row[],account:string,claim:string) {
   const matches=candidates.filter(c=>c.marketplace === "mercado_livre" && c.marketplace_account_id === account && c.conversation_type === "claim" && c.external_conversation_id === `claim:${claim}`);
@@ -46,13 +47,31 @@ export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: 
     readChildren(db, "marketplace_case_evidence", "id,media_type,reference,metadata", id, "id")
   ]);
   const conversation = isClaim ? safeClaimConversation(conversations.data || [],row.marketplace_account_id,row.external_case_id) : safeCaseConversation(conversations.data || [], row.marketplace, row.marketplace_account_id, order);
-  let messageQuery = db.from("marketplace_conversation_messages").select("id,direction,message_type,text,sender_name,sent_at,created_at,status,raw_data").eq("conversation_id", conversation?.id || "00000000-0000-0000-0000-000000000000");
+  let messageQuery = db.from("marketplace_conversation_messages").select("id,external_message_id,direction,message_type,text,sender_name,sent_at,created_at,status,raw_data").eq("conversation_id", conversation?.id || "00000000-0000-0000-0000-000000000000");
   if (before) {
     const receivedBefore = `created_at.lt.${before.at},and(created_at.eq.${before.at},id.lt.${before.id})`;
     messageQuery = before.sent ? messageQuery.or(`sent_at.lt.${before.sent},sent_at.is.null,and(sent_at.eq.${before.sent},or(${receivedBefore}))`) : messageQuery.is("sent_at", null).or(receivedBefore);
   }
   const messages = conversation ? await messageQuery.order("sent_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(101).throwOnError() : { data: [] };
   const recent = (messages.data || []).slice(0, 100).reverse();
+  let priorMessages: Row[] = [];
+  if (isClaim && order && row.claim_created_at) {
+    try {
+      const chats = await db.from("marketplace_conversations").select("id,marketplace,marketplace_account_id,order_id,conversation_type")
+        .eq("marketplace", "mercado_livre").eq("marketplace_account_id", row.marketplace_account_id).eq("order_id", order).eq("conversation_type", "post_sale").limit(2).throwOnError();
+      const chat = safeCaseConversation(chats.data || [], "mercado_livre", row.marketplace_account_id, order);
+      if (chat) {
+        const history: Row[] = [];
+        for (let offset = 0; ; offset += 500) {
+          const page = await db.from("marketplace_conversation_messages").select("id,external_message_id,direction,message_type,text,sender_name,sent_at,created_at,status,raw_data")
+            .eq("conversation_id", chat.id).lt("sent_at", row.claim_created_at).order("sent_at").order("id").range(offset, offset + 499).throwOnError();
+          history.push(...(page.data || []));
+          if ((page.data || []).length < 500) break;
+        }
+        priorMessages = priorClaimChatMessages(history, row.claim_created_at, recent);
+      }
+    } catch { /* Local history failure cannot hide claim messages or controls. */ }
+  }
   if (row.marketplace === "shopee" && !before) {
     // Read normalized case provenance, not chat history or Shopee APIs.
     const saved = await readChildren(db, "marketplace_case_observations", "id,source_key,return_milestones:snapshot->return_milestones,return_created_at:snapshot->>return_created_at", id, "order_at");
@@ -78,7 +97,7 @@ export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: 
     visibleTimeline=orderedClaimTimeline([...saleOfficialEvents(sourceSale),...official]);
   }
   return { row, items: caseSaleItems(row, products), deadlines: knownCaseDeadlines({ ...row, observations: observations.data }, true),
-    conversation, messages: recent, olderMessages: (messages.data || []).length > 100, pendingOperation,
+    conversation, messages: recent, priorMessages, olderMessages: (messages.data || []).length > 100, pendingOperation,
     messageScope: isClaim ? "case" : "order_context",
     timeline: isClaim ? visibleTimeline : timeline.sort((a, b) => Date.parse(a.official_at || a.observed_at) - Date.parse(b.official_at || b.observed_at) || a.id.localeCompare(b.id)), actions, evidence };
 }

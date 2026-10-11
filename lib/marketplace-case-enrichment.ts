@@ -2,9 +2,14 @@ import { getValidMercadoLivreAccessToken, mlGet, MarketplaceAccountConfig } from
 import { getValidShopeeAccessToken, ShopeeAccountConfig } from "./shopee";
 import { createShopeeClient, getShopeeOAuthConfig } from "./shopee-oauth";
 import { claimBuyerId, claimSeller } from "./marketplace-claim-domain";
+import { supabaseAdmin } from "./supabase-admin";
+import { historyCacheFresh, recoverClaimChatHistory } from "./marketplace-claim-chat-history";
+import { getMercadoLivrePostSaleConversation } from "./mercado-livre";
+import { persistMercadoLivrePostSale } from "./marketplace-conversations";
+import { randomUUID } from "node:crypto";
 
 export async function loadMercadoLivreClaimBundle(id: string, account: MarketplaceAccountConfig,
-  get?: (path: string) => Promise<Record<string, any>>) {
+  get?: (path: string) => Promise<Record<string, any>>, history?: (order: Record<string, any>, claimAt: string) => Promise<unknown>) {
   let token: Promise<string> | undefined;
   const read = get || (async (path: string) => mlGet(path, await (token ||= getValidMercadoLivreAccessToken(account)), {}, AbortSignal.timeout(20_000)));
   const root = `/post-purchase/v1/claims/${encodeURIComponent(id)}`;
@@ -20,6 +25,7 @@ export async function loadMercadoLivreClaimBundle(id: string, account: Marketpla
   if(detail.resource === "order" && buyerId && claimSeller(detail,sellerId)) {
     const order=await read(`/orders/${encodeURIComponent(String(detail.resource_id))}`);
     if(String(order.id)!==String(detail.resource_id) || String(order.seller?.id)!==sellerId || String(order.buyer?.id)!==buyerId) throw new Error("Identidade do pedido diverge do claim.");
+    if (history) { try { await history(order, detail.date_created); } catch { /* Optional context cannot block the claim. */ } }
     buyer={id:buyerId,site_id:detail.site_id,nickname:order.buyer.nickname || null,
       display_name:[order.buyer.first_name,order.buyer.last_name].filter(Boolean).join(" ") || order.buyer.nickname || null,
       billing_info_id:order.buyer.billing_info?.id || null,products:(order.order_items || []).map((i:any)=>({title:i.item?.title,quantity:i.quantity,amount:i.unit_price})),
@@ -40,7 +46,22 @@ export async function loadMercadoLivreClaimBundle(id: string, account: Marketpla
 
 // Called only by the existing worker after the rollout cutoff check, never by consolidation or a read path.
 export async function enrichMercadoLivreClaim(id: string, account: MarketplaceAccountConfig) {
-  return loadMercadoLivreClaimBundle(id,account);
+  const db = supabaseAdmin();
+  const owner = randomUUID();
+  return loadMercadoLivreClaimBundle(id, account, undefined, (order, claimAt) => recoverClaimChatHistory(account, order, claimAt, {
+    acquire: async (key, at, now) => {
+      await db.from("settings").upsert({ key, value: {}, description: "Cache de recuperação do chat anterior de reclamação ML" }, { onConflict: "key", ignoreDuplicates: true }).throwOnError();
+      const saved = await db.from("settings").select("value,updated_at").eq("key", key).single().throwOnError();
+      if (historyCacheFresh(saved.data.value || {}, at, now)) return false;
+      // Compare-and-set also coalesces simultaneous claims for the same account/order across processes.
+      const lease = await db.from("settings").update({ value: { owner, result: "processing", retryAt: new Date(now + 15 * 60_000).toISOString(), attemptedAt: new Date(now).toISOString() }, updated_at: new Date(now).toISOString() })
+        .eq("key", key).eq("updated_at", saved.data.updated_at).eq("value", JSON.stringify(saved.data.value)).select("key").throwOnError();
+      return Boolean(lease.data?.length);
+    },
+    finish: async (key, value) => { await db.from("settings").update({ value, updated_at: new Date().toISOString() }).eq("key", key).eq("value->>owner", owner).throwOnError(); },
+    read: path => getMercadoLivrePostSaleConversation(path, account),
+    persist: (remote, context) => persistMercadoLivrePostSale(remote, account, context)
+  }));
 }
 export async function enrichShopeeReturn(id: string, account: ShopeeAccountConfig) {
   const token = await getValidShopeeAccessToken(account);

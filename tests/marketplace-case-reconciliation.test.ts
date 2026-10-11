@@ -69,6 +69,7 @@ test("actual safety runner for 100 unchanged cases uses 26 consolidated RPCs, no
 test("ML still reads independent resources when claim timestamp is stable, and gets one token per bundle",async()=>{
  let tokens=0;const calls:string[]=[];
  const {loadMercadoLivreClaimBundle}=loadPage("lib/marketplace-case-enrichment.ts",{
+  "node:crypto":{randomUUID:()=>"mock-owner"},
   "./mercado-livre":{getValidMercadoLivreAccessToken:async()=>{tokens++;return "mock";},mlGet:async(path:string)=>{calls.push(path);return path.endsWith("/123")?{id:123,last_updated:"2026-10-08T00:00:00Z",reason_id:"reason"}:{};}},
   "./shopee":{},"./shopee-oauth":{},"./marketplace-claim-domain":{claimBuyerId:()=>null},
  }, (await import("node:fs")).readFileSync("lib/marketplace-case-enrichment.ts","utf8").replace("AbortSignal.timeout(20_000)","undefined"));

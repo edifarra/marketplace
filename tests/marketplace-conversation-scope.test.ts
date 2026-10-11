@@ -73,7 +73,7 @@ test("initial and incremental hydration use the same allowlist; event cursor inc
   assert.doesNotMatch(sql.slice(sql.indexOf("with watermark"), sql.indexOf("), individual")), /conversation_type/);
 });
 
-test("case detail reads only official messages, without an automatic prior-history preview", async () => {
+test("case detail keeps official channel separate from account-scoped prior history", async () => {
   const calls: Array<{ table: string; filters: any[] }> = [];
   const db: any = { from(table: string) {
     const call = { table, filters: [] as any[] }; calls.push(call);
@@ -81,8 +81,8 @@ test("case detail reads only official messages, without an automatic prior-histo
     for (const method of ["select", "eq", "in", "lt", "order", "limit", "range", "or", "maybeSingle", "is"]) q[method] = (...args: any[]) => { call.filters.push([method, ...args]); return q; };
     q.throwOnError = async () => {
       if (table === "marketplace_cases") return { data: { id: "case", marketplace: "mercado_livre", marketplace_account_id: "account", order_id: "order", case_type: "claim", external_case_id: "1", claim_created_at: "2026-10-07T00:00:00Z" } };
-      if (table === "marketplace_conversations") return { data: call.filters.some(f => f[0] === "in") ? [normal()] : [claim()] };
-      if (table === "marketplace_conversation_messages") return { data: call.filters.some(f => f[0] === "in") ? [normal().messages[0]] : claim().messages };
+      if (table === "marketplace_conversations") return { data: call.filters.some(f => f[0] === "eq" && f[1] === "conversation_type" && f[2] === "post_sale") ? [normal()] : [claim()] };
+      if (table === "marketplace_conversation_messages") return { data: call.filters.some(f => f[0] === "lt") ? [normal().messages[0]] : claim().messages };
       return { data: [] };
     };
     return q;
@@ -91,10 +91,11 @@ test("case detail reads only official messages, without an automatic prior-histo
   assert.equal(detail?.messageScope, "case");
   assert.deepEqual(detail?.messages.map(m => m.id), ["official"]);
   assert.equal("contextMessages" in detail!, false);
-  assert.equal(calls.filter(c => c.table === "marketplace_conversation_messages").length, 1);
+  assert.deepEqual(detail?.priorMessages.map(m => m.id), ["before"]);
+  assert.equal(calls.filter(c => c.table === "marketplace_conversation_messages").length, 2);
   for (const call of calls.filter(c => c.table === "marketplace_conversations")) {
     assert.ok(call.filters.some(f => f[0] === "eq" && f[1] === "marketplace_account_id" && f[2] === "account"));
   }
-  assert.equal(calls.some(c => c.filters.some(f => f[0] === "lt" && f[1] === "sent_at")), false);
+  assert.equal(calls.some(c => c.filters.some(f => f[0] === "lt" && f[1] === "sent_at")), true);
   assert.equal(calls.some(c => c.table === "marketplace_conversations" && c.filters.some(f => f[0] === "in")), false);
 });

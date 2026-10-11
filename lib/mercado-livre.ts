@@ -419,7 +419,7 @@ export async function mlGet(path: string, accessToken: string, extraHeaders: Rec
   });
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(JSON.stringify(json));
+    throw Object.assign(new Error(JSON.stringify(json)), { status: response.status });
   }
 
   return json;

@@ -23,10 +23,10 @@ test("B1: pack ML sem order remoto usa a venda local existente", async () => {
   let observed = false;
   const orderId = await resolveMercadoLivrePackOrder("2000018538592826",
     async () => { throw new Error("pack unavailable"); },
-    async candidates => candidates.includes("2000018538592826") ? "2000018538592826" : null,
-    () => { observed = true; });
+    async candidates => ({ orderId: candidates.includes("2000018538592826") ? "2000018538592826" : null, ambiguous: false }),
+    () => { observed = true; }, "account-1");
   assert.equal(orderId, "2000018538592826");
-  assert.equal(observed, true);
+  assert.equal(observed, false);
   const product = mapLocalOrderProducts([{ order_id: orderId, data_venda: "2026-09-19T12:51:08Z", venda_item: [{
     sku: "1132AU", valor_unitario: 39, raw_data: { item: { id: "MLB7479600826" } }
   }] }], [{ id: "477cc050-b4ac-4fd2-a11e-89f31ccba894", sku: "1132AU", title: "Par de Alto Falantes TV Lc5551fda", estoque: [{ estoque_disponivel: 1 }] }]).get(String(orderId));
@@ -145,9 +145,11 @@ test("B3: ausência de referências usa fallback seguro e texto comum não muda"
 
 test("performance: fallback de pack é por conversa e pedidos Shopee são consultados em lote", () => {
   const source = fs.readFileSync(new URL("../lib/marketplace-conversations.ts", import.meta.url), "utf8");
-  const packFallback = source.slice(source.indexOf("async function firstLocalMercadoLivreOrderForPack"), source.indexOf("function resolveReplyRecipient"));
-  assert.match(packFallback, /select\("order_id,pack_id"\)/);
-  assert.equal(packFallback.match(/supabaseAdmin\(\)/g)?.length, 1);
+  const packFallback = fs.readFileSync(new URL("../lib/mercado-livre-pack-resolution.ts", import.meta.url), "utf8");
+  assert.match(packFallback, /select\("order_id"\)/);
+  assert.match(packFallback, /eq\("raw_data->>marketplace_account_id", accountId\)/);
+  assert.doesNotMatch(packFallback, /select\("order_id,pack_id"\)/);
+  assert.match(packFallback, /limit\(2\)/);
   const orderLoader = source.slice(source.indexOf("async function loadOrderProducts"), source.indexOf("async function findMercadoLivreAccount"));
   assert.match(orderLoader, /\.in\("order_id", (?:uniqueOrderIds|missingOrderIds)\)/);
   assert.match(orderLoader, /\.in\("sku", (?:skus|missingSkus)\)/);

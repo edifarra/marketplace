@@ -105,24 +105,7 @@ export function shopeeConversationReferences(
   return { itemId, orderSn };
 }
 
-export async function resolveMercadoLivrePackOrder(
-  packId: string,
-  loadRemotePack: () => Promise<Record<string, any>>,
-  findLocalOrder: (candidateOrderIds: string[]) => Promise<string | null>,
-  observeError: (error: unknown) => void = () => undefined
-) {
-  let remoteOrderIds: string[] = [];
-  try {
-    const pack = await loadRemotePack();
-    remoteOrderIds = (Array.isArray(pack.orders) ? pack.orders : [])
-      .map((item: any) => String(item.id || item.order_id || "")).filter(Boolean);
-    if (!remoteOrderIds.length) observeError(new Error(`Pack ${packId} não retornou pedidos; usando fallback local.`));
-  } catch (error) {
-    observeError(error);
-  }
-  const candidates = [...new Set([packId, ...remoteOrderIds].filter(Boolean))];
-  return await findLocalOrder(candidates) || remoteOrderIds[0] || null;
-}
+export { resolveMercadoLivrePackOrder } from "./mercado-livre-pack-resolution";
 
 export function mapLocalOrderProducts(sales: Array<Record<string, any>>, products: Array<Record<string, any>>) {
   const productsBySku = new Map(products.map(product => [String(product.sku || ""), product]));

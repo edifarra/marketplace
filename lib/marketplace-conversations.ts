@@ -1,3 +1,4 @@
+import { localMercadoLivreOrderForPack, linkMercadoLivreConversationOrder, preserveMercadoLivreOrderLink } from "./mercado-livre-pack-resolution";
 import { latestShopeeMessageId, reconcileShopeeChatManagement } from "./shopee-chat-management-state";
 import { assertChatReplyChannel, isChatConversation } from "./marketplace-conversation-scope";
 import { createHash } from "crypto";
@@ -156,7 +157,7 @@ export async function syncMarketplaceConversationsSafetyNet() {
 
 export async function reconcileMercadoLivrePostSaleConversationPath(account: Account, path: string) {
   const remote = await getMercadoLivrePostSaleConversation(path, account as any);
-  return resolveAndPersistMercadoLivrePostSale(remote, account);
+  return resolveAndPersistMercadoLivrePostSale(remote, account, undefined, true);
 }
 
 export async function processMercadoLivreConversationNotification(activity: Record<string, any>, payload: Record<string, any>) {
@@ -398,9 +399,9 @@ async function persistMercadoLivrePostSale(remote: Record<string, any>, account:
   const messages = normalizeMercadoLivrePostSale(remote, sellerId, account.id).sort((a, b) => a.sentAt.localeCompare(b.sentAt));
   if (!messages.length) throw new Error("Mercado Livre não retornou mensagens pós-compra válidas.");
   const latest = messages[messages.length - 1];
-  const packId = String(context.packId || latest.packId || "");
-  const orderId = String(context.orderId || latest.orderId || "");
-  const conversationPath = String(context.conversationPath || latest.conversationPath || "") || null;
+  const packId = String(context.packId || context.pack_id || latest.packId || "");
+  const orderId = String(context.orderId || context.order_id || latest.orderId || "");
+  const conversationPath = String(context.conversationPath || context.conversation_path || latest.conversationPath || "") || null;
   const conversationType = String(latest.conversationType || "post_sale");
   const externalId = canonicalMercadoLivreConversationId({ conversationPath, packId, orderId, conversationType });
   const order = orderId ? await findOrder("mercado_livre", orderId, cache) : null;
@@ -434,7 +435,7 @@ async function persistMercadoLivrePostSale(remote: Record<string, any>, account:
   return { ...conversation, reconciliationStats };
 }
 
-async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>, account: Account, cache?: ReconciliationRoundCache) {
+async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>, account: Account, cache?: ReconciliationRoundCache, conversationLoaded = false) {
   const sellerId = String(account.seller_id || account.account_id || "");
   let normalized = normalizeMercadoLivrePostSale(remote, sellerId, account.id);
   if (!normalized.length) throw new Error("Detalhe da mensagem pós-compra não retornou message_id.");
@@ -449,16 +450,16 @@ async function resolveAndPersistMercadoLivrePostSale(remote: Record<string, any>
   if (packId && !orderId) {
     orderId = await resolveMercadoLivrePackOrder(packId,
       () => getMercadoLivrePack(packId, account as any),
-      orderIds => firstLocalMercadoLivreOrderForPack(packId, orderIds),
+      orderIds => localMercadoLivreOrderForPack(supabaseAdmin(), account.id, packId, orderIds),
       error => {
-        console.warn("[marketplace-worker] Mercado Livre pack resolution failed; trying local fallback", {
+        console.warn("[marketplace-worker] Mercado Livre pack not found; remote retry deferred", {
           accountId: account.id, packId, error: safeError(error)
         });
-      });
+      }, account.id);
   }
   const resolvedSeller = seed.sellerId || sellerId;
   if (!conversationPath && packId && resolvedSeller) conversationPath = `/packs/${packId}/sellers/${resolvedSeller}`;
-  if (conversationPath) {
+  if (conversationPath && !conversationLoaded) {
     const conversation = await getMercadoLivrePostSaleConversation(conversationPath, account as any);
     const detailed = normalizeMercadoLivrePostSale(conversation, sellerId, account.id);
     if (detailed.length) { remote = conversation; normalized = detailed; }
@@ -474,7 +475,7 @@ async function syncMercadoLivreUnreadPostSale(account: Account) {
     const path = String(item.resource || item.path || "");
     if (!path) continue;
     const remote = await getMercadoLivrePostSaleConversation(path, account as any);
-    await resolveAndPersistMercadoLivrePostSale(remote, account);
+    await resolveAndPersistMercadoLivrePostSale(remote, account, undefined, true);
     count += 1;
   }
   return count;
@@ -536,7 +537,7 @@ async function syncMercadoLivreAccountIncremental(account: Account, cache: Recon
     if (!path || checkedPaths.has(path)) continue;
     checkedPaths.add(path);
     const remote = await getMercadoLivrePostSaleConversation(path, account as any);
-    const persisted = await resolveAndPersistMercadoLivrePostSale(remote, account, cache);
+    const persisted = await resolveAndPersistMercadoLivrePostSale(remote, account, cache, true);
     mergeReconciliationStats(reconciliation, persisted.reconciliationStats);
     changedPostSale += 1;
   }
@@ -544,6 +545,18 @@ async function syncMercadoLivreAccountIncremental(account: Account, cache: Recon
   const pendingPostSale = await pendingMarketplaceReconciliationRows("mercado_livre", account.id, "post_sale", 5);
   let checkedPostSale = 0;
   for (const conversation of pendingPostSale) {
+    if (!conversation.order_id && conversation.pack_id) {
+      const local = await localMercadoLivreOrderForPack(supabaseAdmin(), account.id, String(conversation.pack_id));
+      if (local.orderId) {
+        const linked = await linkMercadoLivreConversationOrder(supabaseAdmin(), {
+          id: String(conversation.id), marketplace_account_id: account.id, pack_id: String(conversation.pack_id)
+        }, local.orderId);
+        if (linked.data?.length) {
+          conversation.order_id = local.orderId;
+          console.info("[marketplace-worker] ML post-sale order linked", linked.data[0]);
+        }
+      }
+    }
     const path = String(conversation.conversation_path || (conversation.pack_id && conversation.seller_id ? `/packs/${conversation.pack_id}/sellers/${conversation.seller_id}` : ""));
     if (path && !checkedPaths.has(path)) {
       const remote = await getMercadoLivrePostSaleConversation(path, account as any);
@@ -572,7 +585,7 @@ async function mercadoLivrePostSaleNeedsPersistence(conversation: Record<string,
 
 async function pendingMarketplaceReconciliationRows(marketplace: "mercado_livre" | "shopee", accountId: string, conversationType: "question" | "post_sale" | "chat", limit: number) {
   const columns = conversationType === "post_sale"
-    ? "id,conversation_path,pack_id,seller_id,raw_data"
+    ? "id,marketplace_account_id,order_id,conversation_path,pack_id,seller_id,raw_data"
     : "id,external_conversation_id,raw_data";
   const result = await supabaseAdmin().from("marketplace_conversations")
     .select(columns)
@@ -649,18 +662,6 @@ async function syncShopeeConversationsIncremental(account: ShopeeAccountConfig, 
     rotated += 1;
   }
   return { recentConversations: recent.length, changed: reconciliation.conversationsChanged, rotated, reconciliation };
-}
-
-async function firstLocalMercadoLivreOrderForPack(packId: string, orderIds: string[]) {
-  const candidates = [...new Set([packId, ...orderIds].filter(Boolean))]
-    .map(value => value.replace(/[^0-9A-Za-z_-]/g, "")).filter(Boolean);
-  if (!candidates.length) return null;
-  const safePackId = packId.replace(/[^0-9A-Za-z_-]/g, "");
-  const result = await supabaseAdmin().from("venda").select("order_id,pack_id")
-    .eq("marketplace", "mercado_livre")
-    .or(`order_id.in.(${candidates.join(",")}),pack_id.eq.${safePackId}`)
-    .limit(1).maybeSingle().throwOnError();
-  return result.data?.order_id ? String(result.data.order_id) : null;
 }
 
 function resolveReplyRecipient(conversation: Record<string, any>, sellerId: string) {
@@ -975,6 +976,7 @@ async function upsertConversationResult(input: Record<string, any>, existingSnap
       .maybeSingle()
     : { data: existingSnapshot, error: null };
   if (existing.error) throw new Error(existing.error.message);
+  input = preserveMercadoLivreOrderLink(input, existing.data);
   const reviewedAt = existing.data?.reviewed_at ? new Date(existing.data.reviewed_at).getTime() : 0;
   const incomingAt = input.last_message_at ? new Date(input.last_message_at).getTime() : 0;
   if (reviewedAt && incomingAt <= reviewedAt) {

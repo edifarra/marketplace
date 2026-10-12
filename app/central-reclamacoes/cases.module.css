@@ -77,3 +77,5 @@
 .actionButtons { display:flex; flex-wrap:nowrap; gap:8px; align-items:stretch; }
 .actionButtons button { flex:1 1 0; min-width:0; border-radius:10px; white-space:normal; overflow-wrap:anywhere; padding:10px 8px; }
 @media(max-width:750px) { .actionButtons { flex-wrap:wrap; }.actionButtons button { flex-basis:160px; } }
+
+.productLinks { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }

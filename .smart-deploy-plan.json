@@ -7,6 +7,7 @@
     "app/atividades-marketplace/enviadas/page.tsx",
     "app/central-reclamacoes/case-display.ts",
     "app/central-reclamacoes/case-grid.tsx",
+    "app/central-reclamacoes/cases.module.css",
     "app/central-reclamacoes/claim-controls.tsx",
     "app/central-reclamacoes/prior-chat-history.tsx",
     "app/central-reclamacoes/shopee-presentation.ts",
@@ -29,6 +30,7 @@
     "lib/mercado-livre-picture-confirmation.ts",
     "lib/mercado-livre.ts",
     "lib/outgoing-activities.ts",
+    "lib/return-product-links.ts",
     "scripts/audit-claim-return.ts",
     "scripts/repair-mercado-livre-post-sale-orders.ts",
     "scripts/smart-test-runner.mjs",
@@ -49,6 +51,7 @@
     "tests/mercado-livre-pack-resolution.test.ts",
     "tests/mercado-livre-picture-followup-sql.test.mjs",
     "tests/mercado-livre-picture-followup.test.ts",
+    "tests/return-product-links.test.ts",
     "tests/shopee-conversation-reconciliation.test.ts"
   ],
   "dependenciesChanged": false

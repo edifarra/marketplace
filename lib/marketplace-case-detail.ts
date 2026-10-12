@@ -4,7 +4,11 @@ import { CASE_LIST_SELECT, caseSaleItems, knownCaseDeadlines } from "./marketpla
 import { orderedClaimTimeline,saleOfficialEvents } from "./marketplace-claim-timeline";
 import { shopeeReturnPushMilestones } from "./shopee-return-milestones";
 import { priorClaimChatMessages } from "./marketplace-claim-chat-history";
+import { returnProductLinks } from "./return-product-links";
+
 type Row = Record<string, any>;
+// Add navigation provenance only to the detail read, without changing list or worker reads.
+const CASE_DETAIL_SELECT = CASE_LIST_SELECT.replace("id,name,nickname,marketplace)", "id,name,nickname,marketplace,shop_id,seller_id,account_id)").replace("sale:venda!venda_id(id,marketplace,order_id,", "sale:venda!venda_id(id,marketplace,order_id,raw_data,");
 export function safeClaimConversation(candidates:Row[],account:string,claim:string) {
   const matches=candidates.filter(c=>c.marketplace === "mercado_livre" && c.marketplace_account_id === account && c.conversation_type === "claim" && c.external_conversation_id === `claim:${claim}`);
   return matches.length === 1 ? matches[0] : null;
@@ -23,7 +27,7 @@ async function readChildren(db: ReturnType<typeof supabaseAdmin>, table: string,
   }
 }
 export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: { at: string; id: string; sent: string | null }) {
-  const result = await db.from("marketplace_cases").select(`${CASE_LIST_SELECT},resolution,stage,refund_amount:content->refund_amount,currency:content->>currency,return_created_at:content->>return_created_at,return_milestones:content->return_milestones,claim_created_at:content->>claim_created_at,buyer_data:content->buyer_data,current_claim:content->current_claim,seller_proof_status:content->>seller_proof_status,negotiation_status:content->>negotiation_status`).eq("id", id).maybeSingle().throwOnError();
+  const result = await db.from("marketplace_cases").select(`${CASE_DETAIL_SELECT},resolution,stage,refund_amount:content->refund_amount,currency:content->>currency,return_created_at:content->>return_created_at,return_milestones:content->return_milestones,claim_created_at:content->>claim_created_at,buyer_data:content->buyer_data,current_claim:content->current_claim,seller_proof_status:content->>seller_proof_status,negotiation_status:content->>negotiation_status`).eq("id", id).maybeSingle().throwOnError();
   const row = result.data as unknown as Row | null;
   if (!row) return null;
   const sale = row.sale?.marketplace === row.marketplace && (!row.order_id || row.sale.order_id === row.order_id) ? row.sale : null;
@@ -96,7 +100,10 @@ export async function loadCaseDetail(id: string, db = supabaseAdmin(), before?: 
     const official=timeline.filter(e=>e.event_type!=="state_observed");
     visibleTimeline=orderedClaimTimeline([...saleOfficialEvents(sourceSale),...official]);
   }
-  return { row, items: caseSaleItems(row, products), deadlines: knownCaseDeadlines({ ...row, observations: observations.data }, true),
+  const items = caseSaleItems(row, products).map((item: Row) => ({ ...item, links: returnProductLinks(row, item) }));
+  // The browser needs resolved links, not the original order payload.
+  if (row.sale) delete row.sale.raw_data;
+  return { row, items, deadlines: knownCaseDeadlines({ ...row, observations: observations.data }, true),
     conversation, messages: recent, priorMessages, olderMessages: (messages.data || []).length > 100, pendingOperation,
     messageScope: isClaim ? "case" : "order_context",
     timeline: isClaim ? visibleTimeline : timeline.sort((a, b) => Date.parse(a.official_at || a.observed_at) - Date.parse(b.official_at || b.observed_at) || a.id.localeCompare(b.id)), actions, evidence };

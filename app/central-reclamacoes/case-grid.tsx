@@ -17,24 +17,40 @@ function Photo({ product }: { product: Row | null }) {
   const image = [...(product?.product_images || [])].sort((a, b) => a.position - b.position)[0];
   return <ProductThumbnail width={66} height={66} image={image} alt={product?.title || "Produto"} />;
 }
+function headerLinks(item: Row, items: Row[] = []) {
+  return item.links || items.find(linked => item.id ? linked.id === item.id : item.product?.id && linked.scope === item.scope && linked.product?.id === item.product.id)?.links;
+}
 export function CaseGrid({ rows, initialId, cacheScope = "", cacheRevision = "" }: { rows: Row[]; initialId?: string; cacheScope?: string; cacheRevision?: string }) {
   const [expanded, setExpanded] = useState<string | null>(initialId && rows.some(r => r.id === initialId) ? initialId : null);
+  const [navigation, setNavigation] = useState<Record<string, Row[]>>({});
   const [details, setDetails] = useState<Record<string, Row>>({});
   const onDetail = useCallback((detail: Row) => {
     setDetails(current => ({ ...current, [detail.row.id]: detail }));
   }, []);
   useEffect(() => { setDetails({}); }, [rows]);
+  useEffect(() => {
+    let active = true;
+    setNavigation({});
+    // Reuse the existing detail cache and its validated links before expansion.
+    for (const row of rows.filter(row => caseContext(row) === "return")) {
+      readCaseCache(detailCacheKey(cacheScope, cacheRevision, row), row.id).then(data => {
+        if (active) setNavigation(current => ({ ...current, [row.id]: data.items }));
+      }).catch(() => { /* Missing local evidence keeps the buttons unavailable. */ });
+    }
+    return () => { active = false; };
+  }, [rows, cacheScope, cacheRevision]);
   return <div className={styles.list}>{rows.map(initialRow => {
     const detail = details[initialRow.id];
     const row = caseHeaderRow(initialRow, detail);
     return <article key={row.id} className={styles.case} data-case-id={row.id} data-external-case-id={row.external_case_id}>
-    <button type="button" className={styles.caseRow} aria-expanded={expanded === row.id} aria-controls={`detail-${row.id}`} aria-label={`${expanded === row.id ? "Recolher" : "Expandir"} Caso ${row.external_case_id}`} onClick={() => setExpanded(current => current === row.id ? null : row.id)}>
+    <div className={styles.caseRow} data-expanded={expanded === row.id}>
+    <button type="button" className={styles.rowToggle} aria-expanded={expanded === row.id} aria-controls={`detail-${row.id}`} aria-label={`${expanded === row.id ? "Recolher" : "Expandir"} Caso ${row.external_case_id}`} onClick={() => setExpanded(current => current === row.id ? null : row.id)}></button>
       <span className={styles.marketplace}><Image unoptimized width={46} height={46} src={row.marketplace === "shopee" ? "/marketplaces/shopee-mini.webp" : "/marketplaces/mercado-livre-mini.png"} alt=""/><span><strong>{row.marketplace === "shopee" ? "Shopee" : "Mercado Livre"}</strong><span className="muted">Loja {row.account?.name || row.account?.nickname || "Não informado"}</span><small className="muted">Caso #{row.external_case_id}</small></span></span>
-      <span className={styles.sale}>{(row.items.length ? row.items : [{}]).map((item: Row, index: number) => <span className={styles.product} key={item.id || index}><Photo product={item.product}/><span><strong>Venda #{row.order_id || row.sale?.order_id || "Não informado"}</strong><span>{item.product?.title || "Produto não informado"}</span><small className="muted">SKU {item.sku || "—"} · Qtd. {item.quantidade ?? "—"} · {caseMoney(item.valor_total)}</small></span></span>)}</span>
+      <span className={styles.sale}>{(row.items.length ? row.items : [{}]).map((item: Row, index: number) => <span className={styles.product} key={item.id || index}><Photo product={item.product}/><span><strong>Venda #{row.order_id || row.sale?.order_id || "Não informado"}</strong><span>{item.product?.title || "Produto não informado"}</span><small className="muted">SKU {item.sku || "—"} · Qtd. {item.quantidade ?? "—"} · {caseMoney(item.valor_total)}</small>{caseContext(row) === "return" && <div className={styles.productLinks}>{[["Ver Produto", headerLinks(item, navigation[row.id])?.productId ? `/produtos/${encodeURIComponent(headerLinks(item, navigation[row.id]).productId)}` : null], ["Ver Anúncio", headerLinks(item, navigation[row.id])?.listingUrl]].map(([label, href]) => href ? <a key={label} className="secondary link-button compact" href={href} target="_blank" rel="noopener noreferrer">{label}</a> : <button key={label} type="button" className="secondary compact" disabled title="Vínculo confiável não disponível nos dados locais">{label}</button>)}</div>}</span></span>)}</span>
       <span className={styles.caseBlock}>{caseContext(row) === "return" && <>{presentValue(row.reverse_logistics?.contact_name) && <span>Nome logístico: {row.reverse_logistics.contact_name}</span>}{presentValue(row.reverse_logistics?.tracking) && <span>Código de retorno: {row.reverse_logistics.tracking}</span>}</>}{caseReason(row) && <span>Motivo: {caseReason(row)}</span>}{reputationLabel(row) && <span className={row.marketplace !== "shopee" && row.reputation_impact === "affected" ? styles.affected : row.marketplace !== "shopee" && row.reputation_impact === "not_affected" ? styles.positive : "muted"}>{reputationLabel(row)}</span>}</span>
       <span className={styles.situation}><span>{caseStatusLabel(row)}</span>{row.marketplace === "mercado_livre" ? sellerDeadline(row,row.deadlines) && <span>Prazo: <strong className={styles.deadline}>{caseDate(sellerDeadline(row,row.deadlines))}</strong></span> : row.deadlines.length > 0 && <span>Prazo: {row.deadlines.map(deadlineLabel).join("; ")}</span>}<span>Precisa de ação: {caseAttention(row) === "ACTION_REQUIRED" ? "Sim" : "Não"}</span><span>Última atualização local: {caseDate(row.updated_at)}</span><span className={`${styles.badge} ${styles[row.group]}`}>{row.groupLabel}</span></span>
       <span className={`${styles.chevron} ${expanded === row.id ? styles.rotated : ""}`} aria-hidden="true">⌄</span>
-    </button>
+    </div>
     {expanded === row.id && <div id={`detail-${row.id}`} className={styles.expansion}><CaseDetail id={row.id} initialRow={initialRow} cacheScope={cacheScope} cacheRevision={cacheRevision} onDetail={onDetail} showHeader={false}/></div>}
   </article>; })}</div>;
 }
@@ -105,7 +121,7 @@ export function CaseDetail({ id, onDetail, showHeader = true, initialRow, initia
         ["Prazo vendedor", isClaim && sellerDeadline(row,data.deadlines) ? caseDate(sellerDeadline(row,data.deadlines)) : null],
         ["Prazos oficiais conhecidos", !isClaim && data.deadlines.length ? data.deadlines.map(deadlineLabel).join("; ") : null]
       ]).map(([label,value]) => <Field key={label} label={label} value={value}/>)}
-    </dl>{row.marketplace !== "shopee" && data.evidence?.length > 0 && <div><h3>Evidências persistidas</h3><ul>{data.evidence.map((evidence: Row) => <li key={evidence.id}>{evidence.media_type}: {evidence.reference}</li>)}</ul></div>}<div className={styles.detailProducts}>{data.items.map((item: Row, i: number) => <div className={styles.product} key={item.id || i}><Photo product={item.product}/><div>{item.product?.title}{item.sku && <div>SKU: {item.sku}</div>}{item.quantidade != null && <div>Quantidade: {item.quantidade}</div>}{item.valor_total != null && <div>Valor: {caseMoney(item.valor_total)}</div>}{caseContext(row) === "return" && <div className={styles.productLinks}>{[["Ver Produto", item.links?.productId ? `/produtos/${encodeURIComponent(item.links.productId)}` : null], ["Ver Anúncio", item.links?.listingUrl]].map(([label, href]) => href ? <a key={label} className="secondary link-button compact" href={href} target="_blank" rel="noopener noreferrer">{label}</a> : <button key={label} type="button" className="secondary compact" disabled title="Vínculo confiável não disponível nos dados locais">{label}</button>)}</div>}</div></div>)}</div></section>
+    </dl>{row.marketplace !== "shopee" && data.evidence?.length > 0 && <div><h3>Evidências persistidas</h3><ul>{data.evidence.map((evidence: Row) => <li key={evidence.id}>{evidence.media_type}: {evidence.reference}</li>)}</ul></div>}<div className={styles.detailProducts}>{data.items.map((item: Row, i: number) => <div className={styles.product} key={item.id || i}><Photo product={item.product}/><div>{item.product?.title}{item.sku && <div>SKU: {item.sku}</div>}{item.quantidade != null && <div>Quantidade: {item.quantidade}</div>}{item.valor_total != null && <div>Valor: {caseMoney(item.valor_total)}</div>}</div></div>)}</div></section>
       {buyerDisplay.length > 0 && <section className={styles.detailCard}><h2>Dados do comprador</h2><dl className={styles.generalFields}>{buyerDisplay.map(([label,value]) => <Field key={label} label={label} value={value}/>)}</dl>{row.marketplace === "mercado_livre" && buyer.id && buyer.site_id && <a href={"/central-reclamacoes?marketplace=mercado_livre&account="+row.marketplace_account_id+"&buyer="+encodeURIComponent(buyer.id)+"&site="+encodeURIComponent(buyer.site_id)}>Ver casos deste comprador nesta conta</a>}</section>}
       <CaseTimeline row={row} events={data.timeline} deadlines={data.deadlines}/>
     </div>

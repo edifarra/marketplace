@@ -1,4 +1,5 @@
 import { humanLabel } from "./case-presentation";
+import { shopeeReturnReason } from "./shopee-presentation";
 import { productImageUrl } from "@/lib/product-image-source";
 export function caseDate(value: string | null | undefined) {
   if (!value || !Number.isFinite(Date.parse(value))) return "Não informado";
@@ -16,6 +17,7 @@ export function reputationLabel(row: any) {
   return row.marketplace === "shopee" ? "" : ({affected:"Afeta sua reputação",not_affected:"Não afeta sua reputação",not_applies:"Não se aplica à reputação"} as Record<string,string>)[row.reputation_impact] || "";
 }
 export function caseReason(row:any) {
+  if (row.marketplace === "shopee") return shopeeReturnReason(row.reason_code || row.reason || "");
   return ({repentant_buyer:"O comprador se arrependeu"} as Record<string,string>)[row.reason_name] || humanLabel(row.reason) || humanLabel(row.reason_code) || (row.marketplace === "shopee" ? row.reason_code || "" : "");
 }
 export function caseHeaderRow(initial:any, detail:any) {

@@ -76,6 +76,8 @@ test("actual detail keeps chat history left and timeline after buyer on right, p
   assert.ok(elements(right).some(n => n.type === "test-component:CaseTimeline"));
   assert.equal(elements(left).some(n => n.type === "test-component:CaseTimeline"), false);
   for (const label of ["Reembolso solicitado", "Motivo da devolução", "Descrição do comprador"]) assert.ok(elements(left).some(n => n.props.label === label));
+  assert.equal(elements(left).find(n => n.props.label === "Motivo da devolução").props.value, "Produto com defeito de funcionamento");
+  assert.ok(textContent(tree).includes("Produto com defeito de funcionamento"));
   for (const label of ["ID do Caso", "Código de retorno", "Modalidade de envio"]) assert.ok(elements(right).some(n => n.props.label === label));
   data.row.marketplace = "mercado_livre";
   const ml = elements(CaseDetail({ id: "case-1" }));

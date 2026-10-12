@@ -1,4 +1,23 @@
 type Row = Record<string, any>;
+const returnReasonLabels: Record<string, string> = {
+  CHANGE_MIND: "Mudei de Ideia",
+  WRONG_ITEM: "Produto errado recebido",
+  NOT_RECEIPT: "Pedido não recebido",
+  ITEM_DAMAGED: "Produto danificado",
+  DIFFERENT_DESCRIPTION: "Produto diferente do anunciado",
+  MUTUAL_AGREE: "Acordo entre comprador e vendedor",
+  OTHER: "Outros motivos",
+  ITEM_WRONGDAMAGED: "Produto errado ou danificado",
+  ITEM_MISSING: "Produto ou item faltando",
+  EXPECTATION_FAILED: "Produto não atendeu às expectativas",
+  ITEM_FAKE: "Suspeita de produto falsificado",
+  PHYSICAL_DMG: "Dano físico no produto",
+  FUNCTIONAL_DMG: "Produto com defeito de funcionamento",
+  NONE: "Motivo não informado",
+};
+export function shopeeReturnReason(code: string): string {
+  return Object.prototype.hasOwnProperty.call(returnReasonLabels, code) ? returnReasonLabels[code] : code;
+}
 const labels = ["Comprador solicitou Devolução/Reembolso", "Pendente comprador postar devolução", "Em validação pelo vendedor", "Solicitação finalizada"];
 type Progress = "complete" | "current" | "pending" | "unknown";
 function stage(state: Row): number | null {

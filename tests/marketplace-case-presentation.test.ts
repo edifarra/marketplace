@@ -3,6 +3,30 @@ import assert from "node:assert/strict";
 import { buyerFields, humanLabel, returnFields, timelineFields } from "../app/central-reclamacoes/case-presentation";
 import { caseReason, caseStatusLabel, reputationLabel } from "../app/central-reclamacoes/case-display";
 
+test("all Shopee return reasons are translated only for display without changing source data", () => {
+  const reasons = {
+    CHANGE_MIND: "Mudei de Ideia", WRONG_ITEM: "Produto errado recebido",
+    NOT_RECEIPT: "Pedido não recebido", ITEM_DAMAGED: "Produto danificado",
+    DIFFERENT_DESCRIPTION: "Produto diferente do anunciado", MUTUAL_AGREE: "Acordo entre comprador e vendedor",
+    OTHER: "Outros motivos", ITEM_WRONGDAMAGED: "Produto errado ou danificado",
+    ITEM_MISSING: "Produto ou item faltando", EXPECTATION_FAILED: "Produto não atendeu às expectativas",
+    ITEM_FAKE: "Suspeita de produto falsificado", PHYSICAL_DMG: "Dano físico no produto",
+    FUNCTIONAL_DMG: "Produto com defeito de funcionamento", NONE: "Motivo não informado",
+  };
+  for (const [code, label] of Object.entries(reasons)) {
+    const row = Object.freeze({ marketplace: "shopee", reason_code: code, reason: "Descrição original" });
+    assert.equal(caseReason(row), label);
+    assert.equal(row.reason_code, code);
+    assert.equal(row.reason, "Descrição original");
+    assert.equal(caseReason({ marketplace: "shopee", reason: code }), label);
+  }
+  for (const code of ["NEW_REASON", "toString", "unknown", "Código novo"]) {
+    assert.equal(caseReason({ marketplace: "shopee", reason_code: code }), code);
+  }
+  assert.equal(caseReason({ marketplace: "shopee" }), "");
+  assert.equal(caseReason({ marketplace: "mercado_livre", reason_name: "repentant_buyer", reason_code: "CHANGE_MIND" }), "O comprador se arrependeu");
+});
+
 test("return fields share labels and only use persisted tracking in both marketplaces", () => {
   for (const marketplace of ["mercado_livre", "shopee"]) {
     const row = { marketplace, case_type: "claim", external_case_id: "claim-1", reverse_logistics: { return_id: "return-1", contact_name: "Maria", status: "LOGISTICS_DELIVERY_DONE", tracking: "BR262396707475A" } };

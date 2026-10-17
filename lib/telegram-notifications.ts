@@ -5,6 +5,7 @@ import { supabaseAdmin } from "./supabase-admin";
 import { salePostedAt } from "./sales-fulfillment";
 import { getMercadoLivreAccountById, getMercadoLivreShipment } from "./mercado-livre";
 import { getActiveShopeeAccounts } from "./shopee";
+import { telegramDayRange, telegramInsideWindow } from "./telegram-schedule";
 
 type Config = { enabled: boolean; bot_token_encrypted: string | null; chat_id: string | null; recipient_name: string | null; timezone: string; new_sale_enabled: boolean; new_sale_start: string; new_sale_end: string; dispatch_enabled: boolean; dispatch_check_time: string };
 type Sale = { id: string; marketplace: string; order_id: string; status_original: string | null; data_venda: string | null; created_at: string; shipment_id: string | null; raw_data: Record<string, any>; status_venda?: { final_status?: boolean } | null };
@@ -18,9 +19,12 @@ export async function getTelegramConfig() {
 export async function saveTelegramConfig(input: Record<string, unknown>, userId: string) {
   const current = await getTelegramConfig();
   const token = String(input.botToken || "").trim();
+  const timezone = String(input.timezone || "America/Sao_Paulo");
+  try { new Intl.DateTimeFormat("en", { timeZone: timezone }).format(); }
+  catch { throw new Error("Fuso horário inválido."); }
   const update = {
-    enabled: Boolean(input.enabled), chat_id: nullable(input.chatId), recipient_name: nullable(input.recipientName),
-    timezone: String(input.timezone || "America/Sao_Paulo"), new_sale_enabled: Boolean(input.newSaleEnabled),
+    enabled: Boolean(input.enabled), chat_id: nullable(input.chatId) || current.chat_id, recipient_name: nullable(input.recipientName),
+    timezone, new_sale_enabled: Boolean(input.newSaleEnabled),
     new_sale_start: validTime(input.newSaleStart, "11:50"), new_sale_end: validTime(input.newSaleEnd, "13:00"),
     dispatch_enabled: Boolean(input.dispatchEnabled), dispatch_check_time: validTime(input.dispatchCheckTime, "16:30"),
     bot_token_encrypted: token ? encrypt(token) : current.bot_token_encrypted, updated_at: new Date().toISOString(), updated_by: userId
@@ -31,6 +35,7 @@ export async function saveTelegramConfig(input: Record<string, unknown>, userId:
 
 export async function testTelegram() {
   const config = await getTelegramConfig();
+  if (!config.enabled) throw new Error("Ative as notificações Telegram antes de enviar um teste.");
   return sendAndRecord(config, "Teste de notificação — Gestão Marketplace .Tech", { alertType: "test", key: `test:${randomUUID()}` });
 }
 
@@ -61,10 +66,9 @@ export async function runPendingDispatchJob(now = new Date()) {
   if (claim.error?.code === "23505") return { skipped: "already_run" };
   if (claim.error) throw new Error(claim.error.message);
   try {
-    const start = new Date(`${date}T00:00:00-03:00`).toISOString();
-    const end = new Date(`${date}T23:59:59.999-03:00`).toISOString();
+    const { start, end } = telegramDayRange(now, config.timezone);
     const result = await supabaseAdmin().from("venda").select("id,marketplace,order_id,status_original,data_venda,created_at,shipment_id,raw_data,status_venda(final_status)")
-      .gte("data_venda", start).lte("data_venda", end).not("raw_data->>marketplace_label_printed_at", "is", null);
+      .gte("data_venda", start).lt("data_venda", end).not("raw_data->>marketplace_label_printed_at", "is", null);
     if (result.error) throw new Error(result.error.message);
     const pending: Array<{ sale: Sale; items: any[]; account: string }> = [];
     for (const original of (result.data || []) as unknown as Sale[]) {
@@ -106,6 +110,9 @@ async function refreshSale(sale: Sale) {
 }
 
 async function sendAndRecord(config: Config, text: string, meta: { alertType: "test" | "new_sale" | "pending_dispatch"; key: string; sale?: Sale; account?: string }) {
+  // Recheck after potentially slow marketplace calls so a disabled module stops sending.
+  config = await getTelegramConfig();
+  if (!config.enabled || (meta.alertType === "new_sale" && (!config.new_sale_enabled || !insideWindow(new Date(), config.timezone, config.new_sale_start, config.new_sale_end))) || (meta.alertType === "pending_dispatch" && (!config.dispatch_enabled || localTime(new Date(), config.timezone) < config.dispatch_check_time.slice(0, 5)))) return { skipped: "disabled_or_not_due" };
   const db = supabaseAdmin();
   const base = { alert_type: meta.alertType, sale_id: meta.sale?.id || null, order_id: meta.sale?.order_id || null, marketplace: meta.sale?.marketplace || null, account_name: meta.account || null, notification_date: localDate(new Date(), config.timezone), idempotency_key: meta.key };
   const reserved = await db.from("telegram_notification_history").insert({ ...base, status: "ignored" }).select("id").single();
@@ -140,7 +147,7 @@ function validTime(value: unknown, fallback: string) { const text = String(value
 function localParts(date: Date, zone: string) { return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date).reduce((out, item) => ({ ...out, [item.type]: item.value }), {} as Record<string, string>); }
 function localDate(date: Date, zone: string) { const p = localParts(date, zone); return `${p.year}-${p.month}-${p.day}`; }
 function localTime(date: Date, zone: string) { const p = localParts(date, zone); return `${p.hour}:${p.minute}`; }
-function insideWindow(date: Date, zone: string, start: string, end: string) { const time = localTime(date, zone); return time >= start.slice(0, 5) && time <= end.slice(0, 5); }
+function insideWindow(date: Date, zone: string, start: string, end: string) { return telegramInsideWindow(localTime(date, zone), start, end); }
 function marketplaceName(value: string) { return value === "mercado_livre" ? "Mercado Livre" : value === "shopee" ? "Shopee" : value; }
 function key() { const secret = process.env.TELEGRAM_ENCRYPTION_KEY || process.env.AUTH_SESSION_SECRET; if (!secret) throw new Error("TELEGRAM_ENCRYPTION_KEY não configurada."); return createHash("sha256").update(secret).digest(); }
 function encrypt(value: string) { const iv = randomBytes(12); const cipher = createCipheriv("aes-256-gcm", key(), iv); const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]); return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join("."); }

@@ -21,3 +21,5 @@ supabase/.temp/
 .smart-deploy-*.json.*.tmp
 
 .env*
+
+.smart-deploy-history/

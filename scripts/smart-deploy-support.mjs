@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { syncDirectory } from './smart-coordination.mjs';
 import path from 'node:path';
 import { git, changedFiles, dependencyFilesChanged } from './smart-git.mjs';
 import { classifyChanges, buildWorkerFileSet } from './smart-change-classifier.mjs';
@@ -36,10 +38,12 @@ export function assertCommitPlan(root, target, base, classification) {
   return plan;
 }
 export function atomicJson(file, value) {
-  const temporary = `${file}.${process.pid}.tmp`;
+  const temporary = `${file}.${randomUUID()}.tmp`;
   try {
-    fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
+    const fd = fs.openSync(temporary, 'wx', 0o600);
+    try { fs.writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(temporary, file);
+    if (process.platform !== 'win32') syncDirectory(path.dirname(file));
   } finally {
     if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
   }
@@ -59,7 +63,7 @@ export function migrationStatus(output, expected) {
   const invalid = () => { throw new Error('Unrecognized/empty migration history; refusing to assume success.'); };
   if (typeof output !== 'string' || !Array.isArray(expected) || !expected.length ||
       expected.some(v => typeof v !== 'string' || !/^\d+$/.test(v)) || new Set(expected).size !== expected.length) invalid();
-  const clean = output.replace(/\u001b\[[0-9;]*m/g, '').trim().replace(/^\uFEFF/, '');
+  const clean = output.replace(/\u001b\[[0-9;]*m/g, '').trim().replace(/^\uFEFF/, '').replace(/`(\d+)`/g, '$1');
   let rows;
   if (/^[{\[]/.test(clean)) {
     let data;
@@ -70,8 +74,16 @@ export function migrationStatus(output, expected) {
       return [row.local, row.remote];
     });
   } else {
-    rows = clean.split(/\r?\n/).map(line => line.split(/[|│]/).map(v => v.trim()))
-      .filter(columns => columns.length >= 3 && (/^\d+$/.test(columns[0]) || /^\d+$/.test(columns[1])))
+    const normalized = clean.replace(/\u2502/g, '|');
+    const lines = normalized.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.some(l =>
+      !/^Local\s*\|\s*Remote\s*\|\s*Time(?:\s*\(UTC\))?$/.test(l) &&
+      !/^[-+|\s\u2500\u253c]+$/.test(l) &&
+      !/^\d*\s*\|\s*\d*\s*\|[^|]*$/.test(l)
+    )) invalid();
+    rows = normalized.split(/\r?\n/).map(line => line.split('|').map(v => v.trim()))
+      .filter(columns => columns.length === 3 &&
+        (/^\d+$/.test(columns[0]) || /^\d+$/.test(columns[1])))
       .map(columns => columns.slice(0, 2));
   }
   if (!rows.length) invalid();

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { acquireSmartLock, assertControlRoot } from './smart-coordination.mjs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { deploymentMode } from './smart-execution-policy.mjs';
@@ -17,8 +18,7 @@ const args = new Set(process.argv.slice(2));
 const mode = deploymentMode({ execute: args.has('--execute'), dryRun: args.has('--dry-run') });
 const statePath = path.join(root, '.smart-deploy-state.json');
 const progressPath = path.join(root, '.smart-deploy-progress.json');
-const lockPath = path.join(root, '.smart-deploy.lock');
-let locked = false;
+let releaseLock;
 const run = (command, argv, capture = false) => {
   const result = spawnCommand(command, argv, { cwd: root, stdio: capture ? 'pipe' : 'inherit', encoding: 'utf8', timeout: 1_200_000 });
   if (result.error) throw new Error(`${command}: ${formatSpawnError(result.error)}`);
@@ -50,8 +50,9 @@ try {
     assertDeploymentRepository({ cwd: root, target });
     const active = classification.frontend || classification.migration || classification.worker;
     if (active) {
-      fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, target }), { flag: 'wx' });
-      locked = true;
+      assertControlRoot(root);
+      releaseLock = acquireSmartLock(root);
+      if (readJson(statePath)?.commit !== base) throw new Error('Execute requires unchanged authentic confirmed baseline; --base cannot bootstrap it.');
     }
     let project;
     let request;
@@ -65,7 +66,11 @@ try {
           git(['remote', 'get-url', '--push', '--all', 'origin']) !== originUrl)
         throw new Error('origin fetch/push must use one unchanged repository URL.');
     };
-    const assertLocal = () => assertDeploymentRepository({ cwd: root, target });
+    const baselineBytes = fs.readFileSync(statePath, 'utf8');
+    const assertLocal = () => {
+      if (fs.readFileSync(statePath, 'utf8') !== baselineBytes) throw new Error('Baseline changed during deploy.');
+      assertDeploymentRepository({ cwd: root, target });
+    };
     const remoteHead = () => git(['rev-parse', 'refs/remotes/origin/main']);
     const refresh = () => {
       assertLocal();
@@ -87,8 +92,9 @@ try {
         refresh();
         if (classification.migration) {
           if (git(['diff', '--name-only', '--diff-filter=MDRT', base, target, '--', 'supabase/migrations/'])) throw new Error('Existing migrations cannot be edited, removed or renamed; add a new migration.');
-          run('npx', ['--no-install', 'supabase', 'db', 'push', '--help'], true);
-          run('npx', ['--no-install', 'supabase', 'migration', 'list', '--help'], true);
+          if (!process.env.SMART_SUPABASE_BIN || !path.isAbsolute(process.env.SMART_SUPABASE_BIN)) throw new Error('Absolute SMART_SUPABASE_BIN required.');
+          run(process.env.SMART_SUPABASE_BIN, ['db', 'push', '--help'], true);
+          run(process.env.SMART_SUPABASE_BIN, ['migration', 'list', '--help'], true);
           if (!fs.existsSync('supabase/.temp/project-ref')) throw new Error('Supabase linked project required.');
           linkedProject = fs.readFileSync('supabase/.temp/project-ref', 'utf8').trim();
           if (!linkedProject) throw new Error('Empty Supabase linked project.');
@@ -115,7 +121,11 @@ try {
         finally { prompt.close(); }
       },
       revalidate: refresh,
-      loadProgress: () => readJson(progressPath),
+      loadProgress: () => {
+        const progress = readJson(progressPath);
+        if (progress && readJson(statePath)?.commit === progress.target) throw new Error('Completed reconciliation journal must be recovered through its receipt, never resumed.');
+        return progress;
+      },
       canSupersede: progress => {
         try {
           git(['merge-base', '--is-ancestor', progress.target, target]);
@@ -129,7 +139,7 @@ try {
         assertLinkedProject();
         return confirmLinkedMigrations(versions, { cwd: root });
       },
-      migrate: () => { assertLinkedProject(); run('npx', ['--no-install', 'supabase', 'db', 'push', '--linked']); },
+      migrate: () => { assertLinkedProject(); run(process.env.SMART_SUPABASE_BIN, ['db', 'push', '--linked']); },
       isPublished: () => remoteHead() === target,
       push: () => run('git', ['push', 'origin', `${target}:refs/heads/main`]),
       verifyPublished: () => {
@@ -147,5 +157,5 @@ try {
   console.error(`ERROR: ${error.message}`);
   process.exitCode = 1;
 } finally {
-  if (locked) fs.unlinkSync(lockPath);
+  if (releaseLock) releaseLock();
 }

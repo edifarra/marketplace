@@ -23,7 +23,8 @@ export function createVercelReader({ project, cwd, token = process.env.VERCEL_TO
     const allowed = url.origin === 'https://api.vercel.com' && (
       url.pathname === `/v9/projects/${projectId}` ||
       (url.pathname === '/v7/deployments' && url.searchParams.get('projectId') === projectId) ||
-      /^\/v13\/deployments\/dpl_[a-zA-Z0-9]+$/.test(url.pathname));
+      /^\/v13\/deployments\/dpl_[a-zA-Z0-9]+$/.test(url.pathname) ||
+      (/^\/v4\/aliases\/[a-z0-9.-]+$/.test(url.pathname) && url.searchParams.get('projectId') === projectId));
     if (!allowed) throw new Error('Unsupported Vercel read endpoint.');
     url.searchParams.set('teamId', orgId);
     let data;
@@ -38,7 +39,7 @@ export function createVercelReader({ project, cwd, token = process.env.VERCEL_TO
       // CLI resolves its own persisted login. Do not read/copy its credential files.
       let result;
       try {
-        result = spawn('npx', ['--no-install', 'vercel', 'api', url.pathname + url.search,
+        result = spawn(process.execPath, [process.env.SMART_NPX_CLI || 'C:/Program Files/nodejs/node_modules/npm/bin/npx-cli.js', '--no-install', 'vercel', 'api', url.pathname + url.search,
           '--method', 'GET', '--raw', '--scope', orgId, '--non-interactive'], {
           cwd, env, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 30_000
         });

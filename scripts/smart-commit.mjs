@@ -1,3 +1,4 @@
+import { acquireSmartLock } from './smart-coordination.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { git } from './smart-git.mjs';
@@ -5,7 +6,9 @@ import { readJson, assertDeploymentMetadata } from './smart-deploy-support.mjs';
 import { PLAN_FILE, normalizePlan, planDigest, verifyPlanMessage } from './smart-deploy-metadata.mjs';
 
 // Creates a new commit only. Recovery never amends a published commit or pushes.
+let releaseLock;
 try {
+  releaseLock = acquireSmartLock(process.cwd(), { operation: 'commit' });
   const args = process.argv.slice(2);
   if (args.length !== 2 || args[0] !== '-m' || !args[1].trim())
     throw new Error('Usage: npm run commit:smart -- -m "Commit message"');
@@ -29,4 +32,4 @@ try {
 } catch (error) {
   console.error(`ERROR: ${error.message}`);
   process.exitCode = 1;
-}
+} finally { if (releaseLock) releaseLock(); }

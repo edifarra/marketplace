@@ -20,9 +20,13 @@ function fixture(context) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'smart-commit-'));
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  // Each fixture uses a distinct OS-user home for child CLI lock isolation.
+  const fixtureHome = fs.mkdtempSync(path.join(os.tmpdir(), 'smart-test-home-'));
+  fs.mkdirSync(path.join(fixtureHome, 'AppData', 'Local', 'Temp'), { recursive: true });
+  context.after(() => fs.rmSync(fixtureHome, { recursive: true, force: true }));
   const cli = (name, args = []) => spawnSync(process.execPath,
     [fileURLToPath(new URL(`../scripts/${name}.mjs`, import.meta.url)), ...args],
-    { cwd: root, encoding: 'utf8', env: { ...process.env, SMART_DEPLOY_BASE: '' } });
+    { cwd: root, encoding: 'utf8', env: { ...process.env, SMART_DEPLOY_BASE: '', HOME: fixtureHome, USERPROFILE: fixtureHome } });
   git(['init', '--initial-branch=main']);
   git(['config', 'user.name', 'Test']); git(['config', 'user.email', 'test@example.invalid']);
   git(['config', 'commit.gpgsign', 'false']);

@@ -16,6 +16,7 @@
     "scripts/smart-reconcile.mjs",
     "scripts/smart-vercel-auth.mjs",
     "tests/migration-stock-import.test.ts",
+    "tests/smart-commit.test.mjs",
     "tests/smart-migration-confirmation.test.mjs",
     "tests/smart-reconcile.test.mjs",
     "tests/smart-vercel-auth.test.mjs"

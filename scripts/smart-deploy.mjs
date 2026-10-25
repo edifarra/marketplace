@@ -139,7 +139,7 @@ try {
         assertLinkedProject();
         return confirmLinkedMigrations(versions, { cwd: root });
       },
-      migrate: () => { assertLinkedProject(); run(process.env.SMART_SUPABASE_BIN, ['db', 'push', '--linked']); },
+      migrate: () => { assertLinkedProject(); run(process.env.SMART_SUPABASE_BIN, ['db', 'push', '--linked', '--yes']); },
       isPublished: () => remoteHead() === target,
       push: () => run('git', ['push', 'origin', `${target}:refs/heads/main`]),
       verifyPublished: () => {

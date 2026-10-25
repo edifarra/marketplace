@@ -1,3 +1,4 @@
+import { activeTinyProductId } from "./tiny-product-link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { deleteCloudinaryResource } from "./cloudinary";
@@ -221,7 +222,7 @@ export async function deleteProductById(formData: FormData) {
       previousData: { status: "active" }, requestedData: { status: "deleted" }, sourceType: "product_delete", sourceId: typed.id });
   }
 
-  const tinyProductId = typed.tiny_product_id || await getTinyProductIdFromLastResult(typed.id);
+  const tinyProductId = activeTinyProductId(typed);
   if (tinyProductId && !inspection.tinyProductMissing) {
     await enqueueOutgoingActivity({ destination: "tiny", activityType: "listing_delete", productId: typed.id, sku: typed.sku,
       productName: typed.sku, listingId: tinyProductId, previousData: { status: "active" }, requestedData: { status: "inactive" },
@@ -279,8 +280,8 @@ export async function inspectProductDeletion(productId: string, manualTinyConfir
     };
   }
 
-  const tinyProductId = product.tiny_product_id || await getTinyProductIdFromLastResult(product.id);
-  const hasTinyIntegration = Boolean(tinyProductId || product.sent_target === "TINY");
+  const tinyProductId = activeTinyProductId(product);
+  const hasTinyIntegration = Boolean(tinyProductId);
   if (!hasTinyIntegration) {
     return { status: "ready", message: "Produto pronto para exclusao." };
   }
@@ -442,22 +443,6 @@ async function getProductForDelete(productId: string) {
     `)
     .eq("id", productId)
     .single();
-}
-
-async function getTinyProductIdFromLastResult(productId: string) {
-  const supabase = supabaseAdmin();
-  const { data } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", `TINY_LAST_PRODUCT_${productId}`)
-    .maybeSingle();
-
-  const value = data?.value;
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  return String((value as Record<string, unknown>).idProduto || "");
 }
 
 function parseProductForm(formData: FormData): ProductFormInput {

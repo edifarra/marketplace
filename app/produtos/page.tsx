@@ -1,3 +1,4 @@
+import { activeTinyProductId } from "@/lib/tiny-product-link";
 import { productImageUrl } from "@/lib/product-image-source";
 import { ProductThumbnail } from "../components/product-thumbnail";
 import Image from "next/image";
@@ -401,7 +402,7 @@ function ProductThumb({ product }: { product: ProductRow }) {
 }
 
 function MarketplaceLogos({ product }: { product: ProductRow }) {
-  const tinySent = product.sent_target === "TINY" || Boolean(product.tiny_product_id);
+  const tinySent = Boolean(activeTinyProductId(product));
   const published = (product.listings || []).filter((listing) => listing.external_listing_id);
   if (!tinySent && published.length === 0) {
     return <span className="muted">Aguardando envio</span>;

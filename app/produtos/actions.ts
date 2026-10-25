@@ -1,4 +1,5 @@
 "use server";
+import { activeTinyProductId } from "@/lib/tiny-product-link";
 import { productImageUrl, imageIsAvailable } from "@/lib/product-image-source";
 
 import { deleteProductById, inspectProductDeletion } from "@/lib/products";
@@ -200,7 +201,7 @@ export async function updateProductInlineAction(formData: FormData) {
   ]);
   const awaitingPrice = ["pending_price", "manual_price"].includes(product.data.status);
   if (awaitingPrice && price <= 0) redirect(`/produtos?erro=${encodeURIComponent("Informe um preço maior que zero para liberar o produto para envio.")}`);
-  const linked = Boolean(product.data.sent_target || product.data.tiny_product_id || product.data.listings?.some(item => item.external_listing_id));
+  const linked = Boolean(activeTinyProductId(product.data) || product.data.listings?.some(item => item.external_listing_id));
   const priceChanged = Math.abs(Number(product.data.price || 0) - price) >= 0.005;
   const titleChanged = product.data.title !== title;
   const stockChanged = Number(currentInventory.data?.estoque_fisico || 0) !== stock;

@@ -1,3 +1,4 @@
+import { activeTinyProductId } from "./tiny-product-link";
 import { supabaseAdmin } from "./supabase-admin";
 import { publishProductDirectly } from "./direct-marketplace-publisher";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
@@ -101,12 +102,8 @@ export async function removeProductIntegration(productId: string, integration: s
   }
 
   const tinyProductId = await getProductTinyId(productId);
-  if (deleteExternal && !tinyProductId) {
-    return {
-      ok: false,
-      productId,
-      message: "Nao foi possivel inativar no Tiny: produto sem codigo de vinculacao Tiny."
-    };
+  if (!tinyProductId) {
+    return { ok: true, productId, message: "Produto sem vínculo operacional Tiny; nenhuma operação externa necessária." };
   }
 
   if (deleteExternal && tinyProductId) {
@@ -261,22 +258,8 @@ async function getProductTinyId(productId: string) {
     .eq("id", productId)
     .maybeSingle();
 
-  if (!error && data?.tiny_product_id) {
-    return String(data.tiny_product_id);
-  }
-
-  const { data: lastResult } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", `TINY_LAST_PRODUCT_${productId}`)
-    .maybeSingle();
-
-  const value = lastResult?.value;
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  return String((value as Record<string, unknown>).idProduto || "");
+  if (error) throw error;
+  return activeTinyProductId(data || {});
 }
 
 async function hasActiveMarketplace() {
@@ -344,6 +327,4 @@ async function clearTinyIntegration(productId: string) {
       .eq("id", productId)
       .throwOnError();
   }
-
-  await supabase.from("settings").delete().eq("key", `TINY_LAST_PRODUCT_${productId}`);
 }

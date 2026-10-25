@@ -8,7 +8,7 @@ export async function clearTinyLink(productId: string) {
     tiny_last_synced_on: null,
     updated_at: new Date().toISOString()
   }).eq("id", productId).throwOnError();
-  await supabaseAdmin().from("settings").delete().eq("key", `TINY_LAST_PRODUCT_${productId}`);
+  // Preserve the last send result as historical evidence.
 }
 
 export async function reconcileProductIntegrationStatus(productId: string) {

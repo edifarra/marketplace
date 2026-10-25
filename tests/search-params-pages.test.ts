@@ -1,3 +1,4 @@
+import { activeTinyProductId } from "../lib/tiny-product-link";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
@@ -41,6 +42,7 @@ function fixture() {
     "@/lib/marketplace-conversation-view": { prepareConversationRows: (rows: any[]) => rows, sortConversationRows: () => 0 },
     "@/lib/marketplace-conversation-page": { MARKETPLACE_CONVERSATION_PAGE_SIZE: 25, MARKETPLACE_CONVERSATION_PAGE_SELECT: "id", normalizeMarketplaceConversationPagePlan: (value: any) => value },
     "@/lib/shopee-message-product-cards": { enrichShopeeMessageProductCards: async (_db: unknown, rows: any[]) => rows },
+    "@/lib/tiny-product-link": { activeTinyProductId },
     "@/lib/product-action-rules": {}, "@/lib/marketplace-attributes": {}, "@/lib/marketplace-image-validation": {},
     "@/lib/product-image-source": { productImageUrl },
     "@/lib/sales-fulfillment": { deferredShipping: () => null, overduePrintedLabel: () => false,

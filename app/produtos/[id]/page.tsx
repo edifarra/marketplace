@@ -1,3 +1,4 @@
+import { activeTinyProductId } from "@/lib/tiny-product-link";
 import { productImageUrl } from "@/lib/product-image-source";
 import { Sidebar } from "@/app/components/sidebar";
 import { resendProductIntegrationAction } from "../actions";
@@ -112,6 +113,10 @@ export default async function ProductDetailPage({
   const requestedReturn = String(query?.returnTo || "/produtos");
   const returnTo = requestedReturn.startsWith("/produtos") && !requestedReturn.startsWith("//") ? requestedReturn : "/produtos";
   const integrations = buildIntegrationRows(typed);
+  // Display-only history; never use this response as an operational ID.
+  const tinyHistory = await supabase.from("settings").select("value")
+    .in("key", [`TINY_LAST_PRODUCT_${typed.id}`, `TINY_LEGACY_LINK_${typed.id}`]).throwOnError();
+  const hasTinyHistory = Boolean(tinyHistory.data?.length) || typed.sent_target === "TINY";
   const temporaryImages = await recoverTemporaryImagesWhenCloudinaryIsUnavailable(typed.id, typed.product_images || []);
   const imagesValid = (typed.product_images || []).length > 0 && (typed.product_images || []).every(image => validateMarketplaceImage({ width: Number(image.width_px), height: Number(image.height_px), bytes: Number(image.bytes) }).length === 0);
   const [{ data: type }, { data: brand }, { data: special }, types, brands, specials, categoryMappings, inventory, marketplaceState, sendTarget, activeAccounts] = await Promise.all([
@@ -178,8 +183,16 @@ export default async function ProductDetailPage({
             shopee: integrations.some(item => item.integration === "SHOPEE")
           }} returnTo={returnTo} actionReturnTo={actionReturnTo} showSend={actionState.showSend} />
 
+        {hasTinyHistory && <section className="section card">
+          <h2>Histórico de envios</h2>
+          <p>Envio anterior ao Olist Tiny registrado. {activeTinyProductId(typed)
+            ? "O vínculo operacional atual está listado abaixo."
+            : "Integração aposentada — sem vínculo operacional ativo."}</p>
+          <p className="muted">O histórico é preservado e não autoriza consultas, atualizações ou exclusões no Tiny.</p>
+        </section>}
         <section className="section card product-integration-history">
-          <h2>Envios realizados</h2>
+          <h2>Integrações operacionais</h2>
+          <p className="muted">Somente vínculos atuais permitem atualizações e exclusões externas.</p>
           <div className="table-wrap">
             <table>
               <thead>
@@ -197,7 +210,7 @@ export default async function ProductDetailPage({
               <tbody>
                 {integrations.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>Nenhum envio realizado.</td>
+                    <td colSpan={8}>Nenhuma integração operacional ativa.</td>
                   </tr>
                 ) : (
                   integrations.map((integration) => (
@@ -413,7 +426,7 @@ async function attachMarketplaceLinks(product: Record<string, unknown> | null, p
 function buildIntegrationRows(product: ProductDetail): IntegrationRow[] {
   const rows: IntegrationRow[] = [];
 
-  if (product.sent_target === "TINY" || product.tiny_product_id) {
+  if (activeTinyProductId(product)) {
     rows.push({
       key: "tiny",
       integration: "TINY",

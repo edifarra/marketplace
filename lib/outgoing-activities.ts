@@ -1,3 +1,4 @@
+import { activeTinyProductId } from "./tiny-product-link";
 import { supabaseAdmin } from "./supabase-admin";
 import { prepareMarketplaceImages } from "./prepare-marketplace-images";
 import { activityNeedsProductImages, prepareActivityImageRequest } from "./product-image-source";
@@ -212,6 +213,14 @@ async function markProductSentWhenAllMarketplacesAreLinked(productId: string) {
 }
 
 async function executeAndConfirm(activity: Record<string, any>) {
+  if (activity.destination === "tiny" && activity.activity_type !== "listing_create") {
+    const product = activity.product_id ? await supabaseAdmin().from("products").select("tiny_product_id")
+      .eq("id", activity.product_id).maybeSingle().throwOnError() : { data: null };
+    const currentId = activeTinyProductId(product.data || {});
+    if (!currentId || currentId !== String(activity.listing_id || "")) {
+      return { skipped: true, reason: "retired_tiny_link", status: "unlinked" };
+    }
+  }
   if(activity.activity_type === "claim_action")return executeMarketplaceClaimActivity(activity);
   if (["conversation_read", "conversation_delete"].includes(String(activity.activity_type))) return executeShopeeConversationAction(activity);
   if (["answer_send", "question_answer"].includes(String(activity.activity_type))) return executeConversationReply(activity);

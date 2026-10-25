@@ -1,3 +1,4 @@
+import { activeTinyProductId } from "./tiny-product-link";
 import { getActiveMercadoLivreAccounts, listMercadoLivreInventory } from "./mercado-livre";
 import { upsertMarketplaceItem } from "./migration-stock";
 import { importMarketplaceSku } from "./migration-stock";
@@ -36,7 +37,7 @@ export async function synchronizeProductById(productId: string, options: { skipT
   const mode = String(modeResult.data?.value || "TINY") === "MARKETPLACE_DIRETO" ? "MARKETPLACE_DIRETO" : "TINY";
   const result: PointSyncResult = { sku, mode, tinyFields: [], listings: [], removedLinks: [], errors: [] };
 
-  if (mode === "TINY" && !options.skipTiny) {
+  if (mode === "TINY" && !options.skipTiny && activeTinyProductId(product)) {
     try {
       result.tinyFields = await synchronizeTinyProduct(productId, sku, product.tiny_product_id ? String(product.tiny_product_id) : "");
     } catch (error) {

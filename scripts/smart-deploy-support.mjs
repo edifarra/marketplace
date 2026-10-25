@@ -63,7 +63,7 @@ export function migrationStatus(output, expected) {
   const invalid = () => { throw new Error('Unrecognized/empty migration history; refusing to assume success.'); };
   if (typeof output !== 'string' || !Array.isArray(expected) || !expected.length ||
       expected.some(v => typeof v !== 'string' || !/^\d+$/.test(v)) || new Set(expected).size !== expected.length) invalid();
-  const clean = output.replace(/\u001b\[[0-9;]*m/g, '').trim().replace(/^\uFEFF/, '').replace(/`(\d+)`/g, '$1');
+  const clean = output.replace(/\u001b\[[0-9;]*m/g, '').trim().replace(/^\uFEFF/, '').replace(/`(\d*)`/g, '$1').replace(/`\s*`/g, '');
   let rows;
   if (/^[{\[]/.test(clean)) {
     let data;

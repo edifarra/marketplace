@@ -14,6 +14,8 @@
     "lib/product-sender.ts",
     "lib/products.ts",
     "lib/tiny-product-link.ts",
+    "scripts/smart-deploy-support.mjs",
+    "supabase/migrations/20261025183626_archive_and_unlink_legacy_tiny_product_links_20261025.sql",
     "supabase/migrations/20261025185303_retire_legacy_tiny_markers.sql",
     "tests/marketplace-case-cache.test.ts",
     "tests/search-params-pages.test.ts",

@@ -10,7 +10,6 @@ import {
   listShopeeInventory
 } from "./shopee";
 import { supabaseAdmin } from "./supabase-admin";
-import { findTinyProductBySku } from "./tiny";
 
 export type MigrationStockView = "marketplace-only" | "system-only" | "missing-marketplace" | "stock-divergent";
 export type MigrationStockStatus = "all" | "active" | "paused";
@@ -131,7 +130,7 @@ export async function linkMarketplaceSkuToProduct(sourceSku: string, targetSku: 
   });
 }
 
-export async function importMarketplaceSku(sku: string, includeTiny = true) {
+export async function importMarketplaceSku(sku: string) {
   const normalizedSku = normalizeSku(sku);
   const supabase = supabaseAdmin();
   const links = await getMarketplaceLinksBySku(normalizedSku);
@@ -149,46 +148,21 @@ export async function importMarketplaceSku(sku: string, includeTiny = true) {
   const typeCode = await inferTypeCode(normalizedSku);
   const brandCode = await getFirstBrandCode();
   const first = links[0];
-  const tinyProduct = includeTiny ? await findTinyProductBySku(normalizedSku) : null;
-  if (tinyProduct) {
-    const existingTiny = await supabase
-      .from("products")
-      .select("id,sku")
-      .or(`tiny_product_id.eq.${tinyProduct.id},source_key.eq.TINY_${tinyProduct.id}`)
-      .maybeSingle()
-      .throwOnError();
-
-    if (existingTiny.data?.id) {
-      await supabase.from("products").update({
-        tiny_product_id: tinyProduct.id,
-        sent_target: "TINY",
-        status: "sent",
-        updated_at: new Date().toISOString()
-      }).eq("id", existingTiny.data.id).throwOnError();
-      await linkMarketplaceRowsToProduct(normalizedSku, existingTiny.data.id);
-      await syncListingsFromMarketplaceRows(normalizedSku, existingTiny.data.id);
-      await logMigration(normalizedSku, "reconciliar_tiny", "sucesso", `Produto do Tiny vinculado aos anuncios do marketplace.`, {
-        productId: existingTiny.data.id,
-        tinyProductId: tinyProduct.id,
-        existingSku: existingTiny.data.sku
-      });
-      return;
-    }
-  }
+  // Marketplace imports never consult or reconcile Tiny, regardless of send mode.
   const product = await supabase
     .from("products")
     .insert({
-      sku: tinyProduct?.sku || normalizedSku,
-      source_key: tinyProduct ? `TINY_${tinyProduct.id}` : `marketplace_${normalizedSku}`,
+      sku: normalizedSku,
+      source_key: `marketplace_${normalizedSku}`,
       type_code: typeCode,
       brand_code: brandCode,
-      title: tinyProduct?.title || first.titulo_marketplace || normalizedSku,
-      price: tinyProduct?.price || first.valor_marketplace || 0,
+      title: first.titulo_marketplace || normalizedSku,
+      price: first.valor_marketplace || 0,
       stock: maxStock(links),
-      status: tinyProduct ? "sent" : "active",
-      tiny_product_id: tinyProduct?.id || null,
-      sent_target: tinyProduct ? "TINY" : null,
-      sent_at: tinyProduct ? new Date().toISOString() : null
+      status: "active",
+      tiny_product_id: null,
+      sent_target: null,
+      sent_at: null
     })
     .select("id")
     .single()

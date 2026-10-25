@@ -13,7 +13,8 @@ import { redirect } from "next/navigation";
 import { synchronizeProductBySku } from "@/lib/product-point-sync";
 
 export async function importMarketplaceSkuAction(formData: FormData) {
-  await runStockAction(formData, "marketplace-only", importMarketplaceSku);
+  // Cadastro uses marketplace data only, independently of PRODUCT_SEND_TARGET.
+  await runStockAction(formData, "marketplace-only", (sku) => importMarketplaceSku(sku));
 }
 
 export async function sendMissingMarketplacesAction(formData: FormData) {

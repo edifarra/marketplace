@@ -25,7 +25,7 @@ export type PointSyncResult = {
   errors: string[];
 };
 
-export async function synchronizeProductById(productId: string): Promise<PointSyncResult> {
+export async function synchronizeProductById(productId: string, options: { skipTiny?: boolean } = {}): Promise<PointSyncResult> {
   const db = supabaseAdmin();
   const [productResult, modeResult] = await Promise.all([
     db.from("products").select("id,sku,tiny_product_id").eq("id", productId).single().throwOnError(),
@@ -36,7 +36,7 @@ export async function synchronizeProductById(productId: string): Promise<PointSy
   const mode = String(modeResult.data?.value || "TINY") === "MARKETPLACE_DIRETO" ? "MARKETPLACE_DIRETO" : "TINY";
   const result: PointSyncResult = { sku, mode, tinyFields: [], listings: [], removedLinks: [], errors: [] };
 
-  if (mode === "TINY") {
+  if (mode === "TINY" && !options.skipTiny) {
     try {
       result.tinyFields = await synchronizeTinyProduct(productId, sku, product.tiny_product_id ? String(product.tiny_product_id) : "");
     } catch (error) {
@@ -71,13 +71,14 @@ export async function synchronizeProductBySku(skuValue: string): Promise<PointSy
   if (!sku) throw new Error("SKU nao informado.");
   const db = supabaseAdmin();
   let product = await db.from("products").select("id").ilike("sku", sku).maybeSingle().throwOnError();
+  const importedFromMarketplace = !product.data?.id;
   if (!product.data?.id) {
-    const mode = await db.from("settings").select("value").eq("key", "PRODUCT_SEND_TARGET").maybeSingle().throwOnError();
-    await importMarketplaceSku(sku, String(mode.data?.value || "TINY") !== "MARKETPLACE_DIRETO");
+    await importMarketplaceSku(sku);
     product = await db.from("products").select("id").ilike("sku", sku).maybeSingle().throwOnError();
   }
   if (!product.data?.id) throw new Error(`Nao foi possivel localizar ou cadastrar o SKU ${sku}.`);
-  return synchronizeProductById(String(product.data.id));
+  // Do not immediately reintroduce Tiny lookup after importing a new marketplace SKU.
+  return synchronizeProductById(String(product.data.id), { skipTiny: importedFromMarketplace });
 }
 
 async function synchronizeTinyProduct(productId: string, sku: string, currentTinyId: string) {

@@ -17,7 +17,7 @@ RLS habilitado e forçado nas três tabelas; sem políticas de acesso a clientes
 
 ## Resultado persistido
 
-Conferência de dados ao concluir a coleta: **502 observações**, das quais **239 linhas de extrato Mercado Pago**, **130 fotografias de pagamentos**, **45 movimentos de carteira Shopee**, **44 liberações de escrow** e **44 detalhes de escrow**. As categorias se sobrepõem financeiramente e não devem ser somadas como receita.
+Conferência de dados ao concluir a coleta: **503 observações**, das quais **239 linhas de extrato Mercado Pago**, **130 fotografias de pagamentos**, **46 movimentos de carteira Shopee**, **44 liberações de escrow** e **44 detalhes de escrow**, vinculadas a **183 respostas integrais** preservadas. As categorias se sobrepõem financeiramente e não devem ser somadas como receita.
 
 | Conta | Fonte / semântica | Registros | Soma do valor da fonte |
 |---|---|---:|---:|
@@ -29,7 +29,7 @@ Conferência de dados ao concluir a coleta: **502 observações**, das quais **2
 | SP-ED | Carteira | 27 | -119,73 |
 | SP-ED | Liberações de escrow | 27 | 1.500,27 |
 | SP-ED | Detalhes de escrow | 27 | 1.500,27 |
-| SP-GI | Carteira | 18 | -145,90 |
+| SP-GI | Carteira | 19 | -245,44 |
 | SP-GI | Liberações de escrow | 17 | 665,20 |
 | SP-GI | Detalhes de escrow | 17 | 535,16 |
 
@@ -47,7 +47,7 @@ Moeda BRL veio nos pagamentos e nas linhas do relatório ML-GI. O CSV ML-ED não
 | ML-GI pagamentos (recebedor) | 01/10 05:37:17 | 25/10 08:20:22 |
 | ML-GI pagamentos (pagador) | 01/10 16:59:22 | 24/10 12:04:47 |
 | SP-ED carteira/escrow | 01/10 11:16:50 | 23/10 09:23:55 |
-| SP-GI carteira | 02/10 11:30:12 | 22/10 10:15:31 |
+| SP-GI carteira | 02/10 11:30:12 | 25/10 18:19:49 |
 | SP-GI escrow | 02/10 11:30:12 | 22/10 10:05:57 |
 
 Todos os `occurred_at` persistidos estão em outubro e dentro da janela de sua execução. Datas de compras de setembro ou liberações futuras podem existir dentro dos documentos originais de um movimento de outubro; elas não são lançamentos adicionais desses outros meses.
@@ -72,12 +72,12 @@ Falhas transitórias observadas: timeout de API, falha de rede Supabase, token i
 
 - Cinco testes: IDs longos/decimais sem arredondamento, fronteiras de fuso e mês, evento de outubro de compra antiga, sinais, CSV com aspas e quebras de linha.
 - Todas as observações comparadas com o payload reconstruído dos bytes originais; linhas CSV comparadas literalmente. Hash de cada resposta conferido.
-- Todos os 45 IDs longos da carteira preservados como texto exato; tipos numéricos originais continuam nos bytes integrais da resposta.
+- Todos os 46 IDs longos da carteira preservados como texto exato; tipos numéricos originais continuam nos bytes integrais da resposta.
 - Zero duplicidades pela chave `(account_id,source,semantic,external_id,payload_sha256)`. Cada lote foi reinserido com retorno de zero novos registros; a coleta final repetiu as quatro contas.
 - RLS testado em transação com permissões temporárias para `anon` e `authenticated`; SELECT revelou zero linhas e INSERT foi bloqueado. Tudo revertido ao final. Teste em `scripts/verify-financial-rls.sql`.
 - REST com chave anônima: SELECT e INSERT negados nas três tabelas, código `42501`.
 - Índices para conta/fonte/data, IDs externos, execução e referências de evidência. Respostas repetidas são preservadas como novas coletas; não são duplicidades de lançamentos.
-- `npm run typecheck` passou. `check:smart` e dry-run devem ser executados depois do commit, conforme AGENTS.md; saídas da entrega acompanham o relatório final.
+- `npm run typecheck` passou. `check:smart` e dry-run executados depois do commit, conforme AGENTS.md; saídas da entrega acompanham o relatório final. O check usa também `--base=8ed5afc39af98216f10cdb1197020b17829fa05e` para validar o diff cumulativo explicitamente.
 
 As observações são versionadas por conteúdo. Uma mudança real no retorno do provedor gera nova versão, nunca sobrescreve a anterior. Para conciliação futura é preciso escolher a observação adequada por identidade e data de coleta, evitando somar versões ou fontes sobrepostas. Não há política automática de limpeza.
 
@@ -98,4 +98,4 @@ npm run deploy:smart -- --dry-run
 
 Migration já aplicada: **não reaplicar manualmente**. Em outro ambiente vazio, aplicar a migration versionada primeiro com o fluxo Supabase autorizado. Nenhum deploy, push, `git pull` ou reinício de processo é necessário para utilizar o importador local. Publicação do código e qualquer deploy permanecem fora do escopo autorizado.
 
-Impacta Vercel? **Não.** Impacta worker da VPS? **Não.** Precisa `git pull` na VPS? **Não.** Precisa `npm ci`? **Não.** Precisa `pm2 restart marketplace-worker --update-env`? **Não.** Não houve alteração de menu, vendas, fórmulas, logística ou dados operacionais existentes. O código será registrado por `commit:smart`; hash e arquivos exatos constam na entrega.
+Impacta Vercel? **Não.** Impacta worker da VPS? **Não.** Precisa `git pull` na VPS? **Não.** Precisa `npm ci`? **Não.** Precisa `pm2 restart marketplace-worker --update-env`? **Não.** Não houve alteração de menu, vendas, fórmulas, logística ou dados operacionais existentes. Código registrado por `commit:smart`; hash e arquivos exatos constam na entrega.

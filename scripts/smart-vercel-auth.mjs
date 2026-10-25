@@ -39,7 +39,7 @@ export function createVercelReader({ project, cwd, token = process.env.VERCEL_TO
       // CLI resolves its own persisted login. Do not read/copy its credential files.
       let result;
       try {
-        result = spawn(process.execPath, [process.env.SMART_NPX_CLI || 'C:/Program Files/nodejs/node_modules/npm/bin/npx-cli.js', '--no-install', 'vercel', 'api', url.pathname + url.search,
+        result = spawn(process.execPath, [process.env.SMART_VERCEL_CLI || 'C:/Users/Gustavo/Documents/Codex/GestaoMarketplace/.npm-cache/_npx/69f9afb961c37556/node_modules/vercel/dist/index.js', 'api', url.pathname + url.search,
           '--method', 'GET', '--raw', '--scope', orgId, '--non-interactive'], {
           cwd, env, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 30_000
         });

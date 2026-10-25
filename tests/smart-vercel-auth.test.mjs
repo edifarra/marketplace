@@ -11,13 +11,13 @@ test('authenticated CLI without VERCEL_TOKEN reads project and monitors exact SH
   const request = createVercelReader({ project, token: '', env: {}, spawn: (command, args, options) => {
     calls.push(args);
     assert.equal(command, process.execPath);
-    assert.match(args[0], /npx-cli\.js$/);
+    assert.match(args[0], /vercel[\/\\]dist[\/\\]index\.js$/);
     assert.equal(options.timeout, 30_000);
     assert.deepEqual(options.stdio, ['ignore','pipe','pipe']);
     assert.ok(args.includes('--non-interactive'));
     assert.equal(args[args.indexOf('--scope') + 1], project.orgId);
-    assert.match(args[4], new RegExp(`teamId=${project.orgId}`));
-    const data = args[4].startsWith('/v9') ? info : args[4].startsWith('/v7') ? { deployments: [d] } : { ...d, id: 'dpl_test', readyState: 'READY', aliasAssigned: true };
+    assert.match(args[2], new RegExp(`teamId=${project.orgId}`));
+    const data = args[2].startsWith('/v9') ? info : args[2].startsWith('/v7') ? { deployments: [d] } : { ...d, id: 'dpl_test', readyState: 'READY', aliasAssigned: true };
     return { status: 0, stdout: JSON.stringify(data) };
   }, fetchImpl: () => { throw new Error('No direct fetch for CLI authentication'); } });
   await request(endpoint);

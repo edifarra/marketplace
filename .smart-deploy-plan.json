@@ -1,26 +1,15 @@
 {
   "schemaVersion": 1,
-  "base": "2fa1901367955d89a5a753d43ac723b1d9b34dbb",
+  "base": "8ed5afc39af98216f10cdb1197020b17829fa05e",
   "files": [
     ".smart-deploy-plan.json",
-    "app/produtos/[id]/page.tsx",
-    "app/produtos/actions.ts",
-    "app/produtos/page.tsx",
-    "docs/tiny-legacy-links-publication.md",
-    "docs/tiny-legacy-links-rollback.sql",
-    "lib/outgoing-activities.ts",
-    "lib/product-integration-status.ts",
-    "lib/product-point-sync.ts",
-    "lib/product-sender.ts",
-    "lib/products.ts",
-    "lib/tiny-product-link.ts",
-    "scripts/smart-deploy-support.mjs",
-    "scripts/smart-deploy.mjs",
-    "supabase/migrations/20261025183626_archive_and_unlink_legacy_tiny_product_links_20261025.sql",
-    "supabase/migrations/20261025185303_retire_legacy_tiny_markers.sql",
-    "tests/marketplace-case-cache.test.ts",
-    "tests/search-params-pages.test.ts",
-    "tests/tiny-retired-links.test.ts"
+    "docs/financial-october-2026-import.md",
+    "scripts/financial-import-core.mjs",
+    "scripts/import-financial-october-2026.mjs",
+    "scripts/verify-financial-october-2026.mjs",
+    "scripts/verify-financial-rls.sql",
+    "supabase/migrations/20261025203356_financial_statement_import.sql",
+    "tests/financial-import.test.mjs"
   ],
   "dependenciesChanged": false
 }

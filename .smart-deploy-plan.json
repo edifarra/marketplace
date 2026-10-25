@@ -15,6 +15,7 @@
     "lib/products.ts",
     "lib/tiny-product-link.ts",
     "supabase/migrations/20261025185303_retire_legacy_tiny_markers.sql",
+    "tests/marketplace-case-cache.test.ts",
     "tests/search-params-pages.test.ts",
     "tests/tiny-retired-links.test.ts"
   ],

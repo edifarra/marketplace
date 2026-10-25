@@ -1,3 +1,4 @@
+import { returnProductLinks } from "../lib/return-product-links";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CaseReadCache, CASE_CACHE_MS } from "../lib/case-read-cache";
@@ -67,7 +68,7 @@ test("isolated loader read counts: ML 10, Shopee 9; list 10; navigation never wr
   for (const marketplace of ["mercado_livre", "shopee"]) {
     const row = { id: "case", marketplace, marketplace_account_id: "account", case_type: marketplace === "shopee" ? "return" : "claim", external_case_id: "123", order_id: "order", snapshot_order_at: "2026-10-01T00:00:00Z", sale: { id: "sale", marketplace, order_id: "order", items: [{ sku: "sku" }] } };
     const db = memoryDatabase({ marketplace_cases: [row], marketplace_conversations: [{ id: "chat", marketplace, marketplace_account_id: "account", order_id: "order", conversation_type: marketplace === "shopee" ? "chat" : "claim", external_conversation_id: "claim:123" }] });
-    const { loadCaseDetail } = loadPage("lib/marketplace-case-detail.ts", { "server-only": {}, "./supabase-admin": {}, "./marketplace-case-list": list, "./marketplace-claim-timeline": { orderedClaimTimeline: (v:unknown) => v, saleOfficialEvents: () => [] }, "./shopee-return-milestones": {} });
+    const { loadCaseDetail } = loadPage("lib/marketplace-case-detail.ts", { "server-only": {}, "./supabase-admin": {}, "./marketplace-case-list": list, "./marketplace-claim-timeline": { orderedClaimTimeline: (v:unknown) => v, saleOfficialEvents: () => [] }, "./shopee-return-milestones": {}, "./return-product-links": { returnProductLinks } });
     await loadCaseDetail("case", db);
     assert.equal(db.calls.filter(c => c.method === "from").length, marketplace === "shopee" ? 9 : 10);
     const listDb = memoryDatabase({ marketplace_cases: [row], config_marketplace_accounts: [{ id: "account" }] }, 100);

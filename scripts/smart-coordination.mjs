@@ -27,6 +27,11 @@ export function assertControlRoot(root, configured = process.env.SMART_DEPLOY_CO
     throw new Error('Execute/confirm must run in the single configured SMART_DEPLOY_CONTROL_ROOT (canonical state/progress workspace).');
 }
 export function syncDirectory(directory) {
+  if (process.platform === 'win32') {
+    if (!fs.statSync(directory).isDirectory())
+      throw new Error('Expected a valid control directory.');
+    return;
+  }
   const fd = fs.openSync(directory, 'r');
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }

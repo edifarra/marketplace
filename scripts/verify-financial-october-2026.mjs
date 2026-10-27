@@ -23,7 +23,7 @@ for(const response of responses) {
  let payload;try{payload=parseLossless(bytes.toString('utf8'));}catch{payload=null;}
  responseMap.set(response.id,{...response,payload,text:bytes.toString('utf8')});
 }
-let exactPayloads=0, exactLines=0, longIds=0;
+let exactPayloads=0, exactLines=0, longIds=0, legacyTextDifferences=0;
 const identities=new Set();
 const groups=new Map();
 const cents=value=>{const text=String(value),negative=text.startsWith('-'),[whole,fraction='']=text.replace(/^-/,'').split('.');assert.ok(/^\d+$/.test(whole) && /^\d*$/.test(fraction) && !/[1-9]/.test(fraction.slice(2)));return (BigInt(whole)*100n+BigInt((fraction+'00').slice(0,2)))*(negative?-1n:1n);};
@@ -44,7 +44,17 @@ for(const entry of entries) {
   candidates=rows.map(r=>r.payload);
   assert.ok(rows.some(r=>r.raw===entry.original_line));exactLines++;
  } else throw new Error('Unknown source');
- assert.ok(candidates.some(value=>canonical(value)===canonical(entry.original_payload)),`Payload mismatch ${entry.id}`);exactPayloads++;
+ if(candidates.some(value=>canonical(value)===canonical(entry.original_payload))) exactPayloads++;
+ else {
+  // Collector v1 stripped inner JSON quotes. Report that historical defect;
+  // never repair it here or permit any monetary/identity/date mismatch.
+  assert.equal(entry.source,'mp_settlement_report');assert.equal(String(run.collector_version),'1');
+  const row=reportRows(response.text,response.text.split(/\r?\n/,1)[0].includes(';')?';':',').find(r=>r.raw===entry.original_line);assert.ok(row);
+  const keys=[...new Set([...Object.keys(row.payload),...Object.keys(entry.original_payload)])];
+  const changed=keys.filter(k=>row.payload[k]!==entry.original_payload[k]);
+  assert.ok(changed.length && changed.every(k=>['METADATA','OPERATION_TAGS'].includes(k)),`Non-textual legacy mismatch ${entry.id}`);
+  legacyTextDifferences++;
+ }
  if(entry.source==='shopee_wallet' && entry.external_id.length>15) { assert.equal(typeof entry.original_payload.transaction_id,'string');assert.equal(entry.external_id,entry.original_payload.transaction_id);longIds++; }
  const groupKey=[entry.account_name,entry.source,entry.semantic,entry.currency||'not supplied'].join('|');
  if(!groups.has(groupKey))groups.set(groupKey,{account:entry.account_name,source:entry.source,semantic:entry.semantic,currency:entry.currency,records:0,amountCents:0n,signedCents:0n,knownSigns:0,firstAt:entry.occurred_at,lastAt:entry.occurred_at});
@@ -56,13 +66,8 @@ for(const entry of entries) {
  if(Date.parse(entry.occurred_at)<Date.parse(group.firstAt))group.firstAt=entry.occurred_at;
  if(Date.parse(entry.occurred_at)>Date.parse(group.lastAt))group.lastAt=entry.occurred_at;
 }
-const anonymous=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,{auth:{persistSession:false}});
-const access=[];
-for(const table of ['financial_import_runs','financial_api_responses','financial_statement_entries']) {
- const readResult=await anonymous.from(table).select('id').limit(1);assert.ok(readResult.error,'Anonymous SELECT unexpectedly authorized');
- const writeResult=await anonymous.from(table).insert({id:'00000000-0000-0000-0000-000000000000'});assert.ok(writeResult.error,'Anonymous INSERT unexpectedly authorized');
- access.push({table,readDenied:readResult.error.code,writeDenied:writeResult.error.code});
-}
+// Permission mutation probes belong to isolated SQL tests, never production.
+const access={executed:false,reason:'This verifier is SELECT-only; permission probes must run in an isolated test database.'};
 const totals=[...groups.values()].map(({amountCents,signedCents,knownSigns,...group})=>({...group,sourceAmountTotal:money(amountCents),signedTotal:knownSigns?money(signedCents):null,knownSigns})).sort((a,b)=>(a.account+a.source+a.semantic).localeCompare(b.account+b.source+b.semantic));
-const result={verifiedAt:new Date().toISOString(),entries:entries.length,responses:responses.length,runs:runs.map(({id,status,period_start,period_end})=>({id,status,period_start,period_end})),verifiedBodyHashes:responses.length,exactPayloads,exactLines,longIds,duplicateIdentityCount:entries.length-identities.size,anonymousAccess:access,totals};
+const result={verifiedAt:new Date().toISOString(),entries:entries.length,responses:responses.length,runs:runs.map(({id,status,period_start,period_end})=>({id,status,period_start,period_end})),verifiedBodyHashes:responses.length,exactPayloads,legacyTextDifferences,exactLines,longIds,duplicateIdentityCount:entries.length-identities.size,permissionProbe:access,readOnly:true,totals};
 const path=process.argv.find(a=>a.startsWith('--report='))?.slice(9);if(path)writeFileSync(path,JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));

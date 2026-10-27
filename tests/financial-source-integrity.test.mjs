@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {csvRecords,reportRows,statementEventKey,latestProcessedReport,selectStatementSnapshot,planStatementImport} from '../scripts/financial-import-core.mjs';
 
 test('MP raw JSON and RFC escaped JSON preserve inner quotes, delimiters and newlines',()=>{
@@ -48,4 +49,11 @@ test('actual import plan reuses historical rows unchanged and regenerated equiva
  const changed=reportRows(header+raw.replace(';1.00;',';2.00;'),';');
  assert.equal(planStatementImport(changed,prior,window)[0].reuseId,null);
  const duplicates=planStatementImport([rows[0],rows[0]],prior,window);assert.equal(duplicates.filter(r=>r.reuseId).length,1);assert.notEqual(duplicates[0].externalId,duplicates[1].externalId);
+});
+test('production verifiers have no mutation probes and retain strict v2 payload validation',()=>{
+ for(const file of ['scripts/verify-financial-october-2026.mjs','scripts/audit-financial-source-integrity.mjs']){
+  const source=readFileSync(file,'utf8');assert.doesNotMatch(source,/\.insert\(|\.update\(|\.upsert\(|\.delete\(|NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+ }
+ const verifier=readFileSync('scripts/verify-financial-october-2026.mjs','utf8');
+ assert.match(verifier,/assert.equal\(String\(run.collector_version\),'1'\)/);assert.match(verifier,/legacyTextDifferences/);
 });

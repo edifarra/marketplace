@@ -34,6 +34,8 @@ Os 67 casos foram revisados em memória usando snapshots já persistidos: 66 inc
 
 Não foram incorporados dados de produção aos fixtures do repositório. A revisão automática bloqueou tanto os arquivos brutos quanto a variante que mantinha valores/datas reais com IDs anonimizados; a alternativa adotada é teste sintético e verificação real apenas em memória.
 
+O Smart Check encontrou também uma incompatibilidade anterior em `verify-financial-october-2026.mjs`: uso de chave anônima e tentativa remota de INSERT para testar RLS. Esse verificador agora é estritamente SELECT-only; testes de permissões devem ocorrer em banco isolado. Ele reporta separadamente diferenças textuais de collector v1, exige igualdade de todos os demais campos e continua estrito para collector v2. Nenhuma permissão de produção foi alterada.
+
 ## Idempotência e uso futuro da fotografia
 
 Mesma linha histórica não é regravada para corrigir seus textos. CSV regenerado com a mesma projeção é reutilizado. Mudança real gera nova observação imutável; não é um segundo movimento econômico. Usar a composição explícita `selectedEntryIds` de uma execução/fonte completa através de `selectStatementSnapshot`, jamais somar todas as versões da tabela. Uma linha ausente na foto selecionada não é herdada automaticamente da anterior. Coberturas sobrepostas exigem escolher uma janela/foto, não concatenar janelas.

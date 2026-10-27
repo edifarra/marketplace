@@ -72,7 +72,12 @@ export async function loadMercadoLivreClaimBundle(id: string, account: Marketpla
   let return_cost=null;
   if(options.financial) {
     const path=`${root}/charges/return-cost`,cost=await optional('return_cost',path,null);
-    if(validReturnCost(cost)) return_cost={amount:cost.amount,currency_id:cost.currency_id,claim_id:id,endpoint:path,collected_at:new Date().toISOString(),basis:'context_only_already_represented_in_statement'};
+    if(validReturnCost(cost)) {
+      return_cost={amount:cost.amount,currency_id:cost.currency_id,claim_id:id,endpoint:path,basis:'context_only_already_represented_in_statement'};
+      // Enrichment is excluded from the existing business fingerprint. Keeping
+      // collection time here prevents unchanged hourly checks from queuing jobs.
+      resources.return_cost.observed_at=new Date().toISOString();
+    }
     else resources.return_cost={...resources.return_cost,state:'unavailable',code:'cost_unavailable_or_invalid'};
   }
   // Deliberately no available-offers request here: that resource belongs to the explicit click only.

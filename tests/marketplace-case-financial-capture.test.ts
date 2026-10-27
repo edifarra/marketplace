@@ -43,3 +43,12 @@ test('existing case event persists captured linkage and cost through the real ob
  });
  assert.equal(sent.length,2);assert.equal(sent[1].snapshot.order_id,'one');assert.equal(sent[1].snapshot.return_cost.amount,12.99);assert.equal(sent[1].source_key,'current-event:detail');
 });
+test('cost observation time is outside the business snapshot, so unchanged existing checks cannot create timestamp-only jobs',async()=>{
+ const get=async(path:string):Promise<any>=>path.endsWith('/claims/claim')?{...root,resource:'order',resource_id:'order'}:path.endsWith('/return-cost')?{amount:12.99,currency_id:'BRL'}:path.endsWith('/affects-reputation')?{affects_reputation:'not_applies'}:[];
+ const bundle=await loadMercadoLivreClaimBundle('claim',account,get,undefined,{financial:true});
+ const first=normalize(bundle).snapshot;
+ bundle.__case_enrichment.resources.return_cost.observed_at='2030-01-01T00:00:00Z';
+ const second=normalize(bundle).snapshot;
+ assert.equal('collected_at' in first.return_cost,false);
+ const {enrichment:_a,...a}=first,{enrichment:_b,...b}=second;assert.deepEqual(a,b);
+});

@@ -2,7 +2,7 @@ import nextEnv from '@next/env';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID, createHmac } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
-import { START, period, inPeriod, sha, parseLossless, decimal, signed, amounts, reportRows, reportMovementDate } from './financial-import-core.mjs';
+import { START, period, inPeriod, sha, parseLossless, decimal, signed, amounts, reportRows, reportMovementDate, latestProcessedReport, statementPayloadKey, planStatementImport } from './financial-import-core.mjs';
 
 nextEnv.loadEnvConfig(process.cwd(), false, { info() {}, error() {} });
 const args = process.argv.slice(2);
@@ -18,17 +18,17 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
 if (new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname !== 'ukfefrdaivqzxeeknmqr.supabase.co') throw new Error('Unexpected Supabase project');
 const runId = randomUUID();
 let pendingRows = [];
-const summary = { runId, mode: write ? 'write' : 'dry-run', window, accounts: [], collectorVersion: '1' };
+const summary = { runId, mode: write ? 'write' : 'dry-run', window, accounts: [], collectorVersion: '2' };
 const { data: accounts, error } = await db.from('config_marketplace_accounts').select('id,name,marketplace,active,access_token,token_expires_at,seller_id,shop_id,account_id,client_id,client_secret,api_base_url');
 if (error) throw new Error(`Account read failed: ${error.code}`);
 if (accounts.length !== 4 || new Set(accounts.map(a => a.name)).size !== 4 || accounts.some(a => !['ML-ED','ML-GI','SP-ED','SP-GI'].includes(a.name))) throw new Error('Expected exactly four known accounts');
-if (write) await checked(db.from('financial_import_runs').insert({ id: runId, period_start: window.start, period_end: window.end, collector_version: '1', status: 'running' }));
+if (write) await checked(db.from('financial_import_runs').insert({ id: runId, period_start: window.start, period_end: window.end, collector_version: '2', status: 'running' }));
 
 async function checked(query) { const result = await query; if (result.error) throw new Error(`Database operation failed: ${result.error.code} ${result.error.message}`); return result.data; }
-async function request(a, source, path, params = {}, method = 'GET', body, retry = true) {
+async function request(a, source, path, params = {}, method = 'GET', body, retry = true, metadata = {}) {
   if (!a.access_token) throw new Error('Stored OAuth token missing');
   if (Date.parse(a.token_expires_at) <= Date.now()) {
-    if (retry && await reloadToken(a)) return request(a, source, path, params, method, body, false);
+    if (retry && await reloadToken(a)) return request(a, source, path, params, method, body, false, metadata);
     throw new Error('Stored OAuth token expired; renew through existing authorized connection flow');
   }
   const shopee = a.marketplace === 'shopee';
@@ -44,11 +44,11 @@ async function request(a, source, path, params = {}, method = 'GET', body, retry
   }
   const response = await fetch(url, { method, redirect: 'error', headers: { ...(shopee ? {} : { Authorization: 'Bearer ' + a.access_token }), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(45000) });
   const bytes = Buffer.from(await response.arrayBuffer()), text = bytes.toString('utf8');
-  const evidence = { id: randomUUID(), run_id: runId, account_id: a.id, source, endpoint: host + path, request_parameters: { method, query: params, ...(body ? { body } : {}) }, http_status: response.status, collected_at: new Date().toISOString(), response_headers: Object.fromEntries(['content-type','content-disposition','x-request-id','x-correlation-id','date'].map(k => [k, response.headers.get(k)])), body_base64: bytes.toString('base64'), body_sha256: sha(bytes) };
+  const evidence = { id: randomUUID(), run_id: runId, account_id: a.id, source, endpoint: host + path, request_parameters: { method, query: params, ...metadata, ...(body ? { body } : {}) }, http_status: response.status, collected_at: new Date().toISOString(), response_headers: Object.fromEntries(['content-type','content-disposition','x-request-id','x-correlation-id','date'].map(k => [k, response.headers.get(k)])), body_base64: bytes.toString('base64'), body_sha256: sha(bytes) };
   if (write) await checked(db.from('financial_api_responses').insert(evidence));
   let json; try { json = parseLossless(text); } catch { /* CSV/binary report: exact bytes are retained. */ }
   const ok = response.ok && !json?.error;
-  if (!ok && method === 'GET' && retry && [401,403].includes(response.status) && await reloadToken(a)) return request(a, source, path, params, method, body, false);
+  if (!ok && method === 'GET' && retry && [401,403].includes(response.status) && await reloadToken(a)) return request(a, source, path, params, method, body, false, metadata);
   if (!ok) throw new Error(`${source} ${path}: HTTP ${response.status}; ${json?.error || json?.message || 'non-JSON error'}`);
   return { json, text, evidence };
 }
@@ -63,13 +63,13 @@ async function reloadToken(account) {
 async function save(a, source, semantic, externalId, date, dateBasis, currency, amount, sign, payload, evidence, raw = null) {
   if (!inPeriod(date, window)) return { excluded: 1 };
   if (!externalId) throw new Error(`${source}: missing identity`);
-  const digest = sha(JSON.stringify(payload));
+  const digest = source === 'mp_settlement_report' ? statementPayloadKey(payload) : sha(JSON.stringify(payload));
   const row = { id: randomUUID(), account_id: a.id, account_name: a.name, source, semantic, external_id: String(externalId), occurred_at: new Date(date).toISOString(), date_basis: dateBasis, currency: currency || null, currency_basis: currency ? 'API field' : 'not supplied by source; not inferred', amount: decimal(amount), signed_amount: decimal(sign), direction: sign === null ? 'unknown' : Number(sign) > 0 ? 'credit' : Number(sign) < 0 ? 'debit' : 'zero', amounts: amounts(payload), original_payload: payload, original_line: raw, payload_sha256: digest, response_id: evidence.id, collected_at: evidence.collected_at };
   let inserted = 0;
   if (write) {
     pendingRows.push(row);
   }
-  return { eligible: 1, inserted };
+  return { eligible: 1, inserted, entryId:row.id };
 }
 async function task(accountSummary, label, work) {
   const result = { source: label, eligible: 0, inserted: 0, excluded: 0, requests: 0 };
@@ -80,8 +80,16 @@ async function task(accountSummary, label, work) {
     while (pendingRows.length) {
       const batch = pendingRows.slice(0, 100);
       const options = { onConflict: 'account_id,source,semantic,external_id,payload_sha256', ignoreDuplicates: true };
-      const inserted = await checked(db.from('financial_statement_entries').upsert(batch, options).select('id'));
+      const inserted = await checked(db.from('financial_statement_entries').upsert(batch, options).select('id,external_id,payload_sha256'));
       result.inserted += inserted.length;
+      if(result.selectedEntryIds && inserted.length!==batch.length) {
+        const concurrent=await checked(db.from('financial_statement_entries').select('id,external_id,payload_sha256').eq('account_id',batch[0].account_id).eq('source',batch[0].source).in('external_id',batch.map(r=>r.external_id)));
+        for(const row of batch) {
+          const saved=concurrent.find(r=>r.external_id===row.external_id && r.payload_sha256===row.payload_sha256);
+          if(!saved)throw new Error('Snapshot membership could not be verified');
+          result.selectedEntryIds=result.selectedEntryIds.map(id=>id===row.id?saved.id:id);
+        }
+      }
       if (args.includes('--replay-check')) {
         const replay = await checked(db.from('financial_statement_entries').upsert(batch, options).select('id'));
         if (replay.length) throw new Error('Idempotency violation');
@@ -160,17 +168,31 @@ async function mercadoPago(a, out) {
     }
     const reports = list.filter(matches); result.reports = reports.map(r => ({ id: r.id, status: r.status, file_name: r.file_name }));
     if (!reports.length) throw new Error('No report for exact requested window; use --write --generate-reports');
-    const processed = reports.filter(r => r.status === 'processed' && r.file_name);
-    if (!processed.length) throw new Error('Report generation pending; rerun same --end after processing');
-    for (const report of processed.slice(-1)) {
+    const selected = latestProcessedReport(reports);
+    if (!selected) throw new Error('Report generation pending; rerun same --end after processing');
+    result.selectedReport = { id: selected.id, file_name: selected.file_name, date_created: selected.date_created, coverage: window };
+    result.selectedEntryIds=[];
+    result.limitations = ['MONEY_RELEASE_DATE is forecast; effective release is not supplied by this statement.'];
+    for (const report of [selected]) {
       if (!report.file_name.endsWith('.csv')) throw new Error('Only CSV normalization supported; configure a new CSV report through official console');
-      const { text, evidence } = await request(a, 'mp_settlement_report', '/v1/account/settlement_report/' + encodeURIComponent(report.file_name)); result.requests++;
-      const duplicates = new Map();
-      for (const { payload, raw } of reportRows(text, configuration.separator || ',')) {
-        const digest = sha(raw), occurrence = (duplicates.get(digest) || 0) + 1; duplicates.set(digest, occurrence);
+      const reportVersion = `${report.date_created || report.generation_date || ''}:${String(report.id).padStart(24,'0')}`;
+      const { text, evidence } = await request(a, 'mp_settlement_report', '/v1/account/settlement_report/' + encodeURIComponent(report.file_name), {}, 'GET', undefined, true, { report_version:reportVersion, coverage:window }); result.requests++;
+      // Read only, including legacy identities. Replaying a historical file is
+      // not an authorization to repair its old textual projection.
+      const previous=[];
+      for (let offset=0;;offset+=1000) {
+        const page=await checked(db.from('financial_statement_entries').select('id,external_id,original_line,original_payload,response_id').eq('account_id',a.id).eq('source','mp_settlement_report').order('id').range(offset,offset+999));
+        previous.push(...page); if(page.length<1000)break;
+      }
+      const rows=reportRows(text,configuration.separator || ',');
+      const plan=planStatementImport(rows,previous,window);result.excluded+=rows.length-plan.length;
+      for (const { payload, raw, externalId, reuseId } of plan) {
+        if(reuseId) {result.selectedEntryIds.push(reuseId);result.replayed=(result.replayed||0)+1;continue;}
         const value = payload.REAL_AMOUNT || payload.SETTLEMENT_NET_AMOUNT;
         const date = reportMovementDate(payload);
-        add(result, await save(a, 'mp_settlement_report', 'account_transaction', `${payload.SOURCE_ID || digest}:${payload.TRANSACTION_TYPE}:${digest}:${occurrence}`, date, 'SETTLEMENT_DATE (financial event; TRANSACTION_DATE is original purchase)', payload.SETTLEMENT_CURRENCY || payload.TRANSACTION_CURRENCY, value, decimal(value), payload, evidence, raw));
+        const saved=await save(a, 'mp_settlement_report', 'account_transaction', externalId, date, 'SETTLEMENT_DATE (statement event/approval; not effective release)', payload.SETTLEMENT_CURRENCY || payload.TRANSACTION_CURRENCY, value, decimal(value), payload, evidence, raw);
+        if(saved.entryId)result.selectedEntryIds.push(saved.entryId);
+        add(result,saved);
       }
     }
     if (configuration.include_withdraw !== true) throw new Error('Existing report configuration excludes withdrawals; imported returned rows only. Existing configuration was not changed.');

@@ -41,6 +41,7 @@ export default async function SalesPage({ searchParams }: { searchParams?: Promi
     .sort(compareSales);
   const rows = sortedSales.map((sale): SaleGridRow => {
     const raw = sale.raw_data || {};
+    const financial = raw.financial_capture as {state?:string;commercial_net?:number|null} | undefined;
     const account = resolveAccount(sale, raw, accounts || []);
     const saleItems = itemMap.get(sale.id) || [];
     const saleAudits = auditMap.get(sale.id) || [];
@@ -99,7 +100,9 @@ export default async function SalesPage({ searchParams }: { searchParams?: Promi
         { label: "Tarifas", value: negativeMoney(sale.valor_taxas) },
         { label: "Frete", value: money(sale.valor_frete) },
         { label: "Descontos", value: money(sale.valor_descontos) },
-        { label: "Valor líquido", value: money(sale.valor_liquido) },
+        { label: "Faturamento (produtos + frete)", value: money(Number(sale.valor_produtos) + Number(sale.valor_frete)) },
+        { label: sale.marketplace === "mercado_livre" ? financial?.state === 'complete' ? "Líquido comercial (cobranças MP)" : "Líquido comercial estimado" : "Valor líquido", value: money(sale.valor_liquido) },
+        ...(sale.marketplace === "mercado_livre" ? [{ label: "Informação financeira", value: financial?.state === 'complete' ? "Capturada no processamento. Movimentação financeira: consulte o extrato." : "Captura incompleta ou anterior à validação financeira. Valor não certificado como movimento do extrato." }] : []),
         { label: "Última atualização", value: dateTime(sale.updated_at) }
       ],
       customer,

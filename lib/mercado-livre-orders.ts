@@ -9,6 +9,8 @@ import {
   getMercadoLivreShipmentSla
 } from "./mercado-livre";
 import { supabaseAdmin } from "./supabase-admin";
+import { getValidMercadoLivreAccessToken } from "./mercado-livre";
+import { captureSaleFinance } from "./mercado-livre-sale-finance";
 
 export async function processMercadoLivreOrder(
   orderId: string,
@@ -46,6 +48,14 @@ export async function processMercadoLivreOrder(
   const currentShippingStatus = normalizeMercadoLivreShippingStatus(shipment);
   const fees = (order.order_items || []).reduce((total: number, item: Record<string, any>) => total + Number(item.sale_fee || 0), 0);
   const shippingCost = (order.payments || []).reduce((total: number, payment: Record<string, any>) => total + Number(payment.shipping_cost || 0), 0);
+  const finance=await captureSaleFinance(order,String(account.seller_id || account.account_id || ''),async id=>{
+    const token=await getValidMercadoLivreAccessToken(account);
+    const response=await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(id)}`,{
+      method:'GET',headers:{authorization:`Bearer ${token}`},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8_000)
+    });
+    if(!response.ok) throw new Error('payment_unavailable');
+    return response.json();
+  });
   return registerMarketplaceSale({
     activityId,
     marketplace: "mercado_livre",
@@ -70,6 +80,8 @@ export async function processMercadoLivreOrder(
     marketplaceAccountId: account.id,
     marketplaceNickname: account.nickname || account.name,
     soldAt: String(order.date_created || ""),
+    paidAt: finance.approved_at,
+    finance,
     rawPayload: { notification, order, shipment, shipmentHistory, shipmentSla, ...supplementalPayload }
   });
 }

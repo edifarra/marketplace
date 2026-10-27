@@ -73,7 +73,9 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
   const reverse = d.reverse_logistics || d.return_logistics || {};
   const relatedReturn = Array.isArray(d.related_entities) ? d.related_entities.find((entity: any) => entity === "return" || entity?.type === "return") : null;
   const snapshot: Row = {
-    order_id: text(shopee ? d.order_sn || p.data?.order_sn : d.resource === "order" ? d.resource_id : null),
+    order_id: text(shopee ? d.order_sn || p.data?.order_sn : d.resource === "order" ? d.resource_id : extra.relation?.state==='verified' && extra.relation.order_ids?.length===1 ? extra.relation.order_ids[0] : null),
+    ...(!shopee && extra.relation ? {order_relation:extra.relation} : {}),
+    ...(!shopee && extra.return_cost ? {return_cost:extra.return_cost} : {}),
     status: text(shopee ? d.return_status || d.status : d.status), stage: text(d.stage),
     responsible: actor(d.responsible), needs_action: required ? true : null,
     resolution: d.resolution ? { reason: text(d.resolution.reason), closed_by: text(d.resolution.closed_by),
@@ -94,7 +96,8 @@ export function normalizeCase(activity: Row, accountId: string, detail?: Row): C
       carrier: text(reverse.carrier || reverse.carrier_name || d.reverse_carrier),
       contact_name: text(reverse.contact_name || reverse.sender?.name || reverse.receiver?.name || d.reverse_logistics_contact_name || d.return_contact_name),
       point: text(reverse.point || reverse.agency), address: null },
-    enrichment: { state: detail ? "partial" : "incomplete", obtained_at: detail ? observed : null, source, error: null }
+    enrichment: { state: detail ? (!shopee && extra.state ? extra.state : "partial") : "incomplete", obtained_at: detail ? observed : null, source, error: null,
+      ...(!shopee && extra.resources ? {resources:extra.resources} : {}) }
   };
   snapshot.capabilities_known = shopee ? Array.isArray(d.follow_up_action_list) : Array.isArray(seller?.available_actions);
   if (shopee) {

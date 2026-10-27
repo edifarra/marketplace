@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { supabaseAdmin } from "./supabase-admin";
 import { Marketplace } from "./types";
 import { salePostedAt } from "./sales-fulfillment";
+import { saleFinancialPatch } from "./mercado-livre-sale-finance";
 import { activityDescription } from "./marketplace-activity-labels";
 import { notifyNewSale } from "./telegram-notifications";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
@@ -29,6 +30,8 @@ export type MarketplaceSaleInput = {
   marketplaceAccountId?: string;
   marketplaceNickname?: string;
   soldAt?: string;
+  paidAt?: string | null;
+  finance?: Record<string, any>;
   rawPayload: unknown;
 };
 
@@ -92,6 +95,7 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       .select("id,raw_data")
       .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
     const previousRawData = (previousSale.data?.raw_data as Record<string, unknown> | null) || {};
+    const {raw:financialCapture,...financialColumns}=saleFinancialPatch(input,previousRawData);
     const detectedPostedAt = salePostedAt({
       marketplace: input.marketplace,
       status_original: status,
@@ -109,9 +113,11 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       valor_descontos: number(input.discounts),
       valor_liquido: number(input.value) + number(input.shipping) - number(input.fees) - number(input.discounts),
       data_venda: input.soldAt || undefined,
+      ...financialColumns,
       shipment_id: input.shipmentId || null,
       raw_data: {
         ...previousRawData,
+        ...(financialCapture ? {financial_capture:financialCapture} : {}),
         payload: input.rawPayload,
         marketplace_account_id: input.marketplaceAccountId || null,
         marketplace_nickname: input.marketplaceNickname || null,

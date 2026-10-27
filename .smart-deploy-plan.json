@@ -1,27 +1,10 @@
 {
   "schemaVersion": 1,
-  "base": "8ed5afc39af98216f10cdb1197020b17829fa05e",
+  "base": "ff07e7ba06a336687b0d5ab12038df802a3efc57",
   "files": [
     ".smart-deploy-plan.json",
-    "app/vendas/page.tsx",
-    "docs/financial-october-2026-import.md",
-    "docs/financial-source-integrity-stage-one.md",
-    "lib/inventory.ts",
-    "lib/marketplace-case-domain.ts",
-    "lib/marketplace-case-enrichment.ts",
-    "lib/mercado-livre-orders.ts",
-    "lib/mercado-livre-sale-finance.ts",
-    "scripts/audit-financial-source-integrity.mjs",
-    "scripts/financial-import-core.mjs",
-    "scripts/import-financial-october-2026.mjs",
-    "scripts/verify-financial-october-2026.mjs",
-    "scripts/verify-financial-rls.sql",
-    "supabase/migrations/20261025203356_financial_statement_import.sql",
-    "tests/financial-import.test.mjs",
-    "tests/financial-source-integrity.test.mjs",
-    "tests/inventory-sale-financial-persistence.test.ts",
-    "tests/marketplace-case-financial-capture.test.ts",
-    "tests/mercado-livre-sale-finance.test.ts"
+    "package-lock.json",
+    "package.json"
   ],
-  "dependenciesChanged": false
+  "dependenciesChanged": true
 }

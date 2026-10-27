@@ -18,7 +18,17 @@ export async function loadMercadoLivreClaimBundle(id: string, account: Marketpla
   if (String(detail.id) !== id) throw new Error("Claim retornado não corresponde ao evento.");
   const resources: Record<string, any> = {};
   const optional = async (key:string,path:string,fallback:any={}) => {
-    try { const result=await read(path); resources[key]={state:'obtained',endpoint:path}; return result; }
+    try {
+      const result=await read(path);
+      const list=['messages','actions','statuses','resolutions','shipment_orders'].includes(key);
+      if((list && !Array.isArray(result)) || (!list && (!result || typeof result!=='object' || Array.isArray(result)))) {
+        resources[key]={state:'unavailable',endpoint:path,code:'invalid_response_shape'};return fallback;
+      }
+      if(key==='reputation' && !['affected','not_affected','not_applies'].includes(result.affects_reputation)) {
+        resources[key]={state:'unavailable',endpoint:path,code:'invalid_response_shape'};return fallback;
+      }
+      resources[key]={state:'obtained',endpoint:path};return result;
+    }
     catch(e) { const status=Number((e as any)?.status); resources[key]={state:'unavailable',endpoint:path,code:'resource_unavailable',...(Number.isInteger(status) && status>=400 && status<=599 ? {http_status:status} : {})};return fallback; }
   };
   const [reason,reputation,messages,actions,statuses,resolutions] = await Promise.all([

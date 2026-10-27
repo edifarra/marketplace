@@ -27,7 +27,7 @@ test('auxiliary failure preserves root/other resources, with sanitized endpoint 
 test('costs are context only, persisted in the same observation, never new debits or buyer refunds',async()=>{
  for(const amount of [12.99,19.99,10.99]){
   const calls:string[]=[];
-  const get=async(path:string):Promise<any>=>{calls.push(path);return path.endsWith('/claims/claim')?{...root,resource:'order',resource_id:'order'}:path.endsWith('/return-cost')?{amount,currency_id:'BRL'}:[];};
+  const get=async(path:string):Promise<any>=>{calls.push(path);return path.endsWith('/claims/claim')?{...root,resource:'order',resource_id:'order'}:path.endsWith('/return-cost')?{amount,currency_id:'BRL'}:path.endsWith('/affects-reputation')?{affects_reputation:'not_applies'}:[];};
   const bundle=await loadMercadoLivreClaimBundle('claim',account,get,undefined,{financial:true});
   const o=normalize(bundle);assert.equal(o.snapshot.return_cost.amount,amount);assert.equal(o.snapshot.refund_amount,null);assert.equal('signed_amount' in o.snapshot,false);
   assert.equal(o.snapshot.enrichment.state,'complete');assert.equal(calls.filter(p=>p.endsWith('/return-cost')).length,1);

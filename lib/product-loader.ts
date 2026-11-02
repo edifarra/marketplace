@@ -1,4 +1,6 @@
-import { uploadProductImageToCloudinary } from "./cloudinary";
+import { processAndStoreDrivePhoto, drivePhotoRows, MAX_DRIVE_PHOTO_BYTES } from "./drive-photo-processing";
+import { storeVpsImage, vpsImageConfig } from "./vps-image-storage";
+import { persistDriveProduct } from "./drive-product-persistence";
 import { downloadDriveFile, listDriveImagesFolderFiles, moveDriveFilesToImagesSubfolder, type DriveFile } from "./google-drive";
 import { applyTemplate, groupPhotos, isValidPhotoName, nextSku, parsePhotoName } from "./pipeline";
 import { supabaseAdmin } from "./supabase-admin";
@@ -88,6 +90,7 @@ export type ProductLoadResult = {
 };
 
 export async function loadProductsFromDriveImages(onProgress?: (progress: ProductLoadProgress) => Promise<void>): Promise<ProductLoadResult> {
+  vpsImageConfig(); // Fail before reserving a SKU or moving any Drive file.
   const supabase = supabaseAdmin();
   const driveItems = await listDriveImagesFolderFiles();
   const folderItems = driveItems.filter(isDriveFolder);
@@ -279,7 +282,6 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
       const imageUploads = [];
       for (const [index, photoName] of group.photos.slice(0, 6).entries()) {
         const driveFile = filesByName.get(photoName);
-        console.log("Imagens: ", driveFile)
         const photoParse = parsePhotoName(photoName);
         if (!driveFile) {
           failureContext = {
@@ -301,62 +303,29 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
             mimeType: driveFile.mimeType
           }
         };
-        const buffer = await downloadDriveFile(driveFile.id);
+        const buffer = await downloadDriveFile(driveFile.id, { maxBytes: MAX_DRIVE_PHOTO_BYTES, timeoutMs: 30_000 });
         await reportProgress(onProgress, files.length, processedFiles, photoName);
-        console.log("Imagens by ID: ", buffer)
-        result.itemLogs.push({
-          fileName: photoName,
-          sourceKey: group.sourceKey,
-          stage: "cloudinary_upload_inicio",
-          status: "avaliado",
-          parse: photoParse,
-          variables: {
-            driveFileId: driveFile.id,
-            position: index + 1,
-            bytes: buffer.length,
-            transformation: index === 0 ? "fundo branco" : "redimensionada"
-          }
-        });
-        console.log("Passado o Cloudinary")
         failureContext = {
-          stage: "cloudinary_upload",
-          fileName: photoName,
-          parse: photoParse,
-          variables: {
-            driveFileId: driveFile.id,
-            position: index + 1,
-            bytes: buffer.length,
-            sku: skuInfo.sku,
-            transformation: index === 0 ? "fundo branco" : "redimensionada"
-          }
+          stage: "vps_process_store", fileName: photoName, parse: photoParse,
+          variables: { driveFileId: driveFile.id, position: index + 1, bytes: buffer.length }
         };
-        
-        const upload = await uploadProductImageToCloudinary({
-          buffer,
-          fileName: photoName,
-          sku: skuInfo.sku,
-          typeCode: photoParse.typeCode,
-          brandCode: photoParse.brandCode,
-          model: photoParse.model,
-          boardCode: photoParse.boardCode,
-          position: index + 1,
-          source: "owned"
-        });
-        console.log("Upload: ", upload)
+        const upload = await processAndStoreDrivePhoto({
+          buffer, sourceKey: group.sourceKey, position: index + 1
+        }, storeVpsImage);
         processedFiles++;
         await reportProgress(onProgress, files.length, processedFiles, photoName);
         result.itemLogs.push({
           fileName: photoName,
           sourceKey: group.sourceKey,
-          stage: "cloudinary_upload_fim",
+          stage: "vps_process_store_done",
           status: "avaliado",
           parse: photoParse,
           variables: {
             driveFileId: driveFile.id,
             position: index + 1,
-            cloudinaryFileName: upload.cloudinaryFileName,
-            cloudinaryUrl: upload.cloudinaryUrl,
-            cloudinaryPublicId: upload.publicId,
+            url: upload.url,
+            width: upload.width,
+            height: upload.height,
             localBytes: upload.bytes
           }
         });
@@ -368,7 +337,6 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         product_condition: "used", weight_gross: type.dimensions.weightGross, width: type.dimensions.width,
         height: type.dimensions.height, length: type.dimensions.length
       });
-      console.log("Produto insert")
       failureContext = {
         stage: "produto_insert",
         fileName: group.photos.join(", "),
@@ -384,9 +352,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           price: calculatedPrice
         }
       };
-      const product = await supabase
-        .from("products")
-        .insert({
+      const productPayload = {
           sku: skuInfo.sku,
           source_key: group.sourceKey,
           type_code: main.typeCode,
@@ -407,40 +373,28 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
           ,length: type.dimensions.length
           ,weight_net: type.dimensions.weightNet
           ,weight_gross: type.dimensions.weightGross
-        })
-        .select("id")
-        .single()
-        .throwOnError();
-
-      failureContext = {
-        stage: "product_images_insert",
-        fileName: group.photos.join(", "),
-        parse: main,
-        variables: {
-          productId: product.data.id,
-          imageCount: imageUploads.length,
-          photos: group.photos
-        }
       };
-      await insertProductImages(product.data.id, imageUploads);
-
       failureContext = {
-        stage: "listings_insert",
-        fileName: group.photos.join(", "),
-        parse: main,
-        variables: {
-          productId: product.data.id,
-          sku: skuInfo.sku,
-          stock: initialStock,
-          price: calculatedPrice
-        }
+        stage: "product_atomic_insert", fileName: group.photos.join(", "), parse: main,
+        variables: { sourceKey: group.sourceKey, sku: skuInfo.sku, imageCount: imageUploads.length }
       };
-      await createDraftListings(product.data.id, skuInfo.sku, initialStock, calculatedPrice);
+      const product = await persistDriveProduct({
+        product: productPayload, images: drivePhotoRows(imageUploads), accounts: await getMarketplaceAccounts()
+      }, async args => {
+        const response = await supabase.rpc("create_drive_product_atomically", args).throwOnError();
+        return response.data;
+      });
+      // A racing request won the source_key. Its complete product is authoritative.
+      if (!product.created) {
+        result.duplicates++;
+        result.duplicateProducts.push(product.sku);
+        continue;
+      }
       failureContext = {
         stage: "drive_move_enviadas",
         fileName: group.photos.join(", "),
         parse: main,
-        variables: { productId: product.data.id, photos: group.photos, destinationFolder: "Enviadas" }
+        variables: { productId: product.id, photos: group.photos, destinationFolder: "Enviadas" }
       };
       const movement = await moveDriveFilesToImagesSubfolder(imageUploads.map((image) => image.driveFile), "Enviadas");
       result.created++;
@@ -452,7 +406,7 @@ export async function loadProductsFromDriveImages(onProgress?: (progress: Produc
         status: "criado",
         parse: main,
         variables: {
-          productId: product.data.id,
+          productId: product.id,
           sku: skuInfo.sku,
           title,
           price: calculatedPrice,
@@ -634,109 +588,6 @@ async function reserveNextSku(type: TypeConfig, specialCode?: string) {
   }
 
   throw new Error("Nao foi possivel reservar SKU.");
-}
-
-async function createDraftListings(productId: string, sku: string, stock: number, price: number) {
-  const supabase = supabaseAdmin();
-  const accounts = await getMarketplaceAccounts();
-  const listingPayload = accounts.map((account) => ({
-    product_id: productId,
-    marketplace: account.marketplace,
-    marketplace_account_id: account.id,
-    marketplace_name: account.name,
-    external_sku: sku,
-    status: "draft",
-    stock,
-    price
-  }));
-
-  const result = await supabase.from("listings").insert(listingPayload);
-  if (!result.error) {
-    return;
-  }
-
-  await supabase.from("listings").insert([
-    {
-      product_id: productId,
-      marketplace: "mercado_livre",
-      external_sku: sku,
-      status: "draft",
-      stock,
-      price
-    },
-    {
-      product_id: productId,
-      marketplace: "shopee",
-      external_sku: sku,
-      status: "draft",
-      stock,
-      price
-    }
-  ]).throwOnError();
-}
-
-async function insertProductImages(
-  productId: string,
-  imageUploads: Array<{
-    driveFile: DriveFile;
-    upload: {
-      publicId: string;
-      assetId: string | null;
-      cloudName: string;
-      cloudinaryFileName: string;
-      cloudinaryUrl: string;
-      localPath?: string | null;
-      localUrl?: string | null;
-      bytes: number;
-      width: number;
-      height: number;
-    };
-    position: number;
-  }>
-) {
-  const supabase = supabaseAdmin();
-  const fullPayload = imageUploads.map((image) => ({
-    product_id: productId,
-    drive_file_id: image.driveFile.id,
-    original_name: image.driveFile.name,
-    url: image.upload.cloudinaryUrl,
-    cloudinary_url: image.upload.cloudinaryUrl,
-    cloudinary_public_id: image.upload.publicId,
-    cloudinary_asset_id: image.upload.assetId,
-    cloudinary_cloud_name: image.upload.cloudName,
-    local_path: image.upload.localPath,
-    local_url: image.upload.localUrl,
-    bytes: image.upload.bytes,
-    width_px: image.upload.width,
-    height_px: image.upload.height,
-    position: image.position,
-    status: "uploaded"
-  }));
-
-  const fullInsert = await supabase.from("product_images").insert(fullPayload);
-  if (!fullInsert.error) {
-    return;
-  }
-
-  if (!isMissingColumnError(fullInsert.error.message)) {
-    throw fullInsert.error;
-  }
-
-  await supabase
-    .from("product_images")
-    .insert(imageUploads.map((image) => ({
-      product_id: productId,
-      drive_file_id: image.driveFile.id,
-      original_name: image.driveFile.name,
-      url: image.upload.cloudinaryUrl,
-      position: image.position,
-      status: "uploaded"
-    })))
-    .throwOnError();
-}
-
-function isMissingColumnError(message: string) {
-  return /column .* does not exist|schema cache|Could not find/i.test(message);
 }
 
 async function getMarketplaceAccounts(): Promise<MarketplaceAccount[]> {

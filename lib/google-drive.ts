@@ -1,4 +1,5 @@
 import { getGoogleDriveFolders, getGoogleDriveSettings } from "./google-drive-config";
+import { readBoundedImage } from "./bounded-image-download";
 import { getGoogleDriveAccessToken, getGoogleDriveAccountEmail, hasGoogleDriveServerCredentials } from "./google-drive-auth";
 
 export type DriveFile = {
@@ -434,10 +435,11 @@ export async function listDriveImagesFolderFiles() {
   );
 }
 
-export async function downloadDriveFile(fileId: string) {
+export async function downloadDriveFile(fileId: string, limits?: { maxBytes: number; timeoutMs: number }) {
   const accessToken = await getGoogleDriveAccessToken();
   const response = await fetch(`${DRIVE_API}/files/${fileId}?alt=media&supportsAllDrives=true`, {
-    headers: { authorization: `Bearer ${accessToken}` }
+    headers: { authorization: `Bearer ${accessToken}` },
+    ...(limits ? { signal: AbortSignal.timeout(limits.timeoutMs) } : {})
   });
 
   if (!response.ok) {
@@ -445,7 +447,7 @@ export async function downloadDriveFile(fileId: string) {
     throw new Error(formatGoogleDriveError(json));
   }
 
-  return Buffer.from(await response.arrayBuffer());
+  return limits ? readBoundedImage(response, limits.maxBytes) : Buffer.from(await response.arrayBuffer());
 }
 
 export async function moveDriveFilesToImagesSubfolder(files: DriveFile[], destinationName: "Enviadas" | "Duplicados") {

@@ -29,16 +29,17 @@ const TECHNICAL_API_PATHS = [
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname === "/api/pipeline/run") {
+  if (pathname === "/api/pipeline/run" || pathname === "/api/pipeline/products") {
+    const headers = new Headers(request.headers);
+    headers.delete("x-dashboard-authenticated");
     const payload = await verifySessionToken(request.cookies.get(AUTH_COOKIE_NAME)?.value);
     const user = payload ? await loadActiveUser(payload) : null;
     if (user) {
-      const headers = new Headers(request.headers);
       headers.set("x-dashboard-authenticated", "1");
       return NextResponse.next({ request: { headers } });
     }
     // Sem sessao, a propria rota exige CRON_SECRET e continua apta ao Vercel Cron/VPS.
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers } });
   }
   if (isUnder(pathname, PUBLIC_PATHS) || isUnder(pathname, TECHNICAL_API_PATHS)) {
     return NextResponse.next();

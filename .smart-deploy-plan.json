@@ -1,10 +1,27 @@
 {
   "schemaVersion": 1,
-  "base": "ff07e7ba06a336687b0d5ab12038df802a3efc57",
+  "base": "ba58a6b5c895626bcb731453ccb6b0b5b23c217b",
   "files": [
     ".smart-deploy-plan.json",
+    "app/api/pipeline/products/route.ts",
+    "docs/drive-product-vps-images.md",
+    "lib/bounded-image-download.ts",
+    "lib/drive-photo-processing.ts",
+    "lib/drive-product-persistence.ts",
+    "lib/google-drive.ts",
+    "lib/product-loader.ts",
+    "lib/vps-image-storage.ts",
+    "next.config.mjs",
     "package-lock.json",
-    "package.json"
+    "package.json",
+    "proxy.ts",
+    "scripts/smart-test-runner.mjs",
+    "supabase/migrations/20261102232000_atomic_drive_product_creation.sql",
+    "tests/drive-photo-processing.test.ts",
+    "tests/drive-product-auth.test.ts",
+    "tests/drive-product-creation-sql.test.mjs",
+    "tests/product-loader-drive.test.ts",
+    "tests/vps-image-storage.test.ts"
   ],
   "dependenciesChanged": true
 }

@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ["playwright-core"],
+  serverExternalPackages: ["playwright-core", "ssh2"],
   experimental: {
 
     serverActions: {

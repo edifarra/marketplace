@@ -3,6 +3,7 @@ import { loadProductsFromDriveImages } from "@/lib/product-loader";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   return executeProductLoad(request);
@@ -16,9 +17,8 @@ async function executeProductLoad(request: NextRequest) {
   const secret = request.headers.get("x-cron-secret");
   const authorization = request.headers.get("authorization");
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
-  const forced = request.nextUrl.searchParams.get("force") === "1";
-
-  if (!forced && process.env.CRON_SECRET && secret !== process.env.CRON_SECRET && bearer !== process.env.CRON_SECRET) {
+  const dashboardAuthenticated = request.headers.get("x-dashboard-authenticated") === "1";
+  if (!dashboardAuthenticated && (!process.env.CRON_SECRET || (secret !== process.env.CRON_SECRET && bearer !== process.env.CRON_SECRET))) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 

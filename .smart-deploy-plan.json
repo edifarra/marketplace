@@ -11,7 +11,8 @@
     "lib/marketplace-temporary-images.ts",
     "lib/prepare-marketplace-images.ts",
     "lib/product-photo-edit-policy.ts",
-    "tests/product-image-replacement.test.ts"
+    "tests/product-image-replacement.test.ts",
+    "tests/product-loader-drive.test.ts"
   ],
   "dependenciesChanged": false
 }

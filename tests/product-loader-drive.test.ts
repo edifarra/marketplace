@@ -110,10 +110,13 @@ test("Drive move failure after commit does not create another product or delete 
   assert.equal(h.stores.length, 6);
 });
 
-test("creation has no Cloudinary operation or metadata-dropping fallback; editing and recovery retain their own flow", () => {
+test("creation and editing store VPS originals; cloning and background recovery retain their own flow", () => {
+  const edit = readFileSync("app/api/products/images/prepare/route.ts", "utf8");
+  assert.match(edit, /processAndStoreDrivePhoto/);
+  assert.doesNotMatch(edit, /uploadProductImageToCloudinary/);
   const loader = readFileSync("lib/product-loader.ts", "utf8");
   assert.doesNotMatch(loader, /cloudinary|isMissingColumnError/i);
-  for (const file of ["lib/product-cloner.ts", "lib/marketplace-image-recovery.ts", "app/api/products/images/prepare/route.ts"]) {
+  for (const file of ["lib/product-cloner.ts", "lib/marketplace-image-recovery.ts"]) {
     assert.match(readFileSync(file, "utf8"), /uploadProductImageToCloudinary/);
   }
 });

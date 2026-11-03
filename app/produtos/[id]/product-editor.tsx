@@ -8,10 +8,10 @@ import { PriceInput } from "../price-input";
 import { mergeRecoveredImages } from "@/lib/product-image-source";
 
 type Option = { code: string; label: string; marketplaceCategory?: string; boardCodeRequired?: boolean };
-type ImageItem = { id: string; name: string; url: string; position: number; bytes: number; width: number; height: number };
+type ImageItem = { id: string; name: string; url: string; position: number; bytes: number; width: number; height: number; protectedLegacy?: boolean };
 type TemporaryImageSet = { images: Array<{ key: string; name: string; url: string; position: number; bytes: number; width: number; height: number }>; marketplace: Marketplace; accountId: string; listingId: string; totalRemoteImages: number } | null;
 type EditorImage = (ImageItem & { kind: "existing" })
-  | { kind: "new"; key: string; name: string; url: string; bytes: number; width: number; height: number; file: File; uploadStatus: "uploading" | "ready" | "error"; uploadError?: string; publicId?: string; assetId?: string | null; cloudName?: string; uploadedPosition?: number }
+  | { kind: "new"; key: string; name: string; url: string; bytes: number; width: number; height: number; file: File; uploadStatus: "uploading" | "ready" | "error"; uploadError?: string; receipt?: string }
   | { kind: "remote"; key: string; name: string; url: string; bytes: number; width: number; height: number };
 type CategoryMapping = { internal_category:string; mercado_livre_code?:string; mercado_livre_description?:string; shopee_code?:string; shopee_description?:string; attribute_definitions?:Record<string,any> };
 type Marketplace = "mercado_livre" | "shopee";
@@ -31,7 +31,6 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const newImageUrlsRef = useRef(new Set<string>());
-  const preparedPublicIdsRef = useRef(new Set<string>());
   const activeNewImageKeysRef = useRef(new Set<string>());
   const pendingUploadsRef = useRef(new Set<Promise<void>>());
   const abandoningRef = useRef(false);
@@ -77,6 +76,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     cover: ordered.length > 0
   };
   const hasRequiredErrors = Object.values(validation).some(valid => !valid);
+  const imagesLocked = images.some(image => image.protectedLegacy);
   const imageErrors = ordered.map(image => ({ image, errors: image.kind === "new" ? validateNewImageSource(image) : [] })).filter(item => item.errors.length > 0);
   const imagesPreparing = ordered.some(image => image.kind === "new" && image.uploadStatus === "uploading");
   const imageUploadFailed = ordered.some(image => image.kind === "new" && image.uploadStatus === "error");
@@ -110,18 +110,18 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     }));
   }
   const move = (index: number, delta: number) => setOrdered((current) => {
+    if (imagesLocked) return current;
     const target = index + delta;
     if (target < 0 || target >= current.length) return current;
     const next = [...current];
     [next[index], next[target]] = [next[target], next[index]];
-    setDirty(true); return reconcilePreparedPositions(next);
+    setDirty(true); return next;
   });
   const imageKey = (image: EditorImage) => image.kind === "existing" ? `existing:${image.id}` : `${image.kind}:${image.key}`;
-  const remove = (key: string) => { setDirty(true); setOrdered((current) => { const removed = current.find(image => imageKey(image) === key); if (removed?.kind === "new") {
+  const remove = (key: string) => { if (imagesLocked) return; setDirty(true); setOrdered((current) => { const removed = current.find(image => imageKey(image) === key); if (removed?.kind === "new") {
     activeNewImageKeysRef.current.delete(removed.key);
-    if (removed.publicId) { preparedPublicIdsRef.current.delete(removed.publicId); void deletePreparedImage(removed.publicId); }
     URL.revokeObjectURL(removed.url); newImageUrlsRef.current.delete(removed.url);
-  } return reconcilePreparedPositions(current.filter(image => imageKey(image) !== key)); }); };
+  } return current.filter(image => imageKey(image) !== key); }); };
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
@@ -138,27 +138,20 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
 
   async function prepareImage(key: string, file: File, position: number) {
     const body = new FormData();
-    body.set("file", file); body.set("sku", String(product.sku || "")); body.set("typeCode", typeCode); body.set("brandCode", brandCode);
+    body.set("productId", String(product.id)); body.set("file", file); body.set("sku", String(product.sku || "")); body.set("typeCode", typeCode); body.set("brandCode", brandCode);
     body.set("model", model); body.set("boardCode", boardCode); body.set("position", String(position));
     try {
       const response = await fetch("/api/products/images/prepare", { method: "POST", body });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Não foi possível tratar a imagem.");
       if (abandoningRef.current || !activeNewImageKeysRef.current.has(key)) {
-        await deletePreparedImage(result.image.publicId);
         return;
       }
       setOrdered(current => current.map(image => {
         if (image.kind !== "new" || image.key !== key) return image;
-        if (image.publicId && image.publicId !== result.image.publicId) {
-          preparedPublicIdsRef.current.delete(image.publicId);
-          void deletePreparedImage(image.publicId);
-        }
         return { ...image, url: result.image.url, bytes: result.image.bytes, width: result.image.width, height: result.image.height,
-          publicId: result.image.publicId, assetId: result.image.assetId, cloudName: result.image.cloudName,
-          uploadedPosition: result.image.position, uploadStatus: "ready" };
+          receipt: result.image.receipt, uploadStatus: "ready" };
       }));
-      preparedPublicIdsRef.current.add(result.image.publicId);
     } catch (error) {
       setOrdered(current => current.map(image => image.kind === "new" && image.key === key ? { ...image, uploadStatus: "error",
         uploadError: error instanceof Error ? error.message : String(error) } : image));
@@ -170,20 +163,9 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     pendingUploadsRef.current.add(task);
   }
 
-  function reconcilePreparedPositions(next: EditorImage[]): EditorImage[] {
-    return next.map((image, index) => {
-      if (image.kind !== "new" || image.uploadStatus === "uploading" || image.uploadedPosition === index + 1) return image;
-      queuePrepareImage(image.key, image.file, index + 1);
-      return { ...image, uploadStatus: "uploading" as const, uploadError: undefined };
-    });
-  }
-
   async function discardPreparedAndNavigate(href: string) {
     abandoningRef.current = true;
     await Promise.allSettled([...pendingUploadsRef.current]);
-    const ids = [...preparedPublicIdsRef.current];
-    preparedPublicIdsRef.current.clear();
-    await Promise.allSettled(ids.map(deletePreparedImage));
     setDirty(false); setPendingHref(""); window.location.href = href;
   }
 
@@ -211,7 +193,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     <input type="hidden" name="returnTo" value={returnTo} />
     <input type="hidden" name="intent" value="" />
     <input type="hidden" name="imageOrder" value={ordered.map(imageKey).join(",")} />
-    <input type="hidden" name="preparedImages" value={JSON.stringify(ordered.filter((image): image is Extract<EditorImage, { kind: "new" }> => image.kind === "new" && image.uploadStatus === "ready").map(image => ({ key: image.key, name: image.name, url: image.url, publicId: image.publicId, assetId: image.assetId, cloudName: image.cloudName, bytes: image.bytes, width: image.width, height: image.height, position: image.uploadedPosition })))} />
+    <input type="hidden" name="preparedImages" value={JSON.stringify(ordered.filter((image): image is Extract<EditorImage, { kind: "new" }> => image.kind === "new" && image.uploadStatus === "ready").map(image => ({ key: image.key, name: image.name, url: image.url, receipt: image.receipt })))} />
     {temporaryImages && <>
       <input type="hidden" name="recoveryMarketplace" value={temporaryImages.marketplace} />
       <input type="hidden" name="recoveryAccountId" value={temporaryImages.accountId} />
@@ -269,10 +251,10 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     </section>
     {picker && <div className="modal-backdrop"><section className="card category-modal"><div className="topbar"><div><h2>Categoria — {marketplaceLabels[picker]}</h2><div className="muted">{trail.map(item => item.name).join(" > ") || "Raiz"}</div></div><button className="secondary" type="button" onClick={() => setPicker(null)}>Fechar</button></div><input placeholder="Pesquisar por código ou descrição" value={categoryQuery} onChange={event => setCategoryQuery(event.target.value)}/>{categoryError && <div className="form-error">{categoryError}</div>}{categoryLoading ? <p>Carregando categorias atuais...</p> : <div className="category-tree">{trail.length > 0 && <button className="secondary compact" type="button" onClick={() => { const parent = trail.slice(0, -1); loadCategories(picker, parent.at(-1)?.id, parent); }}>Voltar</button>}{visibleNodes.map(node => <div className="category-node" key={node.id}><span><strong>{node.name}</strong><small>{node.id}</small></span><div>{node.hasChildren && <button type="button" className="secondary compact" onClick={() => loadCategories(picker, node.id, [...trail, { id: node.id, name: node.name }])}>Abrir</button>}<button type="button" className="primary compact" onClick={() => chooseMarketplaceCategory(node)}>Selecionar</button></div></div>)}{!visibleNodes.length && <p className="muted">Nenhuma categoria encontrada neste nível.</p>}</div>}</section></div>}
 
-    <section className={`section card${!validation.cover ? " required-field-error" : ""}`}><div className="editor-images-heading"><div><h2>Imagens</h2><span>A primeira imagem sempre será enviada como Foto 01. Ao salvar, as fotos são tratadas no Cloudinary para o padrão dos marketplaces.</span>{validationAttempted && !validation.cover && <small className="required-field-message">Preencha o campo obrigatório: adicione pelo menos a Foto 1.</small>}{validationAttempted && imageErrors.length > 0 && <small className="required-field-message">Há um arquivo que não pode ser enviado. Use JPG, PNG ou WebP com até 8 MB.</small>}</div><button className="secondary" type="button" onClick={() => inputRef.current?.click()}>Adicionar imagens</button></div>
+    <section className={`section card${!validation.cover ? " required-field-error" : ""}`}><div className="editor-images-heading"><div><h2>Imagens</h2><span>A primeira imagem sempre será enviada como Foto 01. As novas fotos ficam armazenadas na VPS. A capa recebe fundo branco no envio aos marketplaces.</span>{validationAttempted && !validation.cover && <small className="required-field-message">Preencha o campo obrigatório: adicione pelo menos a Foto 1.</small>}{validationAttempted && imageErrors.length > 0 && <small className="required-field-message">Há um arquivo que não pode ser enviado. Use JPG, PNG ou WebP com até 8 MB.</small>}</div><button className="secondary" type="button" disabled={imagesLocked || ordered.length >= 6} onClick={() => inputRef.current?.click()}>Adicionar imagens</button></div>
     <input ref={inputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={async (event) => {
       const input = event.currentTarget;
-      const files = Array.from(input.files || []);
+      const files = Array.from(input.files || []).slice(0, Math.max(0, 6 - ordered.length));
       input.value = "";
       const selected = await Promise.all(files.map(async file => {
         const url = URL.createObjectURL(file);
@@ -286,6 +268,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
       selected.forEach((image, index) => queuePrepareImage(image.key, image.file, startPosition + index + 1));
       if (selected.length) setDirty(true);
     }} />
+    {imagesLocked && <p className="muted">As fotografias deste produto estão preservadas por conter vínculos da conta antiga desativada. Os demais dados podem ser editados.</p>}
     {temporaryImages && <div className="form-success">As fotos indisponíveis foram recuperadas temporariamente do {temporaryImages.marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee"}. As originais disponíveis foram mantidas. Ao salvar, as substituições exibidas serão gravadas e enviadas aos anúncios vinculados conforme o fluxo de atualização.</div>}
     {ordered.some(image => image.kind === "new") && <div className="form-success">As novas fotos podem ser ordenadas ou excluídas antes de salvar. Somente a sequência exibida abaixo será gravada.</div>}
     <div className="editable-image-grid">
@@ -293,10 +276,10 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
         <button type="button" className="image-preview-button" onClick={() => setPreview(image.url)}><img src={image.url} alt={image.name} /></button>
         {index === 0 && <strong className="cover-badge">Foto da Capa</strong>}
         {image.kind === "new" && <strong className="cover-badge">{image.uploadStatus === "uploading" ? "Processando…" : image.uploadStatus === "error" ? "Falha no processamento" : "Pronta para salvar"}</strong>}
-        <button type="button" className="image-trash" aria-label={`Excluir ${image.name}`} onClick={() => remove(key)}>🗑</button>
+        <button type="button" className="image-trash" disabled={imagesLocked} aria-label={`Excluir ${image.name}`} onClick={() => remove(key)}>🗑</button>
         {image.kind === "new" && image.uploadError && <div className="product-image-errors"><span>{image.uploadError}</span><button type="button" className="secondary compact" onClick={() => { setOrdered(current => current.map(item => item.kind === "new" && item.key === image.key ? { ...item, uploadStatus: "uploading", uploadError: undefined } : item)); queuePrepareImage(image.key, image.file, index + 1); }}>Tentar novamente</button></div>}
         {validationAttempted && errors.length > 0 && <div className="product-image-errors">{errors.map(error => <span key={error}>{error}</span>)}<span>Atual: {image.width || "?"} × {image.height || "?"} px · {formatImageBytes(image.bytes)}</span></div>}
-        <figcaption><button type="button" disabled={index === 0} onClick={() => move(index, -1)}>←</button><span>{String(index + 1).padStart(2, "0")}</span><button type="button" disabled={index === ordered.length - 1} onClick={() => move(index, 1)}>→</button></figcaption>
+        <figcaption><button type="button" disabled={imagesLocked || index === 0 || (image.kind === "existing" && image.protectedLegacy) || (ordered[index - 1]?.kind === "existing" && (ordered[index - 1] as ImageItem).protectedLegacy)} onClick={() => move(index, -1)}>←</button><span>{String(index + 1).padStart(2, "0")}</span><button type="button" disabled={imagesLocked || index === ordered.length - 1 || (image.kind === "existing" && image.protectedLegacy) || (ordered[index + 1]?.kind === "existing" && (ordered[index + 1] as ImageItem).protectedLegacy)} onClick={() => move(index, 1)}>→</button></figcaption>
       </figure>})}
     </div></section>
     {preview && <button type="button" className="image-preview-modal" onClick={() => setPreview("")}><img src={preview} alt="Visualização ampliada" /></button>}
@@ -317,9 +300,7 @@ function QuantityControl({ label, name, value, setValue, onDirty }: { label:stri
 }
 
 function formatImageBytes(bytes:number) { return bytes ? `${(bytes / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} MB` : "tamanho desconhecido"; }
-function deletePreparedImage(publicId: string) {
-  return fetch("/api/products/images/prepare", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicId }) });
-}
+
 function validateNewImageSource(image: Extract<EditorImage, { kind: "new" }>) {
   const errors: string[] = [];
   if (!image.file.type.startsWith("image/")) errors.push("O arquivo deve ser uma imagem JPG, PNG ou WebP.");

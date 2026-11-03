@@ -1,3 +1,4 @@
+import { isProtectedLegacyPhoto } from "@/lib/product-photo-edit-policy";
 import { activeTinyProductId } from "@/lib/tiny-product-link";
 import { productImageUrl } from "@/lib/product-image-source";
 import { Sidebar } from "@/app/components/sidebar";
@@ -44,6 +45,8 @@ type ProductDetail = {
     url: string | null;
     local_url?: string | null;
     cloudinary_url?: string | null;
+    cloudinary_public_id?: string | null;
+    cloudinary_cloud_name?: string | null;
     position: number;
     status: string;
     bytes?: number | null;
@@ -175,7 +178,7 @@ export default async function ProductDetailPage({
           types={(types.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.description}`, marketplaceCategory: String(item.marketplace_category || ""), boardCodeRequired: isBoardCodeRequired(item, categoryMappings.data || []) }))}
           brands={(brands.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.name}` }))}
           specials={(specials.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.notes || item.include_description || item.code}` }))}
-          images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: productImageUrl(image), position: image.position, bytes: Number(image.bytes || 0), width: Number(image.width_px || 0), height: Number(image.height_px || 0) }))}
+          images={(typed.product_images || []).map(image => ({ id: image.id, protectedLegacy: isProtectedLegacyPhoto(image), name: image.original_name, url: productImageUrl(image), position: image.position, bytes: Number(image.bytes || 0), width: Number(image.width_px || 0), height: Number(image.height_px || 0) }))}
           temporaryImages={temporaryImages}
           categoryMappings={editorCategoryMappings as any}
           marketplaceLinks={{

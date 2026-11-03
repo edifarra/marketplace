@@ -1,27 +1,17 @@
 {
   "schemaVersion": 1,
-  "base": "ba58a6b5c895626bcb731453ccb6b0b5b23c217b",
+  "base": "ef2ac083ad973ead0b926d67efdbb1ee2400ba9f",
   "files": [
     ".smart-deploy-plan.json",
-    "app/api/pipeline/products/route.ts",
-    "docs/drive-product-vps-images.md",
-    "lib/bounded-image-download.ts",
-    "lib/drive-photo-processing.ts",
-    "lib/drive-product-persistence.ts",
-    "lib/google-drive.ts",
-    "lib/product-loader.ts",
-    "lib/vps-image-storage.ts",
-    "next.config.mjs",
-    "package-lock.json",
-    "package.json",
-    "proxy.ts",
-    "scripts/smart-test-runner.mjs",
-    "supabase/migrations/20261102232000_atomic_drive_product_creation.sql",
-    "tests/drive-photo-processing.test.ts",
-    "tests/drive-product-auth.test.ts",
-    "tests/drive-product-creation-sql.test.mjs",
-    "tests/product-loader-drive.test.ts",
-    "tests/vps-image-storage.test.ts"
+    "app/api/products/images/prepare/route.ts",
+    "app/produtos/[id]/page.tsx",
+    "app/produtos/[id]/product-editor.tsx",
+    "app/produtos/actions.ts",
+    "docs/product-photo-edit-audit.md",
+    "lib/marketplace-temporary-images.ts",
+    "lib/prepare-marketplace-images.ts",
+    "lib/product-photo-edit-policy.ts",
+    "tests/product-image-replacement.test.ts"
   ],
-  "dependenciesChanged": true
+  "dependenciesChanged": false
 }

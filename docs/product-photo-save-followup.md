@@ -46,6 +46,7 @@ Isso exige registro/constraints/RPCs no banco e processamento durável. Pode apr
 - Regressões existentes cobrem falhas de download/VPS/banco com preservação de vínculos, preparação da capa, imagens externas/legadas, reordenação, estoque e transferência SFTP simulada.
 - Suíte direcionada: 75 testes aprovados (74 na execução conjunta e o teste SFTP isolado após liberar conexão local de teste). A primeira tentativa direta sem o preload `server-only` e a tentativa SFTP no ambiente restrito falharam por configuração/permissão; foram corrigidas usando o runner do projeto e liberação exclusivamente do teste local.
 - `npm run typecheck`: aprovado. `npm run build`: aprovado; aviso existente de depreciação do React 18 no Next 16.
+- Verificação ampliada `npm run check:smart -- --base=daf83dab08fab5cec7f5ed8ff0ce5a7193e25e60`: 291 testes aprovados, TypeScript e build aprovados. A simulação de recuperação ausente em `tests/tiny-retired-links.test.ts` foi ajustada de `[]` para `null`, conforme o contrato real. Testes de repositórios temporários exigiram execução fora das restrições de escrita do ambiente.
 - Os cenários de exclusão física após confirmação, bloqueio concorrente de referências, erro durável de coleta e expiração de preparados **permanecem pendentes**, assim como a ausência de fotos na reposição futura. A verificação não inclui banco ou arquivos reais.
 
 ## Publicação futura

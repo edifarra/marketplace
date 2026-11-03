@@ -9,7 +9,8 @@
     "docs/product-photo-save-followup.md",
     "lib/product-photo-edit-policy.ts",
     "tests/product-image-replacement.test.ts",
-    "tests/product-photo-recovery-flow.test.ts"
+    "tests/product-photo-recovery-flow.test.ts",
+    "tests/tiny-retired-links.test.ts"
   ],
   "dependenciesChanged": false
 }

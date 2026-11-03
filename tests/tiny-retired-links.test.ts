@@ -76,7 +76,7 @@ test("1130AU: detail shows historical Tiny separately after marker cleanup", asy
     settings: [{ key: `TINY_LEGACY_LINK_${retired.id}`, value: { sent_target: "TINY" } }] });
   const page = load("app/produtos/[id]/page.tsx", {
     "@/lib/supabase-admin": { supabaseAdmin: () => db },
-    "@/lib/marketplace-temporary-images": { recoverTemporaryImagesWhenCloudinaryIsUnavailable: async () => [] },
+    "@/lib/marketplace-temporary-images": { recoverTemporaryImagesWhenCloudinaryIsUnavailable: async () => null },
     "@/lib/dynamic-product-description": { buildProductDescription: () => "Description" },
     "@/lib/product-action-rules": { getProductActionState: () => ({ showSend: true }) },
     "@/lib/effective-product": { resolveEffectiveProduct: () => ({}) },

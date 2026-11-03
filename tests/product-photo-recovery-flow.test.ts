@@ -71,9 +71,12 @@ test("failed recovery keeps both original references; foreign listing is rejecte
   for (const [field, value] of [["product_id", "p1"], ["marketplace", "mercado_livre"], ["marketplace_account_id", "foreign"], ["marketplace_product_id", "other"]]) assert.ok(foreign.db.calls.some(call => call.method === "eq" && call.args[0] === field && call.args[1] === value));
 });
 
-async function saveHarness(failure: "download" | "storage" | "database" | null = null) {
+async function saveHarness(failure: "download" | "storage" | "database" | null = null, stock = 1) {
   const image = await fixture();
-  const events: string[] = [], replacements: any[] = [], writes: any[] = [];
+  const events: string[] = [], replacements: any[] = [], writes: any[] = [], updates: any[] = [];
+  const secret = "recovery-test-secret";
+  const origin = { marketplace: "mercado_livre", accountId: "a1", listingId: "listing1" };
+  const recoveryReceipt = policy.signRecoverySequence("p1", [old, valid], [{ key: "0", position: 1 }], origin, secret);
   let rows: any[] = [old, valid];
   const otherProduct = [{ id: "other-image", position: 1, url: "https://other.test/image.jpg" }];
   const db = {
@@ -81,7 +84,7 @@ async function saveHarness(failure: "download" | "storage" | "database" | null =
       let single = false;
       const query: any = new Proxy({}, { get(_, method: string) {
         if (method === "then") return (resolve: any) => {
-          const data: any = { products: { id: "p1", title: "Board", status: "draft", product_images: rows }, config_types: {}, estoque: { estoque_fisico: 1, estoque_disponivel: 1 } };
+          const data: any = { products: { id: "p1", title: "Board", status: "draft", product_images: rows }, config_types: {}, estoque: { estoque_fisico: stock, estoque_disponivel: stock } };
           return Promise.resolve({ data: single ? data[table] : [], error: null }).then(resolve);
         };
         return (...args: any[]) => { if (["single", "maybeSingle"].includes(method)) single = true; if (["update", "eq"].includes(method)) writes.push({ table, method, args }); return query; };
@@ -104,7 +107,9 @@ async function saveHarness(failure: "download" | "storage" | "database" | null =
     "@vercel/functions": { waitUntil() {} },
     "@/lib/auth": { getCurrentUser: async () => ({ id: "u1" }) },
     "@/lib/supabase-admin": { supabaseAdmin: () => db },
-    "@/lib/product-photo-edit-policy": policy,
+    "@/lib/product-photo-edit-policy": { ...policy,
+      verifyPreparedPhoto: (receipt: string, productId: string, userId: string) => policy.verifyPreparedPhoto(receipt, productId, userId, secret),
+      recoverySequenceChanged: (receipt: string, productId: string, images: any, sequence: string[], origin: any) => policy.recoverySequenceChanged(receipt, productId, images, sequence, origin, secret) },
     "@/lib/drive-photo-processing": processing,
     "@/lib/vps-image-storage": { storeVpsImage: async () => { events.push("store"); if (failure === "storage") throw Error("storage offline"); } },
     "@/lib/marketplace-image-validation": validation,
@@ -112,18 +117,49 @@ async function saveHarness(failure: "download" | "storage" | "database" | null =
     "@/lib/price-value": { parsePriceValue: () => 10 },
     "@/lib/marketplace-attributes": { validateRequiredAttributes: () => [] },
     "@/lib/marketplace-temporary-images": { resolveMarketplaceRecoveryImageUrls: async (input: any) => { assert.equal(input.productId, "p1"); return remote; } },
-    "@/lib/direct-marketplace-publisher": { enqueueDirectListingUpdates: async () => {} },
+    "@/lib/direct-marketplace-publisher": { enqueueDirectListingUpdates: async (...args: any[]) => { updates.push(args[3]); } },
+    "@/lib/inventory": { syncListingsStock: async () => { events.push("stock"); } },
     "@/lib/outgoing-activities": { drainOutgoingActivities: async () => {} }
   }, { structuredClone, crypto: webcrypto, AbortSignal, fetch: async () => failure === "download" ? new Response(null, { status: 503 }) : new Response(image) });
-  async function save(order: string) {
+  async function save(order: string, signed = false, manual = false) {
     const form = new FormData();
-    for (const [key, value] of Object.entries({ productId: "p1", sku: "sku1", title: "Board", description: "Board description", model: "Model", typeCode: "PP", brandCode: "BR", physicalStock: "1", imageOrder: order, recoveryMarketplace: "mercado_livre", recoveryAccountId: "a1", recoveryListingId: "listing1" })) form.set(key, value);
+    for (const [key, value] of Object.entries({ productId: "p1", sku: "sku1", title: "Board", description: "Board description", model: "Model", typeCode: "PP", brandCode: "BR", physicalStock: String(stock), imageOrder: order, recoveryMarketplace: "mercado_livre", recoveryAccountId: "a1", recoveryListingId: "listing1" })) form.set(key, value);
+    if (signed) form.set("recoveryReceipt", recoveryReceipt);
+    if (manual) {
+      const photo = await processing.processAndStoreDrivePhoto({ buffer: image, sourceKey: "product-edit:p1", position: 3 }, async () => {});
+      form.set("preparedImages", JSON.stringify([{ key: "manual", receipt: policy.signPreparedPhoto({ ...photo, name: "manual.jpg", productId: "p1", userId: "u1", expiresAt: Date.now() + 60000 }, secret) }]));
+    }
     let message = "";
     try { await module.updateProductDetailsAction(form); } catch (error) { message = String(error); }
     return message;
   }
-  return { save, events, replacements, writes, rows: () => rows, otherProduct };
+  return { save, events, replacements, writes, updates, rows: () => rows, otherProduct };
 }
+
+test("signed pure recovery persists without marketplace photos and preserves other update flags", async () => {
+  const h = await saveHarness();
+  assert.match(await h.save("remote:0,existing:valid", true), /sucesso=/);
+  assert.deepEqual(h.events, ["store", "rpc"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.updates)), [{ title: false, price: true, attributes: true, images: false, stock: 1, reactivatePausedOnManualSave: true }]);
+});
+
+for (const [label, order, manual] of [
+  ["addition", "remote:0,existing:valid,new:manual", true],
+  ["removal", "remote:0", false],
+  ["reorder", "existing:valid,remote:0", false]
+] as const) test(`recovery plus manual ${label} still synchronizes photos`, async () => {
+  const h = await saveHarness();
+  assert.match(await h.save(order, true, manual), /sucesso=/);
+  assert.equal(h.updates[0].images, true);
+});
+
+test("zero stock recovery preserves stock-only save; existing broad pending marker is documented", async () => {
+  const h = await saveHarness(null, 0);
+  assert.match(await h.save("remote:0,existing:valid", true), /sucesso=/);
+  assert.deepEqual(h.events, ["store", "rpc", "stock"]);
+  assert.deepEqual(h.updates, []);
+  assert.ok(h.writes.some(call => call.table === "products" && call.method === "update" && call.args[0].marketplace_update_pending === true));
+});
 
 test("save recovers to VPS before atomic replacement; valid photo and other products stay unchanged", async () => {
   const h = await saveHarness();

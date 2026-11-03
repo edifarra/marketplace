@@ -19,10 +19,11 @@ type CategoryNode = { id: string; name: string; hasChildren: boolean };
 type MarketplaceSelection = { code: string; description: string };
 const marketplaceLabels: Record<Marketplace, string> = { mercado_livre: "Mercado Livre", shopee: "Shopee" };
 
-export function ProductEditor({ product, types, brands, specials, images, temporaryImages, categoryMappings, marketplaceLinks, returnTo, actionReturnTo, showSend }: {
+export function ProductEditor({ product, types, brands, specials, images, temporaryImages, recoveryReceipt = "", categoryMappings, marketplaceLinks, returnTo, actionReturnTo, showSend }: {
   product: Record<string, string | number | null>;
   types: Option[]; brands: Option[]; specials: Option[]; images: ImageItem[]; categoryMappings: CategoryMapping[];
   temporaryImages: TemporaryImageSet;
+  recoveryReceipt?: string;
   marketplaceLinks: Record<Marketplace, boolean>;
   returnTo: string;
   actionReturnTo: string;
@@ -191,6 +192,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     <input type="hidden" name="returnTo" value={returnTo} />
     <input type="hidden" name="intent" value="" />
     <input type="hidden" name="imageOrder" value={ordered.map(imageKey).join(",")} />
+    <input type="hidden" name="recoveryReceipt" value={recoveryReceipt} />
     <input type="hidden" name="preparedImages" value={JSON.stringify(ordered.filter((image): image is Extract<EditorImage, { kind: "new" }> => image.kind === "new" && image.uploadStatus === "ready").map(image => ({ key: image.key, name: image.name, url: image.url, receipt: image.receipt })))} />
     {temporaryImages && <>
       <input type="hidden" name="recoveryMarketplace" value={temporaryImages.marketplace} />

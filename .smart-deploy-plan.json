@@ -1,17 +1,14 @@
 {
   "schemaVersion": 1,
-  "base": "ef2ac083ad973ead0b926d67efdbb1ee2400ba9f",
+  "base": "daf83dab08fab5cec7f5ed8ff0ce5a7193e25e60",
   "files": [
     ".smart-deploy-plan.json",
-    "app/api/products/images/prepare/route.ts",
     "app/produtos/[id]/page.tsx",
     "app/produtos/[id]/product-editor.tsx",
     "app/produtos/actions.ts",
-    "docs/product-photo-edit-audit.md",
-    "lib/prepare-marketplace-images.ts",
+    "docs/product-photo-save-followup.md",
     "lib/product-photo-edit-policy.ts",
     "tests/product-image-replacement.test.ts",
-    "tests/product-loader-drive.test.ts",
     "tests/product-photo-recovery-flow.test.ts"
   ],
   "dependenciesChanged": false

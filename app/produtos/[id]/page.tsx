@@ -1,5 +1,6 @@
 import { activeTinyProductId } from "@/lib/tiny-product-link";
 import { productImageUrl } from "@/lib/product-image-source";
+import { signRecoverySequence } from "@/lib/product-photo-edit-policy";
 import { Sidebar } from "@/app/components/sidebar";
 import { resendProductIntegrationAction } from "../actions";
 import { IntegrationDeleteButton } from "./integration-delete-button";
@@ -179,6 +180,7 @@ export default async function ProductDetailPage({
           specials={(specials.data || []).map(item => ({ code: item.code, label: `${item.code} - ${item.notes || item.include_description || item.code}` }))}
           images={(typed.product_images || []).map(image => ({ id: image.id, name: image.original_name, url: productImageUrl(image), position: image.position, bytes: Number(image.bytes || 0), width: Number(image.width_px || 0), height: Number(image.height_px || 0) }))}
           temporaryImages={temporaryImages}
+          recoveryReceipt={temporaryImages ? signRecoverySequence(typed.id, typed.product_images || [], temporaryImages.images, temporaryImages) : ""}
           categoryMappings={editorCategoryMappings as any}
           marketplaceLinks={{
             mercado_livre: integrations.some(item => item.integration === "MERCADO_LIVRE"),

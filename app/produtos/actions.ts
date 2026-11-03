@@ -13,7 +13,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { syncListingsStock } from "@/lib/inventory";
 import { processAndStoreDrivePhoto, type StoredDrivePhoto } from "@/lib/drive-photo-processing";
 import { storeVpsImage } from "@/lib/vps-image-storage";
-import { validatePhotoSequence, verifyPreparedPhoto } from "@/lib/product-photo-edit-policy";
+import { validatePhotoSequence, verifyPreparedPhoto, recoverySequenceChanged } from "@/lib/product-photo-edit-policy";
 import { readBoundedImage } from "@/lib/bounded-image-download";
 import { synchronizeProductById } from "@/lib/product-point-sync";
 import { cloneProduct } from "@/lib/product-cloner";
@@ -393,10 +393,18 @@ export async function updateProductDetailsAction(formData: FormData) {
   const previousImageSequence = [...existingImages]
     .sort((left, right) => left.position - right.position)
     .map(image => `existing:${image.id}`);
-  const imagesChanged = preparedImages.length > 0
+  const imagesPersistChanged = preparedImages.length > 0
     || remoteKeys.length > 0
     || removed.length > 0
     || imageSequence.some((token, index) => token !== previousImageSequence[index]);
+  let imagesMarketplaceChanged = imagesPersistChanged;
+  if (text("recoveryReceipt")) {
+    try {
+      imagesMarketplaceChanged = recoverySequenceChanged(text("recoveryReceipt"), productId, existingImages, imageSequence, {
+        marketplace: text("recoveryMarketplace"), accountId: text("recoveryAccountId"), listingId: text("recoveryListingId")
+      });
+    } catch (error) { redirect(detailError(error instanceof Error ? error.message : String(error))); }
+  }
 
   type PersistedImage = StoredDrivePhoto & { name: string };
   const recoveredUploads = new Map<string, PersistedImage>();
@@ -458,17 +466,17 @@ export async function updateProductDetailsAction(formData: FormData) {
       availableStock = Number(adjusted.data ?? availableStock);
     }
 
-    if (imagesChanged) {
+    if (imagesPersistChanged) {
       await db.rpc("replace_product_images_atomically", { p_product_id: productId, p_images: replacementImages }).throwOnError();
       // Retain immutable files: other products or an ambiguous RPC result may reference them.
     }
 
     if (current.data.tiny_product_id) {
       await enqueueOutgoingActivity({ destination: "tiny", activityType: "listing_update", productId, sku, productName: title,
-        listingId: String(current.data.tiny_product_id), requestedData: { reason: "product_saved", imagesChanged } });
+        listingId: String(current.data.tiny_product_id), requestedData: { reason: "product_saved", imagesChanged: imagesPersistChanged } });
     }
     if (availableStock > 0) {
-      await enqueueDirectListingUpdates(productId, undefined, false, { title: titleChanged, price: true, attributes: true, images: imagesChanged, stock: availableStock, reactivatePausedOnManualSave: true });
+      await enqueueDirectListingUpdates(productId, undefined, false, { title: titleChanged, price: true, attributes: true, images: imagesMarketplaceChanged, stock: availableStock, reactivatePausedOnManualSave: true });
       await db.from("products").update({ marketplace_update_pending: false }).eq("id", productId).throwOnError();
     } else {
       // O Mercado Livre rejeita atualizacoes completas de anuncios sem saldo.

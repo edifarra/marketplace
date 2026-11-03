@@ -71,9 +71,9 @@ test("failed recovery keeps both original references; foreign listing is rejecte
   for (const [field, value] of [["product_id", "p1"], ["marketplace", "mercado_livre"], ["marketplace_account_id", "foreign"], ["marketplace_product_id", "other"]]) assert.ok(foreign.db.calls.some(call => call.method === "eq" && call.args[0] === field && call.args[1] === value));
 });
 
-async function saveHarness(failure: "download" | "storage" | "database" | null = null, stock = 1) {
+async function saveHarness(failure: "download" | "storage" | "database" | "cleanup" | null = null, stock = 1) {
   const image = await fixture();
-  const events: string[] = [], replacements: any[] = [], writes: any[] = [], updates: any[] = [];
+  const events: string[] = [], replacements: any[] = [], writes: any[] = [], updates: any[] = [], cleanups: any[] = [];
   const secret = "recovery-test-secret";
   const origin = { marketplace: "mercado_livre", accountId: "a1", listingId: "listing1" };
   const recoveryReceipt = policy.signRecoverySequence("p1", [old, valid], [{ key: "0", position: 1 }], origin, secret);
@@ -110,6 +110,7 @@ async function saveHarness(failure: "download" | "storage" | "database" | null =
     "@/lib/product-photo-edit-policy": { ...policy,
       verifyPreparedPhoto: (receipt: string, productId: string, userId: string) => policy.verifyPreparedPhoto(receipt, productId, userId, secret),
       recoverySequenceChanged: (receipt: string, productId: string, images: any, sequence: string[], origin: any) => policy.recoverySequenceChanged(receipt, productId, images, sequence, origin, secret) },
+    "@/lib/product-image-cleanup": { cleanupRemovedProductImages: async (input: any) => { assert.ok(events.includes("rpc")); cleanups.push(input); if (failure === "cleanup") throw Error("SFTP denied"); } },
     "@/lib/drive-photo-processing": processing,
     "@/lib/vps-image-storage": { storeVpsImage: async () => { events.push("store"); if (failure === "storage") throw Error("storage offline"); } },
     "@/lib/marketplace-image-validation": validation,
@@ -120,7 +121,7 @@ async function saveHarness(failure: "download" | "storage" | "database" | null =
     "@/lib/direct-marketplace-publisher": { enqueueDirectListingUpdates: async (...args: any[]) => { updates.push(args[3]); } },
     "@/lib/inventory": { syncListingsStock: async () => { events.push("stock"); } },
     "@/lib/outgoing-activities": { drainOutgoingActivities: async () => {} }
-  }, { structuredClone, crypto: webcrypto, AbortSignal, fetch: async () => failure === "download" ? new Response(null, { status: 503 }) : new Response(image) });
+  }, { console: { error() {} }, structuredClone, crypto: webcrypto, AbortSignal, fetch: async () => failure === "download" ? new Response(null, { status: 503 }) : new Response(image) });
   async function save(order: string, signed = false, manual = false) {
     const form = new FormData();
     for (const [key, value] of Object.entries({ productId: "p1", sku: "sku1", title: "Board", description: "Board description", model: "Model", typeCode: "PP", brandCode: "BR", physicalStock: String(stock), imageOrder: order, recoveryMarketplace: "mercado_livre", recoveryAccountId: "a1", recoveryListingId: "listing1" })) form.set(key, value);
@@ -133,13 +134,15 @@ async function saveHarness(failure: "download" | "storage" | "database" | null =
     try { await module.updateProductDetailsAction(form); } catch (error) { message = String(error); }
     return message;
   }
-  return { save, events, replacements, writes, updates, rows: () => rows, otherProduct };
+  return { save, events, replacements, writes, updates, cleanups, rows: () => rows, otherProduct };
 }
 
 test("signed pure recovery persists without marketplace photos and preserves other update flags", async () => {
   const h = await saveHarness();
   assert.match(await h.save("remote:0,existing:valid", true), /sucesso=/);
   assert.deepEqual(h.events, ["store", "rpc"]);
+  assert.equal(h.cleanups.length, 1);
+  assert.equal(h.cleanups[0].previous[0].id, "old");
   assert.deepEqual(JSON.parse(JSON.stringify(h.updates)), [{ title: false, price: true, attributes: true, images: false, stock: 1, reactivatePausedOnManualSave: true }]);
 });
 
@@ -159,6 +162,16 @@ test("zero stock recovery preserves stock-only save; existing broad pending mark
   assert.deepEqual(h.events, ["store", "rpc", "stock"]);
   assert.deepEqual(h.updates, []);
   assert.ok(h.writes.some(call => call.table === "products" && call.method === "update" && call.args[0].marketplace_update_pending === true));
+});
+
+test("cleanup failure reports saved photos with incomplete cleanup instead of success", async () => {
+  const h = await saveHarness("cleanup");
+  const message = await h.save("remote:0,existing:valid", true);
+  assert.match(message, /erro=.*Fotos salvas; limpeza física não concluída.*SFTP denied/);
+  assert.doesNotMatch(message, /sucesso=/);
+  assert.equal(h.replacements.length, 1);
+  assert.equal(h.cleanups.length, 1);
+  assert.equal(h.rows()[0].kind, "new");
 });
 
 test("save recovers to VPS before atomic replacement; valid photo and other products stay unchanged", async () => {
@@ -182,6 +195,7 @@ for (const failure of ["download", "storage", "database"] as const) {
     assert.match(await h.save("remote:0,existing:valid"), /erro=/);
     assert.deepEqual(h.rows(), [old, valid]);
     assert.equal(h.replacements.length, 0);
+    assert.equal(h.cleanups.length, 0);
     if (failure !== "database") assert.equal(h.events.includes("rpc"), false);
   });
 }

@@ -4,7 +4,7 @@ import { once } from "node:events";
 import test from "node:test";
 import { Server, utils, type SFTPWrapper } from "ssh2";
 import { photoDigest, VPS_IMAGE_ORIGIN } from "../lib/drive-photo-processing";
-import { storeVpsImage } from "../lib/vps-image-storage";
+import { storeVpsImage, deleteVpsImage } from "../lib/vps-image-storage";
 
 test("real SSH/SFTP client verifies host, uploads atomically, checks HTTPS and closes on failure", async () => {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048,
@@ -13,7 +13,8 @@ test("real SSH/SFTP client verifies host, uploads atomically, checks HTTPS and c
   if (parsed instanceof Error || Array.isArray(parsed)) throw new Error("test host key invalid");
   const fingerprint = photoDigest(parsed.getPublicSSH());
   const files = new Map<string, Buffer>();
-  const directories = new Set<string>();
+  const directories = new Set<string>(["/Imagens"]);
+  const symlinks = new Set<string>();
   let writes = 0;
   const connections = new Set<{ end(): void }>();
   const server = new Server({ hostKeys: [privateKey] }, client => {
@@ -24,7 +25,7 @@ test("real SSH/SFTP client verifies host, uploads atomically, checks HTTPS and c
     client.on("session", accept => accept().on("sftp", acceptSftp => {
       const sftp = acceptSftp() as SFTPWrapper;
       const status = utils.sftp.STATUS_CODE;
-      const attributes = (name: string) => ({ mode: directories.has(name) ? 0o40755 : 0o100644,
+      const attributes = (name: string) => ({ mode: symlinks.has(name) ? 0o120777 : directories.has(name) ? 0o40755 : 0o100644,
         size: files.get(name)?.length || 0, uid: 1000, gid: 1000, atime: 0, mtime: 0 });
       sftp.on("MKDIR", (id: number, directory: string) => {
         if (directories.has(directory)) sftp.status(id, status.FAILURE);
@@ -81,12 +82,26 @@ test("real SSH/SFTP client verifies host, uploads atomically, checks HTTPS and c
     await storeVpsImage(name, bytes);
     assert.equal(writes, beforeRetry);
 
+    await assert.rejects(deleteVpsImage("../outside.jpg"), /inválido/);
+    symlinks.add("/Imagens/produtos");
+    await assert.rejects(deleteVpsImage(name), /regular/);
+    assert.equal(files.size, 1);
+    symlinks.clear();
+    files.set("/Imagens/" + name, Buffer.from("unexpected"));
+    await assert.rejects(deleteVpsImage(name), /conteúdo/);
+    files.set("/Imagens/" + name, bytes);
+    await deleteVpsImage(name);
+    assert.equal(files.size, 0);
+    await deleteVpsImage(name);
+    await storeVpsImage(name, bytes);
+    const afterRestore = writes;
+
     globalThis.fetch = async () => new Response(null, { status: 404 });
     await assert.rejects(storeVpsImage(name, bytes), /HTTPS/);
     assert.equal(files.size, 1);
     process.env.VPS_IMAGES_SFTP_HOST_SHA256 = "0".repeat(64);
     await assert.rejects(storeVpsImage(name, bytes), /verification failed/i);
-    assert.equal(writes, beforeRetry);
+    assert.equal(writes, afterRestore);
     process.env.VPS_IMAGES_SFTP_HOST_SHA256 = fingerprint;
     process.env.VPS_IMAGES_SFTP_KEY_BASE64 = Buffer.from("invalid-key").toString("base64");
     await assert.rejects(storeVpsImage(name, bytes), /privateKey|key/i);

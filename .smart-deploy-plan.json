@@ -7,10 +7,16 @@
     "app/produtos/[id]/product-editor.tsx",
     "app/produtos/actions.ts",
     "docs/product-photo-save-followup.md",
+    "docs/product-photo-simple-cleanup.md",
+    "lib/product-image-cleanup.ts",
     "lib/product-photo-edit-policy.ts",
+    "lib/vps-image-storage.ts",
+    "tests/product-image-cleanup.test.ts",
     "tests/product-image-replacement.test.ts",
+    "tests/product-photo-cancel.test.ts",
     "tests/product-photo-recovery-flow.test.ts",
-    "tests/tiny-retired-links.test.ts"
+    "tests/tiny-retired-links.test.ts",
+    "tests/vps-image-storage.test.ts"
   ],
   "dependenciesChanged": false
 }

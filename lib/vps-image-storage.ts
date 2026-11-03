@@ -93,7 +93,7 @@ export function vpsImageConfig(env: Record<string, string | undefined> = process
   return { host, username, privateKey, fingerprint, root, port };
 }
 
-export async function storeVpsImage(relativePath: string, bytes: Buffer) {
+async function withVpsSftp(operation: (sftp: SFTPWrapper, root: string) => Promise<void>) {
   const config = vpsImageConfig();
   const client = new Client();
   await new Promise<void>((resolve, reject) => {
@@ -110,7 +110,7 @@ export async function storeVpsImage(relativePath: string, bytes: Buffer) {
     client.once("close", () => finish(new Error("Conexão SFTP encerrada.")));
     client.once("ready", () => client.sftp((error, sftp) => {
       if (error) return finish(error);
-      storeImmutablePhoto(sftpTransfer(sftp), config.root, relativePath, bytes).then(() => finish(), finish);
+      operation(sftp, config.root).then(() => finish(), finish);
     }));
     try {
       client.connect({ host: config.host, port: config.port, username: config.username,
@@ -119,8 +119,39 @@ export async function storeVpsImage(relativePath: string, bytes: Buffer) {
           && timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(config.fingerprint, "hex")) });
     } catch (error) { finish(error instanceof Error ? error : new Error("Configuração de chave SSH inválida.")); }
   });
+}
+
+export async function storeVpsImage(relativePath: string, bytes: Buffer) {
+  await withVpsSftp((sftp, root) => storeImmutablePhoto(sftpTransfer(sftp), root, relativePath, bytes));
   // Confirm that the public read-only mapping serves the same bytes before persistence.
   const response = await fetch(VPS_IMAGE_ORIGIN + relativePath, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) });
   if (!response.ok || !response.headers.get("content-type")?.startsWith("image/jpeg")) throw new Error("Imagem VPS não disponível por HTTPS.");
   if (photoDigest(await readBoundedImage(response, bytes.length)) !== photoDigest(bytes)) throw new Error("Imagem HTTPS divergente do arquivo armazenado.");
+}
+
+// Called only for removed, confirmed-unreferenced assets. No directory removal.
+export async function deleteVpsImage(relativePath: string) {
+  if (!/^produtos\/([a-f0-9]{2})\/\1[a-f0-9]{62}\/[1-6]-[a-f0-9]{64}\.jpg$/.test(relativePath)) throw new Error("Caminho de exclusão inválido.");
+  await withVpsSftp(async (sftp, root) => {
+    const destination = path.posix.join(root, relativePath);
+    const parts = destination.split("/").filter(Boolean);
+    let checked = "";
+    for (const [index, part] of parts.entries()) {
+      checked += "/" + part;
+      let stats: import("ssh2").Stats;
+      try {
+        stats = await new Promise((resolve, reject) => sftp.lstat(checked, (error, value) => error ? reject(error) : resolve(value)));
+      } catch (error) {
+        if ((error as { code?: unknown }).code === 2) return;
+        throw error;
+      }
+      if (stats.isSymbolicLink() || (index < parts.length - 1 ? !stats.isDirectory() : !stats.isFile())) throw new Error("Exclusão bloqueada: caminho não é arquivo próprio regular.");
+      if (index === parts.length - 1 && stats.size > 25 * 1024 * 1024) throw new Error("Exclusão bloqueada: tamanho de arquivo inesperado.");
+    }
+    const transfer = sftpTransfer(sftp);
+    const bytes = await transfer.read(destination);
+    if (!bytes) return;
+    if (!relativePath.endsWith(`-${photoDigest(bytes)}.jpg`)) throw new Error("Exclusão bloqueada: conteúdo diverge do nome gerenciado.");
+    await transfer.unlink(destination);
+  });
 }

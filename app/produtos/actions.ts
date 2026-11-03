@@ -1,6 +1,7 @@
 "use server";
 import { activeTinyProductId } from "@/lib/tiny-product-link";
 import { productImageUrl, imageIsAvailable } from "@/lib/product-image-source";
+import { cleanupRemovedProductImages } from "@/lib/product-image-cleanup";
 
 import { deleteProductById, inspectProductDeletion } from "@/lib/products";
 import { removeProductIntegration, sendProductToConfiguredTarget } from "@/lib/product-sender";
@@ -468,7 +469,7 @@ export async function updateProductDetailsAction(formData: FormData) {
 
     if (imagesPersistChanged) {
       await db.rpc("replace_product_images_atomically", { p_product_id: productId, p_images: replacementImages }).throwOnError();
-      // Retain immutable files: other products or an ambiguous RPC result may reference them.
+      // Cleanup is deferred until the remaining save/integration steps succeed.
     }
 
     if (current.data.tiny_product_id) {
@@ -486,6 +487,15 @@ export async function updateProductDetailsAction(formData: FormData) {
       await db.from("products").update({ marketplace_update_pending: true }).eq("id", productId).throwOnError();
     }
     waitUntil(drainOutgoingActivities());
+    if (imagesPersistChanged) {
+      try {
+        await cleanupRemovedProductImages({ db, productId, sourceKey: current.data.source_key,
+          previous: existingImages, final: replacementImages as Array<{ id: string; position: number }> });
+      } catch (error) {
+        console.error("Product photo cleanup incomplete", { productId, error });
+        throw new Error(`Fotos salvas; limpeza física não concluída: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   } catch (error) {
     revalidatePath(`/produtos/${productId}`);
     redirect(detailError(`Os dados foram processados, mas a atualização não foi concluída: ${error instanceof Error ? error.message : String(error)}`));

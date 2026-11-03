@@ -1,5 +1,7 @@
 # Edição de fotos — auditoria local de 03/11/2026
 
+> Histórico da primeira etapa. O ajuste de escopo posterior está implementado e descrito em `product-photo-simple-cleanup.md`; suas decisões substituem os impedimentos e propostas estruturais abaixo. O comportamento futuro de `marketplace_update_pending` foi explicitamente mantido e a exclusão simples foi autorizada.
+
 Baseline confirmado: `daf83dab08fab5cec7f5ed8ff0ce5a7193e25e60`.
 Esta entrega é parcial. Não houve push, deploy, migrations, acesso ao banco de produção nem exclusão real. O relatório anterior descreve o baseline; este documento registra o complemento.
 

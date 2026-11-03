@@ -1,46 +1,78 @@
-# Auditoria da edição de produtos e fotografias — 02/11/2026
+# Correção da edição e recuperação de fotografias
 
-Estado: correções locais; sem push, deploy, migration ou escrita em dados de produção. Base auditada: ef2ac083ad973ead0b926d67efdbb1ee2400ba9f. O estado local de deploy confirma essa base; o documento antigo do Drive ainda diz “local”, portanto não foi usado como prova de implantação.
+Este relatório substitui o diagnóstico anterior associado ao commit 5c956736e640aea4fd1e744e8ec8272e232ad7c8. A regra que bloqueava fotografias por conta Cloudinary foi removida. A origem da conta não é critério de autorização, recuperação ou publicação.
 
-## Diagnóstico e alterações
+## Comportamento corrigido
 
-| Operação | Antes | Correção preparada |
-| --- | --- | --- |
-| Adicionar/trocar | Navegador enviava ao endpoint prepare; upload definitivo no Cloudinary. Troca era remover + adicionar. | Mesmo processador Sharp da criação: orientação EXIF, até 1200 px, proporção preservada, sem ampliar, JPEG qualidade 45; gravação imutável na VPS e verificação HTTPS. Troca continua remover + adicionar e só se efetiva ao salvar. |
-| Recuperar do ML/Shopee | Download sem prazo e acumulado antes do limite; upload ao Cloudinary. | Download limitado durante leitura a 8 MiB e 30 s; processamento e armazenamento na VPS antes da troca. |
-| Reordenar | Reenviava arquivos novos ao Cloudinary quando mudava a posição; uma mudança durante upload podia deixar o tratamento fora da sequência. | Ordem altera somente os vínculos na gravação. A capa é determinada pela posição final no envio, sem novo upload do original. |
-| Remover/cancelar | Excluía recursos Cloudinary ao remover, abandonar ou após gravar; erro de RPC poderia levar à exclusão de um recurso já vinculado. | Remover exclui o vínculo somente na transação de salvar. Cancelar descarta a seleção. Nenhum arquivo definitivo é apagado; DELETE de prepare responde 405. |
-| Dados enviados pelo navegador | URL, public ID e dimensões eram aceitos do formulário. | Comprovante HMAC assinado no servidor, válido por 24 h e vinculado ao produto e usuário; os metadados vêm desse comprovante, não dos campos editáveis. |
-| Registros antigos | Recuperação temporária podia substituir automaticamente imagens indisponíveis ao salvar outros dados. | Detecção da conta dknfrkqol nas URLs, cloud name e public ID. Produtos com esses vínculos não passam por recuperação automática e ficam com a edição de fotos bloqueada no navegador e servidor. Demais dados continuam editáveis. |
-| Publicação | Preparação da capa podia atualizar referências no Supabase. | Publicação de fotos bloqueada quando houver registro da conta desativada, sem gravar transformação sobre ele. Nos demais produtos, somente a capa usa Cloudinary; fotos secundárias usam a VPS. |
+- A verificação normal de disponibilidade permanece. Imagens disponíveis continuam cadastradas e não provocam consultas aos marketplaces para recuperação.
+- Imagens indisponíveis voltam ao mecanismo existente recoverTemporaryImagesWhenCloudinaryIsUnavailable. A recuperação consulta apenas anúncios associados ao produto, prioriza contas Shopee e depois ML conforme a rotina já existente e seleciona somente posições indisponíveis. O preview é temporário e não grava no banco.
+- Na edição, mergeRecoveredImages preserva as posições existentes e substitui somente as selecionadas pela recuperação. O operador pode remover, substituir e reordenar antes de salvar. Nenhum controle depende de cloud name ou public ID.
+- No salvamento, resolveMarketplaceRecoveryImageUrls confirma novamente o vínculo produto + marketplace + conta + anúncio. O download continua limitado a 8 MiB e 30 segundos. Sharp e armazenamento VPS são os mesmos já utilizados: EXIF, máximo 1200 px, sem ampliar, JPEG qualidade 45 e nome imutável por hash.
+- As gravações SFTP e a verificação HTTPS continuam anteriores à troca atômica das fotografias. Falha de download, armazenamento ou transação mantém os vínculos anteriores. Nenhum arquivo físico é apagado.
+- Reordenar uma imagem já persistida modifica somente a posição do vínculo. A preparação existente de publicação usa a posição final para gerar/reutilizar a capa de fundo branco, identificada pelo original e conteúdo. Fotos secundárias mantêm suas URLs.
+- Uploads manuais continuam com sessão ativa e comprovante HMAC vinculado ao produto e usuário. A validação da sequência ainda exige 1–6 entradas únicas e impede referências a imagens de outro produto.
+- A preparação de publicação deixa de rejeitar produtos pela conta Cloudinary anterior. As verificações normais de disponibilidade e de sucesso do tratamento permanecem: retirar o bloqueio por conta não torna uma fotografia indisponível publicável sem recuperação.
 
-## Persistência e preservação
+## Arquivos alterados e revisados
 
-A RPC existente replace_product_images_atomically continua sendo utilizada: insere novas imagens antes de apagar os vínculos retirados e ajusta as posições na mesma transação. O formato atual aceita URL VPS e campos Cloudinary nulos sem migration. Para novas fotos da edição, a URL canônica, bytes e dimensões ficam no banco; local_url/local_path permanecem nulos, pois a RPC atual não os grava. O caminho completo pode ser obtido da URL canônica; os consumidores existentes priorizam essa URL VPS. A criação do Drive continua gravando também local_url/local_path.
+Alterados:
 
-A proteção aos 478 registros é por identidade da conta, sem depender de uma lista fixa de IDs. Nenhum desses registros foi consultado, alterado, migrado ou apagado em produção nesta tarefa. A quantidade 478 e os 146 produtos vêm do histórico fornecido, não de uma nova contagem. Para evitar até uma atualização intermediária de posição pela RPC, a sequência inteira de fotos de um produto protegido deve permanecer igual; isso também bloqueia adicionar fotos a esse produto enquanto vigorar a preservação.
+- lib/product-photo-edit-policy.ts: remove identificação e bloqueio da conta; mantém validação estrutural e HMAC.
+- lib/marketplace-temporary-images.ts: remove retorno antecipado e exclusão das posições da conta desativada.
+- lib/prepare-marketplace-images.ts: remove rejeição de publicação por origem Cloudinary.
+- app/produtos/[id]/page.tsx: deixa de repassar indicador de bloqueio.
+- app/produtos/[id]/product-editor.tsx: remove restrições de adicionar, excluir e mover e mensagem de bloqueio.
+- tests/product-image-replacement.test.ts: verifica operações permitidas com URLs da conta antiga e mantém regressões de HMAC e sequência.
+- tests/product-photo-recovery-flow.test.ts: executa as rotinas existentes de recuperação, ação de salvar e preparação de publicação com dependências externas simuladas.
+- docs/product-photo-edit-audit.md: atualiza este diagnóstico.
+- .smart-deploy-plan.json: regenerado pelo comando de commit; preserva o baseline real confirmado.
 
-Arquivos definitivos podem ficar sem vínculo após abandono ou falha. Não há limpeza automática: remover esses arquivos exigirá auditoria de referências, inclusive entre produtos clonados, e tratamento de respostas ambíguas do banco. O arquivo preexistente vps-legado-arquivos.txt ficou fora da alteração e do commit.
+Revisado sem mudança: app/produtos/actions.ts. Já utiliza VPS, confirma origem do anúncio, autentica uploads e só chama replace_product_images_atomically após armazenar todas as imagens novas. Não havia nele bloqueio adicional fora da política compartilhada removida.
 
-## Limites remanescentes
+## local_url e local_path
 
-- A transação da RPC abrange apenas fotografias. Produto, estoque e filas continuam sendo atualizados em etapas; uma falha pode deixar dados parcialmente salvos, informada pela mensagem de erro existente.
-- A RPC existente bloqueia as linhas de imagens, mas não compara uma versão da edição. Duas sessões concorrentes podem sobrescrever a seleção uma da outra. Uma proteção geral por versão exige evolução transacional do banco e não foi acrescentada nesta correção. O bloqueio dos produtos protegidos impede mudanças de fotos por este fluxo; outras rotinas administrativas do sistema não foram reescritas.
-- Originais legados acessíveis continuam onde estão; não há migração em massa nesta edição. As fotos novas seguem a VPS e a capa é tratada na preparação de envio já existente.
-- Limite de entrada permanece 8 MiB na edição (25 MiB no Drive). Os limites do provedor de hospedagem podem rejeitar uploads menores que 8 MiB antes de a rota receber o arquivo. Não se alterou o mecanismo de upload do navegador.
-- O original servido é o JPEG processado, como na criação implantada; o arquivo bruto selecionado não ganha um arquivo separado de backup.
-- A homologação autenticada no navegador, transferência à VPS real e envio real aos marketplaces dependem de ambiente autorizado; os testes usam arquivos sintéticos e serviços simulados.
+A criação do Drive grava url, local_url e local_path. A RPC existente de edição 091 grava url e os metadados, mas não possui local_url/local_path no INSERT. As colunas já existem; a diferença está na função, não no esquema de tabelas. Apenas acrescentar esses campos ao JSON do cliente não os persistiria.
 
-## Arquivos
+Nesta correção não se alterou a RPC nem se criou migration ou segunda escrita após a troca. A URL VPS canônica permanece suficiente para os leitores existentes e contém o caminho relativo. local_url e local_path continuam nulos para novas fotos da edição; os valores das imagens existentes são mantidos. Padronizar fisicamente esses dois campos exige uma futura atualização versionada da função, se desejada, para preservar a atomicidade. Não foi introduzida migration apenas para essa padronização.
 
-- app/api/products/images/prepare/route.ts: sessão ativa, armazenamento VPS e comprovante; exclusão física desabilitada.
-- app/produtos/[id]/product-editor.tsx: comprovante, reordenação sem reenvio, máximo de seis arquivos, controles protegidos e textos do fluxo.
-- app/produtos/[id]/page.tsx: repassa identificação dos vínculos protegidos.
-- app/produtos/actions.ts: validação da sequência e comprovantes, recuperação para VPS, troca atômica e retirada da exclusão física.
-- lib/product-photo-edit-policy.ts: política de preservação e assinatura/verificação de comprovantes.
-- lib/marketplace-temporary-images.ts: impede recuperação automática em produtos protegidos.
-- lib/prepare-marketplace-images.ts: bloqueia alterações de fotos protegidas no envio.
-- tests/product-image-replacement.test.ts: cenários de preservação, sequência inválida, assinatura adulterada, usuário/produto incorretos, expiração e metadados de JPEG real.
-- docs/product-photo-edit-audit.md: este diagnóstico.
+## Validações locais
 
-Referências conferidas: https://supabase.com/docs/reference/javascript/rpc e https://supabase.com/docs/reference/javascript/using-modifiers-throwonerror . Sem mudança de esquema ou nova API Supabase.
+A suíte nova verifica:
+
+1. Fotos disponíveis, inclusive da conta antiga, sem recuperação ou consultas ao banco.
+2. Recuperação de posição indisponível via Mercado Livre e Shopee sem substituir a secundária válida.
+3. Falha de recuperação com preservação das referências e rejeição de anúncio não vinculado antes de consultar o marketplace.
+4. Salvamento real da ação com processamento Sharp: armazenamento precede RPC; referência recuperada recebe URL VPS e posição 1; secundária válida permanece.
+5. Reordenação após recuperação sem novo upload; operações e RPC limitadas ao produto selecionado.
+6. Falhas de download, VPS e banco sem perda dos vínculos anteriores.
+7. Atualização da identidade da capa tratada ao trocar a primeira foto, preservando URL secundária.
+8. Preparação de publicação aceita original disponível da conta antiga e limita a gravação da derivada à imagem/capa selecionada.
+9. Validação de sequência, referência a outro produto, HMAC adulterado, expiração e usuário/produto incorretos.
+
+São testes com banco, marketplaces e transporte simulados; não são homologação nos serviços reais.
+
+## Restrições respeitadas e limites
+
+Sem push, deploy, migrations, limpeza física ou alterações em produção. Não há operação em massa sobre os 478 registros. A recuperação só atua nos produtos abertos/editados e somente quando a fotografia está indisponível; não existe regra por identidade da conta.
+
+Continuam os limites anteriores: não há controle de versão para duas edições simultâneas; a transação de fotos não abrange dados do produto, estoque e filas; arquivos definitivos podem ficar sem vínculo após abandono/falha; o limite de upload do provedor pode ser inferior aos 8 MiB aceitos pela aplicação. A correspondência de recuperação é comprovada pelo vínculo do anúncio e posição da fotografia, sem reconhecimento visual automático do conteúdo. A recuperação mantém a estratégia atual de primeira origem com imagens recuperáveis; não foi reimplementada para combinar imagens de diversas contas.
+
+## Implantação futura — não executada
+
+Impacta Vercel? Sim.
+Impacta o worker da VPS? Sim, por módulos compartilhados.
+Precisa git pull na VPS? Sim, na implantação aprovada.
+Precisa npm ci? Não, dependências inalteradas.
+Precisa pm2 restart marketplace-worker --update-env? Sim, na implantação aprovada.
+Precisa migration? Não.
+
+Após autorização e publicação do código, a atualização do worker exigirá:
+
+```bash
+cd /opt/gestao-marketplace
+git pull origin main
+pm2 restart marketplace-worker --update-env
+pm2 status marketplace-worker
+```
+
+Nenhum desses comandos foi executado nesta tarefa. Produção permanece pendente; não se declara READY.

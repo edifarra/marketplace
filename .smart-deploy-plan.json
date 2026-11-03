@@ -8,11 +8,11 @@
     "app/produtos/[id]/product-editor.tsx",
     "app/produtos/actions.ts",
     "docs/product-photo-edit-audit.md",
-    "lib/marketplace-temporary-images.ts",
     "lib/prepare-marketplace-images.ts",
     "lib/product-photo-edit-policy.ts",
     "tests/product-image-replacement.test.ts",
-    "tests/product-loader-drive.test.ts"
+    "tests/product-loader-drive.test.ts",
+    "tests/product-photo-recovery-flow.test.ts"
   ],
   "dependenciesChanged": false
 }

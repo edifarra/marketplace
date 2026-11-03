@@ -8,7 +8,7 @@ import { PriceInput } from "../price-input";
 import { mergeRecoveredImages } from "@/lib/product-image-source";
 
 type Option = { code: string; label: string; marketplaceCategory?: string; boardCodeRequired?: boolean };
-type ImageItem = { id: string; name: string; url: string; position: number; bytes: number; width: number; height: number; protectedLegacy?: boolean };
+type ImageItem = { id: string; name: string; url: string; position: number; bytes: number; width: number; height: number };
 type TemporaryImageSet = { images: Array<{ key: string; name: string; url: string; position: number; bytes: number; width: number; height: number }>; marketplace: Marketplace; accountId: string; listingId: string; totalRemoteImages: number } | null;
 type EditorImage = (ImageItem & { kind: "existing" })
   | { kind: "new"; key: string; name: string; url: string; bytes: number; width: number; height: number; file: File; uploadStatus: "uploading" | "ready" | "error"; uploadError?: string; receipt?: string }
@@ -76,7 +76,6 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     cover: ordered.length > 0
   };
   const hasRequiredErrors = Object.values(validation).some(valid => !valid);
-  const imagesLocked = images.some(image => image.protectedLegacy);
   const imageErrors = ordered.map(image => ({ image, errors: image.kind === "new" ? validateNewImageSource(image) : [] })).filter(item => item.errors.length > 0);
   const imagesPreparing = ordered.some(image => image.kind === "new" && image.uploadStatus === "uploading");
   const imageUploadFailed = ordered.some(image => image.kind === "new" && image.uploadStatus === "error");
@@ -110,7 +109,6 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     }));
   }
   const move = (index: number, delta: number) => setOrdered((current) => {
-    if (imagesLocked) return current;
     const target = index + delta;
     if (target < 0 || target >= current.length) return current;
     const next = [...current];
@@ -118,7 +116,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     setDirty(true); return next;
   });
   const imageKey = (image: EditorImage) => image.kind === "existing" ? `existing:${image.id}` : `${image.kind}:${image.key}`;
-  const remove = (key: string) => { if (imagesLocked) return; setDirty(true); setOrdered((current) => { const removed = current.find(image => imageKey(image) === key); if (removed?.kind === "new") {
+  const remove = (key: string) => { setDirty(true); setOrdered((current) => { const removed = current.find(image => imageKey(image) === key); if (removed?.kind === "new") {
     activeNewImageKeysRef.current.delete(removed.key);
     URL.revokeObjectURL(removed.url); newImageUrlsRef.current.delete(removed.url);
   } return current.filter(image => imageKey(image) !== key); }); };
@@ -251,7 +249,7 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
     </section>
     {picker && <div className="modal-backdrop"><section className="card category-modal"><div className="topbar"><div><h2>Categoria — {marketplaceLabels[picker]}</h2><div className="muted">{trail.map(item => item.name).join(" > ") || "Raiz"}</div></div><button className="secondary" type="button" onClick={() => setPicker(null)}>Fechar</button></div><input placeholder="Pesquisar por código ou descrição" value={categoryQuery} onChange={event => setCategoryQuery(event.target.value)}/>{categoryError && <div className="form-error">{categoryError}</div>}{categoryLoading ? <p>Carregando categorias atuais...</p> : <div className="category-tree">{trail.length > 0 && <button className="secondary compact" type="button" onClick={() => { const parent = trail.slice(0, -1); loadCategories(picker, parent.at(-1)?.id, parent); }}>Voltar</button>}{visibleNodes.map(node => <div className="category-node" key={node.id}><span><strong>{node.name}</strong><small>{node.id}</small></span><div>{node.hasChildren && <button type="button" className="secondary compact" onClick={() => loadCategories(picker, node.id, [...trail, { id: node.id, name: node.name }])}>Abrir</button>}<button type="button" className="primary compact" onClick={() => chooseMarketplaceCategory(node)}>Selecionar</button></div></div>)}{!visibleNodes.length && <p className="muted">Nenhuma categoria encontrada neste nível.</p>}</div>}</section></div>}
 
-    <section className={`section card${!validation.cover ? " required-field-error" : ""}`}><div className="editor-images-heading"><div><h2>Imagens</h2><span>A primeira imagem sempre será enviada como Foto 01. As novas fotos ficam armazenadas na VPS. A capa recebe fundo branco no envio aos marketplaces.</span>{validationAttempted && !validation.cover && <small className="required-field-message">Preencha o campo obrigatório: adicione pelo menos a Foto 1.</small>}{validationAttempted && imageErrors.length > 0 && <small className="required-field-message">Há um arquivo que não pode ser enviado. Use JPG, PNG ou WebP com até 8 MB.</small>}</div><button className="secondary" type="button" disabled={imagesLocked || ordered.length >= 6} onClick={() => inputRef.current?.click()}>Adicionar imagens</button></div>
+    <section className={`section card${!validation.cover ? " required-field-error" : ""}`}><div className="editor-images-heading"><div><h2>Imagens</h2><span>A primeira imagem sempre será enviada como Foto 01. As novas fotos ficam armazenadas na VPS. A capa recebe fundo branco no envio aos marketplaces.</span>{validationAttempted && !validation.cover && <small className="required-field-message">Preencha o campo obrigatório: adicione pelo menos a Foto 1.</small>}{validationAttempted && imageErrors.length > 0 && <small className="required-field-message">Há um arquivo que não pode ser enviado. Use JPG, PNG ou WebP com até 8 MB.</small>}</div><button className="secondary" type="button" disabled={ordered.length >= 6} onClick={() => inputRef.current?.click()}>Adicionar imagens</button></div>
     <input ref={inputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={async (event) => {
       const input = event.currentTarget;
       const files = Array.from(input.files || []).slice(0, Math.max(0, 6 - ordered.length));
@@ -268,7 +266,6 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
       selected.forEach((image, index) => queuePrepareImage(image.key, image.file, startPosition + index + 1));
       if (selected.length) setDirty(true);
     }} />
-    {imagesLocked && <p className="muted">As fotografias deste produto estão preservadas por conter vínculos da conta antiga desativada. Os demais dados podem ser editados.</p>}
     {temporaryImages && <div className="form-success">As fotos indisponíveis foram recuperadas temporariamente do {temporaryImages.marketplace === "mercado_livre" ? "Mercado Livre" : "Shopee"}. As originais disponíveis foram mantidas. Ao salvar, as substituições exibidas serão gravadas e enviadas aos anúncios vinculados conforme o fluxo de atualização.</div>}
     {ordered.some(image => image.kind === "new") && <div className="form-success">As novas fotos podem ser ordenadas ou excluídas antes de salvar. Somente a sequência exibida abaixo será gravada.</div>}
     <div className="editable-image-grid">
@@ -276,10 +273,10 @@ export function ProductEditor({ product, types, brands, specials, images, tempor
         <button type="button" className="image-preview-button" onClick={() => setPreview(image.url)}><img src={image.url} alt={image.name} /></button>
         {index === 0 && <strong className="cover-badge">Foto da Capa</strong>}
         {image.kind === "new" && <strong className="cover-badge">{image.uploadStatus === "uploading" ? "Processando…" : image.uploadStatus === "error" ? "Falha no processamento" : "Pronta para salvar"}</strong>}
-        <button type="button" className="image-trash" disabled={imagesLocked} aria-label={`Excluir ${image.name}`} onClick={() => remove(key)}>🗑</button>
+        <button type="button" className="image-trash" aria-label={`Excluir ${image.name}`} onClick={() => remove(key)}>🗑</button>
         {image.kind === "new" && image.uploadError && <div className="product-image-errors"><span>{image.uploadError}</span><button type="button" className="secondary compact" onClick={() => { setOrdered(current => current.map(item => item.kind === "new" && item.key === image.key ? { ...item, uploadStatus: "uploading", uploadError: undefined } : item)); queuePrepareImage(image.key, image.file, index + 1); }}>Tentar novamente</button></div>}
         {validationAttempted && errors.length > 0 && <div className="product-image-errors">{errors.map(error => <span key={error}>{error}</span>)}<span>Atual: {image.width || "?"} × {image.height || "?"} px · {formatImageBytes(image.bytes)}</span></div>}
-        <figcaption><button type="button" disabled={imagesLocked || index === 0 || (image.kind === "existing" && image.protectedLegacy) || (ordered[index - 1]?.kind === "existing" && (ordered[index - 1] as ImageItem).protectedLegacy)} onClick={() => move(index, -1)}>←</button><span>{String(index + 1).padStart(2, "0")}</span><button type="button" disabled={imagesLocked || index === ordered.length - 1 || (image.kind === "existing" && image.protectedLegacy) || (ordered[index + 1]?.kind === "existing" && (ordered[index + 1] as ImageItem).protectedLegacy)} onClick={() => move(index, 1)}>→</button></figcaption>
+        <figcaption><button type="button" disabled={index === 0} onClick={() => move(index, -1)}>←</button><span>{String(index + 1).padStart(2, "0")}</span><button type="button" disabled={index === ordered.length - 1} onClick={() => move(index, 1)}>→</button></figcaption>
       </figure>})}
     </div></section>
     {preview && <button type="button" className="image-preview-modal" onClick={() => setPreview("")}><img src={preview} alt="Visualização ampliada" /></button>}

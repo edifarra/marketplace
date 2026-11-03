@@ -1,4 +1,3 @@
-import { isProtectedLegacyPhoto } from "./product-photo-edit-policy";
 import { supabaseAdmin } from "./supabase-admin";
 import { uploadMarketplaceCover } from "./cloudinary";
 import { prepareProductMarketplaceImages } from "./product-marketplace-images";
@@ -8,7 +7,6 @@ export async function prepareMarketplaceImages(productId: string) {
   const db = supabaseAdmin();
   const result = await db.from("product_images").select("id,url,local_url,cloudinary_url,cloudinary_public_id,cloudinary_cloud_name,position")
     .eq("product_id", productId).order("position").throwOnError();
-  if (result.data?.some(isProtectedLegacyPhoto)) throw new Error("Envio de fotos bloqueado: vínculos da conta desativada preservados.");
   return prepareProductMarketplaceImages(result.data || [], {
     available: imageIsAvailable,
     download: async url => {

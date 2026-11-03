@@ -2,27 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ProductImageSource } from "./product-image-source";
 import { VPS_IMAGE_ORIGIN, type StoredDrivePhoto } from "./drive-photo-processing";
 
-export function isProtectedLegacyPhoto(image: ProductImageSource & { cloudinary_public_id?: string | null; cloudinary_cloud_name?: string | null }) {
-  return image.cloudinary_cloud_name === "dknfrkqol"
-    || /^dknfrkqol[:/]/.test(image.cloudinary_public_id || "")
-    || [image.url, image.local_url, image.cloudinary_url].some(value => {
-      try { const url = new URL(value || ""); return url.hostname === "res.cloudinary.com" && url.pathname.split("/")[1] === "dknfrkqol"; }
-      catch { return false; }
-    });
-}
-
 export function validatePhotoSequence(sequence: string[], images: Array<ProductImageSource & { id: string; position: number }>) {
   if (!sequence.length || sequence.length > 6 || new Set(sequence).size !== sequence.length) throw new Error("Selecione entre 1 e 6 fotos, sem repetições.");
   if (sequence.some(token => !/^(existing|new|remote):.+$/.test(token))) throw new Error("Sequência de fotos inválida.");
   const ids = new Set(images.map(image => image.id));
   if (sequence.some(token => token.startsWith("existing:") && !ids.has(token.slice(9)))) throw new Error("Uma foto não pertence mais ao produto. Reabra a edição.");
-  if (images.some(isProtectedLegacyPhoto)) {
-    const original = [...images].sort((a, b) => a.position - b.position).map(image => "existing:" + image.id);
-    if (sequence.length !== original.length || sequence.some((token, index) => token !== original[index])) throw new Error("As fotografias deste produto estão preservadas por conter vínculos da conta desativada.");
-  }
-  for (const image of images.filter(isProtectedLegacyPhoto)) {
-    if (sequence[image.position - 1] !== `existing:${image.id}`) throw new Error("Os vínculos da conta Cloudinary desativada devem permanecer nas posições originais.");
-  }
 }
 
 export type PreparedProductPhoto = StoredDrivePhoto & { name: string; productId: string; userId: string; expiresAt: number };

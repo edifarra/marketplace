@@ -2,17 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import sharp from "sharp";
-import { isProtectedLegacyPhoto, validatePhotoSequence, signPreparedPhoto, verifyPreparedPhoto } from "../lib/product-photo-edit-policy";
+import { validatePhotoSequence, signPreparedPhoto, verifyPreparedPhoto } from "../lib/product-photo-edit-policy";
 import { processAndStoreDrivePhoto, VPS_IMAGE_ORIGIN } from "../lib/drive-photo-processing";
 const old = { id: "old", position: 1, url: "https://res.cloudinary.com/dknfrkqol/image/upload/v1/photo.jpg" };
-test("protected account detected from all metadata", () => {
-  for (const image of [old, {cloudinary_public_id:"dknfrkqol::produtos/foto"}, {cloudinary_cloud_name:"dknfrkqol"}, {local_url:old.url}, {cloudinary_url:old.url}]) assert.equal(isProtectedLegacyPhoto(image), true);
-  assert.equal(isProtectedLegacyPhoto({url:old.url.replace("/dknfrkqol/", "/active/")}), false);
-});
-test("protected product rejects removal replacement reorder and additions", () => {
+test("old account permits unchanged images, removal replacement reorder recovery and additions", () => {
   const images = [old, {id:"second",position:2}];
-  validatePhotoSequence(["existing:old","existing:second"], images);
-  for (const order of [["existing:second"],["new:x","existing:second"],["existing:second","existing:old"],["existing:old","existing:second","new:x"]]) assert.throws(()=>validatePhotoSequence(order,images));
+  for (const order of [["existing:old","existing:second"],["existing:second"],["new:x","existing:second"],["remote:0","existing:second"],["existing:second","existing:old"],["existing:old","existing:second","new:x"]]) validatePhotoSequence(order, images);
 });
 test("unprotected product accepts reorder; rejects duplicate foreign and invalid tokens", () => {
   const images=[{id:"one",position:1},{id:"two",position:2}];

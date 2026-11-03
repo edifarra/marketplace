@@ -1,4 +1,3 @@
-import { isProtectedLegacyPhoto } from "./product-photo-edit-policy";
 import { readImageDimensions } from "./marketplace-image-validation";
 import { extractMarketplaceImageUrls, extractMercadoLivreImageUrls } from "./marketplace-image-recovery";
 import { getMercadoLivreAccountById, getMercadoLivreItem } from "./mercado-livre";
@@ -35,9 +34,8 @@ export async function recoverTemporaryImagesWhenCloudinaryIsUnavailable(
   productId: string,
   currentImages: ProductImageSource[]
 ): Promise<TemporaryMarketplaceImageSet | null> {
-  if (currentImages.some(isProtectedLegacyPhoto)) return null;
   const reachable = await Promise.all(currentImages.map(image => imageIsAvailable(productImageUrl(image))));
-  const unavailablePositions = currentImages.filter((image, index) => !reachable[index] && !isProtectedLegacyPhoto(image)).map(image => Number(image.position));
+  const unavailablePositions = currentImages.filter((_, index) => !reachable[index]).map(image => Number(image.position));
   if (currentImages.length && !unavailablePositions.length) return null;
 
   const db = supabaseAdmin();

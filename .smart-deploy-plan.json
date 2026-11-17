@@ -1,22 +1,11 @@
 {
   "schemaVersion": 1,
-  "base": "daf83dab08fab5cec7f5ed8ff0ce5a7193e25e60",
+  "base": "98e51a815a6c60aab4d2a86eb5684abc44c36485",
   "files": [
     ".smart-deploy-plan.json",
-    "app/produtos/[id]/page.tsx",
-    "app/produtos/[id]/product-editor.tsx",
-    "app/produtos/actions.ts",
-    "docs/product-photo-save-followup.md",
-    "docs/product-photo-simple-cleanup.md",
-    "lib/product-image-cleanup.ts",
-    "lib/product-photo-edit-policy.ts",
-    "lib/vps-image-storage.ts",
-    "tests/product-image-cleanup.test.ts",
-    "tests/product-image-replacement.test.ts",
-    "tests/product-photo-cancel.test.ts",
-    "tests/product-photo-recovery-flow.test.ts",
-    "tests/tiny-retired-links.test.ts",
-    "tests/vps-image-storage.test.ts"
+    "lib/marketplaces/shopee/client.ts",
+    "lib/shopee-philco-text.ts",
+    "tests/shopee-philco-text.test.ts"
   ],
   "dependenciesChanged": false
 }

@@ -1,4 +1,5 @@
 import { createShopeeSignature } from "./signature";
+import { normalizeShopeePhilcoPayload } from "../../shopee-philco-text";
 import { buildShopeeStockPayload } from "../../marketplace-stock-payloads";
 
 const DEFAULT_SHOPEE_BASE_URL = "https://partner.shopeemobile.com";
@@ -240,12 +241,12 @@ export class ShopeeClient {
       accessToken,
       shopId,
       method: "POST",
-      body: payload
+      body: normalizeShopeePhilcoPayload(payload)
     });
   }
 
   async updateProduct(accessToken: string, shopId: string | number, payload: Record<string, unknown>) {
-    return this.signedRequest<Record<string, unknown>>("/api/v2/product/update_item", { accessToken, shopId, method: "POST", body: payload });
+    return this.signedRequest<Record<string, unknown>>("/api/v2/product/update_item", { accessToken, shopId, method: "POST", body: normalizeShopeePhilcoPayload(payload) });
   }
 
   async getLogisticsChannels(accessToken: string, shopId: string | number) {

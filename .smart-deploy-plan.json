@@ -6,7 +6,8 @@
     "app/vendas/page.tsx",
     "docs/sales-inventory-audit-pagination.md",
     "lib/sales-data.ts",
-    "tests/sales-data.test.ts"
+    "tests/sales-data.test.ts",
+    "tests/search-params-pages.test.ts"
   ],
   "dependenciesChanged": false
 }

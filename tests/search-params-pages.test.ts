@@ -1,3 +1,4 @@
+import { loadAllSalesRows } from "../lib/sales-data";
 import { activeTinyProductId } from "../lib/tiny-product-link";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -23,6 +24,7 @@ function fixture() {
   const calls: any[][] = [];
   const record = (name: string, result: any) => async (...args: any[]) => { calls.push([name, ...args]); return result; };
   const mocks: Record<string, unknown> = {
+    "@/lib/sales-data": { loadAllSalesRows },
     "@/lib/supabase-admin": { supabaseAdmin: () => db },
     "next/cache": { unstable_noStore() {} },
     "next/navigation": { redirect(path: string) { throw new Error(`Unexpected redirect: ${path}`); } },

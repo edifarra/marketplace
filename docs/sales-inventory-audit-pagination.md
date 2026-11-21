@@ -18,9 +18,10 @@ Todas as cinco leituras da tela passam por loadAllSalesRows, com páginas de 500
 
 ## Validação
 
-- Três testes: 1.034 registros, limite exato de página e erros em leituras parciais/resposta nula.
+- Quatro testes: 1.034 registros, limite exato de página, erros em leituras parciais/resposta nula e integração da página real preservando auditorias com erro. Fixtures dos testes de filtros atualizadas para usar o leitor real.
 - TypeScript e build de produção aprovados.
 - Leitura real com a função corrigida: 1.031 vendas, 1.034 itens, 1.034 auditorias, 3.620 produtos; venda de exemplo com totalItems 1 e auditSucceeded true; 261 erros preservados.
 - Build emitiu aviso de vulnerabilidade da versão atual do Next.js; atualização de dependências não integra esta correção.
 
 Escopo: Vercel sim; worker/VPS não; migrations não; npm ci não; reprocessamento não. O carregamento completo mantém o comportamento atual da tela; paginação também da interface pode ser considerada separadamente conforme o volume crescer. As leituras não são uma transação única, como antes.
+

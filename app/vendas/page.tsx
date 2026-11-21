@@ -1,3 +1,4 @@
+import { loadAllSalesRows } from "@/lib/sales-data";
 import { Sidebar } from "../components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { SalesGrid, type SaleGridRow } from "./sales-grid";
@@ -19,12 +20,12 @@ export default async function SalesPage({ searchParams }: { searchParams?: Promi
   const orderIdFilter = String(urlParams?.orderId || "").trim().toLocaleUpperCase("pt-BR");
   const skuFilter = normalizeSku(urlParams?.sku);
   const db = supabaseAdmin();
-  const [{ data: sales }, { data: items }, { data: accounts }, { data: products }, { data: inventoryAudits }] = await Promise.all([
-    db.from("venda").select("id,marketplace,order_id,status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,shipment_id,raw_data,created_at,updated_at,status_venda(internal_status,description)").order("data_venda", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
-    db.from("venda_item").select("venda_id,sku,quantidade,valor_unitario,valor_total"),
-    db.from("config_marketplace_accounts").select("id,name,nickname,marketplace,seller_id,account_id,shop_id"),
-    db.from("products").select("sku,title"),
-    db.from("venda_estoque_auditoria").select("venda_id,sku,status,mensagem,estoque_fisico,estoque_disponivel,reservas_ativas,estoque_disponivel_esperado,checked_at")
+  const [sales, items, accounts, products, inventoryAudits] = await Promise.all([
+    loadAllSalesRows((from, to) => db.from("venda").select("id,marketplace,order_id,status_original,valor_produtos,valor_frete,valor_taxas,valor_descontos,valor_liquido,data_venda,shipment_id,raw_data,created_at,updated_at,status_venda(internal_status,description)").order("data_venda", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).order("id").range(from, to), "venda"),
+    loadAllSalesRows((from, to) => db.from("venda_item").select("venda_id,sku,quantidade,valor_unitario,valor_total").order("id").range(from, to), "venda_item"),
+    loadAllSalesRows((from, to) => db.from("config_marketplace_accounts").select("id,name,nickname,marketplace,seller_id,account_id,shop_id").order("id").range(from, to), "config_marketplace_accounts"),
+    loadAllSalesRows((from, to) => db.from("products").select("sku,title").order("id").range(from, to), "products"),
+    loadAllSalesRows((from, to) => db.from("venda_estoque_auditoria").select("venda_id,sku,status,mensagem,estoque_fisico,estoque_disponivel,reservas_ativas,estoque_disponivel_esperado,checked_at").order("id").range(from, to), "venda_estoque_auditoria")
   ]);
   const productTitles = new Map((products || []).map((product) => [normalizeSku(product.sku), String(product.title || "")]));
   const shippingTodayCount = ((sales || []) as unknown as Sale[])

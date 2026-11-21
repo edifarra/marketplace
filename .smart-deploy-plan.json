@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
-  "base": "98e51a815a6c60aab4d2a86eb5684abc44c36485",
+  "base": "0e15a36eb658dd6de271a20772bcaa730d343bc3",
   "files": [
     ".smart-deploy-plan.json",
-    "lib/marketplaces/shopee/client.ts",
-    "lib/shopee-philco-text.ts",
-    "tests/shopee-philco-text.test.ts"
+    "app/vendas/page.tsx",
+    "docs/sales-inventory-audit-pagination.md",
+    "lib/sales-data.ts",
+    "tests/sales-data.test.ts"
   ],
   "dependenciesChanged": false
 }

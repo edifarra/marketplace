@@ -1,12 +1,16 @@
 {
   "schemaVersion": 1,
-  "base": "0e15a36eb658dd6de271a20772bcaa730d343bc3",
+  "base": "e5205a4b830a87f1e0c900bc428082dee557c9e0",
   "files": [
     ".smart-deploy-plan.json",
-    "app/vendas/page.tsx",
-    "docs/sales-inventory-audit-pagination.md",
-    "lib/sales-data.ts",
-    "tests/sales-data.test.ts",
+    "app/components/sidebar-navigation.tsx",
+    "app/configuracoes/frete-flex/actions.ts",
+    "app/configuracoes/frete-flex/delete-city-button.tsx",
+    "app/configuracoes/frete-flex/page.tsx",
+    "app/globals.css",
+    "lib/frete-flex-validation.ts",
+    "tests/frete-flex-access.test.ts",
+    "tests/frete-flex-validation.test.ts",
     "tests/search-params-pages.test.ts"
   ],
   "dependenciesChanged": false

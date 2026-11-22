@@ -194,7 +194,7 @@ test("audit covers every route receiving searchParams, including the two already
   const discovered = readdirSync(root, { recursive: true }).map(String).filter(path => /(^|[\\/])page\.tsx$/.test(path))
     .filter(path => /\bsearchParams\b/.test(readFileSync(new URL(path.replaceAll("\\", "/"), root), "utf8")))
     .map(path => path.replaceAll("\\", "/").replace(/\/page\.tsx$/, ""));
-  const expected = [...scenarios.map(s => s.route), "central-reclamacoes", "configuracoes/[section]", "produtos/[id]"].sort();
+  const expected = [...scenarios.map(s => s.route), "central-reclamacoes", "configuracoes/[section]", "configuracoes/frete-flex", "produtos/[id]"].sort();
   assert.deepEqual(discovered.sort(), expected);
   for (const route of discovered) {
     const source = ts.createSourceFile(route, readFileSync(new URL(`${route}/page.tsx`, root), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

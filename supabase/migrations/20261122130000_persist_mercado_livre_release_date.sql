@@ -34,6 +34,7 @@ declare
   approved_at timestamptz;
   effective_release_at timestamptz;
   previous_effective_release_at timestamptz;
+  previous_release_is_forecast boolean := false;
 begin
   if p_marketplace_account_id is null or nullif(p_seller_id, '') is null or nullif(p_order_id, '') is null
      or jsonb_typeof(p_expected_payment_ids) is distinct from 'array'
@@ -70,6 +71,29 @@ begin
         if not (payment_map ? (payment_item->>'id')) then
           payment_map := payment_map || jsonb_build_object(payment_item->>'id', payment_item);
         end if;
+      end if;
+    end loop;
+  end if;
+
+  -- A legacy sale date is replaceable only when the old payment snapshots
+  -- explicitly identify that exact value as a pending payment forecast, and
+  -- no prior effective-release proof was stored.
+  if sale_row.data_liberacao is not null
+     and (old_capture->'effective_release_at' is null or old_capture->'effective_release_at' = 'null'::jsonb) then
+    for expected_id in select value from jsonb_array_elements_text(p_expected_payment_ids) loop
+      previous_payment := payment_map->expected_id;
+      if previous_payment->>'money_release_status' is distinct from 'released'
+         and nullif(previous_payment->>'money_release_date', '') is not null
+         and (previous_payment->>'money_release_date') ~ '(Z|[+-][0-9]{2}:?[0-9]{2})$' then
+        begin
+          if (previous_payment->>'money_release_date')::timestamptz = sale_row.data_liberacao then
+            previous_release_is_forecast := true;
+            exit;
+          end if;
+        exception when others then
+          -- Invalid stored dates do not prove that the sale date was a forecast.
+          null;
+        end;
       end if;
     end loop;
   end if;
@@ -172,6 +196,7 @@ begin
          valor_liquido = case when aggregate_complete then (aggregate_cents / 100)::numeric(12,2) else valor_liquido end,
          data_pagamento = coalesce(data_pagamento, approved_at),
          data_liberacao = case
+           when effective_release_at is not null and previous_release_is_forecast then effective_release_at
            when effective_release_at is not null then greatest(data_liberacao, effective_release_at)
            else data_liberacao
          end,
@@ -181,7 +206,10 @@ begin
   select count(*) into payment_count from jsonb_object_keys(payment_map);
   return jsonb_build_object('updated', true, 'sale_id', sale_row.id,
     'payment_count', payment_count, 'commercial_net_updated', aggregate_complete,
-    'effective_release_at', coalesce(greatest(sale_row.data_liberacao, effective_release_at), sale_row.data_liberacao, effective_release_at));
+    'effective_release_at', case
+      when previous_release_is_forecast then effective_release_at
+      else coalesce(greatest(sale_row.data_liberacao, effective_release_at), sale_row.data_liberacao, effective_release_at)
+    end);
 end;
 $$;
 

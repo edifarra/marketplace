@@ -28,6 +28,7 @@ test("effective release persistence requires released status and a valid date, w
   assert.match(migration, /money_release_status' = 'released'/);
   assert.match(migration, /money_release_date'\) ~ '\(Z\|\[\+\-\]/);
   assert.match(migration, /data_liberacao = case[\s\S]*greatest\(data_liberacao, effective_release_at\)/i);
+  assert.match(migration, /when effective_release_at is not null and previous_release_is_forecast then effective_release_at/i);
   assert.match(migration, /incoming_version > previous_version/);
   assert.match(migration, /for update/i);
   assert.doesNotMatch(migration, /data_liberacao\s*=\s*(?:now\(\)|current_timestamp)/i);

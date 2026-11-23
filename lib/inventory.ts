@@ -1,3 +1,4 @@
+import { persistMercadoLivreSale } from "./mercado-livre-sale-write";
 import { createHash, randomUUID } from "crypto";
 import { supabaseAdmin } from "./supabase-admin";
 import { Marketplace } from "./types";
@@ -92,17 +93,18 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     );
 
     const previousSale = await supabase.from("venda")
-      .select("id,raw_data")
+      .select("id,raw_data,updated_at")
       .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
     const previousRawData = (previousSale.data?.raw_data as Record<string, unknown> | null) || {};
-    const {raw:financialCapture,...financialColumns}=saleFinancialPatch(input,previousRawData);
+    const {raw:financialCapture,...financialColumns}=input.marketplace === "mercado_livre"
+      ? saleFinancialPatch(input,previousRawData) : {raw:undefined};
     const detectedPostedAt = salePostedAt({
       marketplace: input.marketplace,
       status_original: status,
       raw_data: { payload: input.rawPayload }
     })?.toISOString();
 
-    const vendaResult = await supabase.from("venda").upsert({
+    const saleValues = {
       marketplace: input.marketplace,
       order_id: orderId,
       status_id: statusResult.data?.id || null,
@@ -124,7 +126,10 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
         marketplace_posted_at: previousRawData.marketplace_posted_at || detectedPostedAt || null
       },
       updated_at: new Date().toISOString()
-    }, { onConflict: "marketplace,order_id" }).select("id").single().throwOnError();
+    };
+    const vendaResult = input.marketplace === "mercado_livre"
+      ? await persistMercadoLivreSale(supabase, saleValues, previousSale.data)
+      : await supabase.from("venda").upsert(saleValues, { onConflict: "marketplace,order_id" }).select("id").single().throwOnError();
     vendaId = String(vendaResult.data.id);
 
     const canonicalItemSkus = new Set<string>();

@@ -1,6 +1,8 @@
 import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
+// Reject recovery before loading credentials, refreshing tokens or reading APIs.
+if (process.argv.includes("--recover")) throw new Error("Recuperação histórica bloqueada pela GMUD 1.");
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 const db = createClient(
@@ -74,55 +76,8 @@ if (recover) {
   if (recovery.failed) process.exitCode = 1;
 }
 
-async function saveOrder(orderId, account, token) {
-  const order = await mlGet(`/orders/${orderId}`, token);
-  const shipmentId = String(order.shipping?.id || "");
-  const [shipment, shipmentHistory] = shipmentId
-    ? await Promise.all([
-        mlGet(`/shipments/${shipmentId}`, token, true),
-        mlGet(`/shipments/${shipmentId}/history`, token, true)
-      ])
-    : [{}, []];
-  const status = shipment.substatus === "out_for_delivery"
-    ? "out_for_delivery" : String(shipment.status || order.status || "unknown");
-  const { data: statusRow } = await db.from("status_venda").select("id")
-    .eq("marketplace", "mercado_livre").eq("external_status", status).maybeSingle();
-  const items = Array.isArray(order.order_items) ? order.order_items : [];
-  const fees = items.reduce((total, item) => total + number(item.sale_fee), 0);
-  const shipping = (order.payments || []).reduce((total, payment) => total + number(payment.shipping_cost), 0);
-  const value = number(order.total_amount || order.paid_amount);
-  const payload = { recovery: true, order, shipment, shipmentHistory };
-  const { data: sale, error: saleError } = await db.from("venda").upsert({
-    marketplace: "mercado_livre", order_id: String(order.id || orderId),
-    status_id: statusRow?.id || null, status_original: status,
-    valor_produtos: value, valor_frete: shipping, valor_taxas: fees,
-    valor_liquido: value + shipping - fees, data_venda: order.date_created,
-    shipment_id: shipmentId || null,
-    raw_data: { payload, marketplace_account_id: account.id, marketplace_nickname: account.nickname || account.name },
-    updated_at: new Date().toISOString()
-  }, { onConflict: "marketplace,order_id" }).select("id").single();
-  if (saleError) throw saleError;
-  for (const item of items) {
-    const sku = String(item.item?.seller_sku || item.item?.seller_custom_field || "").trim();
-    if (!sku) continue;
-    const quantity = Math.max(1, number(item.quantity));
-    const unitPrice = number(item.unit_price);
-    const { error: itemError } = await db.from("venda_item").upsert({
-      venda_id: sale.id, order_id: String(order.id || orderId), sku, quantidade: quantity,
-      valor_unitario: unitPrice, valor_total: unitPrice * quantity, raw_data: { order_item: item }
-    }, { onConflict: "venda_id,sku" });
-    if (itemError) throw itemError;
-  }
-  const eventId = `recovery:mercado_livre:${order.id || orderId}`;
-  const { error: activityError } = await db.from("marketplace_activities").insert({
-    marketplace: "mercado_livre", event_type: "historical_order_recovery",
-    external_event_id: eventId, order_id: String(order.id || orderId), venda_id: sale.id,
-    description: `Pedido Mercado Livre recuperado: ${status}`, value,
-    item_count: items.reduce((total, item) => total + Math.max(1, number(item.quantity)), 0),
-    status: "processed", raw_payload: payload, processed_at: new Date().toISOString(),
-    received_at: order.date_last_updated || order.date_created
-  });
-  if (activityError && !/duplicate|unique/i.test(activityError.message)) throw activityError;
+async function saveOrder() {
+  throw new Error("Recuperação histórica bloqueada: requer conciliação financeira e aprovação específica.");
 }
 
 async function mlGet(path, token, newFormat = false) {

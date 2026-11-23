@@ -1,20 +1,21 @@
 {
   "schemaVersion": 1,
-  "base": "bbca53b489fef42874363621526595a393b9f361",
+  "base": "ab6b847624ed18908c11ffbfcce4b98d2bde00bf",
   "files": [
     ".smart-deploy-plan.json",
-    "lib/marketplace-queue-worker.ts",
-    "lib/marketplace-queue.ts",
-    "lib/mercado-livre-payment-webhook.ts",
+    "app/page.tsx",
+    "app/vendas/page.tsx",
+    "lib/inventory.ts",
+    "lib/mercado-livre-orders.ts",
     "lib/mercado-livre-sale-finance.ts",
-    "scripts/smart-migration-confirmation.mjs",
-    "scripts/validate-mercado-livre-payment-finance.ts",
-    "supabase/migrations/20261122130000_persist_mercado_livre_release_date.sql",
-    "tests/mercado-livre-payment-finance-sql.test.mjs",
-    "tests/mercado-livre-payment-integrity.test.ts",
-    "tests/mercado-livre-payment-webhook.test.ts",
+    "lib/mercado-livre-sale-write.ts",
+    "scripts/audit-mercado-livre-sales-30d.mjs",
+    "scripts/reprocess-mercado-livre-sales.mjs",
+    "tests/inventory-sale-financial-persistence.test.ts",
+    "tests/mercado-livre-finance-prevention.test.ts",
     "tests/mercado-livre-sale-finance.test.ts",
-    "tests/smart-migration-confirmation.test.mjs"
+    "tests/mercado-livre-sale-write.test.ts",
+    "tests/sales-data.test.ts"
   ],
   "dependenciesChanged": false
 }

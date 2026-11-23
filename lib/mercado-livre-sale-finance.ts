@@ -28,8 +28,9 @@ export async function captureSaleFinance(order: Row, sellerId: string, read: (id
     } catch(e) { errors.push({payment_id:id,endpoint:`/v1/payments/${id}`,code:e instanceof Error && e.message==='identity' ? 'identity_mismatch' : 'payment_unavailable'}); }
   }));
   payments.sort((a,b)=>a.id.localeCompare(b.id));
-  let net=0, complete=ids.length>0 && !errors.length;
+  let net=0, complete=ids.length>0 && !errors.length && payments.some(p=>p.status==='approved');
   for(const p of payments) {
+    if (['cancelled','rejected'].includes(p.status)) { p.commercial_net_cents=0; continue; }
     let paymentComplete=p.status==='approved' && (p.transaction_amount_refunded==null || financialCents(p.transaction_amount_refunded)===0);
     const gross=financialCents(p.transaction_amount), shipping=financialCents(p.shipping_amount);
     if(gross===null || shipping===null || !p.charges) { complete=false; paymentComplete=false; p.commercial_net_cents=null; continue; }
@@ -72,14 +73,72 @@ function validTimestamp(value: unknown) {
   return new Date(value).toISOString();
 }
 
-// Keep a successful earlier observation on a later natural trigger whose API
-// lookup fails. This does not schedule or perform any later synchronization.
-export function saleFinancialPatch(input: {finance?:Row;paidAt?:string|null}, previous:Row) {
+
+// Historical formula values alone are never evidence of reconciliation.
+export function confirmedSaleFinance(value?: unknown): Row | undefined {
+  const capture = value && typeof value === "object" && !Array.isArray(value) ? value as Row : undefined;
+  const valid=(value?:Row)=>value?.state==='complete' && financialCents(value.commercial_net)!==null
+    && (!value.errors || (Array.isArray(value.errors) && value.errors.length===0));
+  if(valid(capture)) return capture;
+  if(valid(capture?.previous_success)) return capture!.previous_success;
+  // Compatibility with the existing payment RPC's compact previous_success.
+  const legacy=capture?.previous_success;
+  if (legacy?.state == null && financialCents(legacy?.commercial_net)!==null
+      && legacy?.basis==='original collector charges; snapshot is not a statement movement'
+      && validTimestamp(legacy.collected_at)) return legacy;
+  return undefined;
+}
+function olderCapture(incoming:Row, previous:Row) {
+  return (previous.payments || []).some((p:Row)=>{
+    const next=(incoming.payments || []).find((n:Row)=>String(n.id)===String(p.id));
+    const before=validTimestamp(p.api_updated_at), after=validTimestamp(next?.api_updated_at);
+    return !next || (before && (!after || Date.parse(after)<Date.parse(before)));
+  });
+}
+export function saleFinancialPatch(input:{finance?:Row;paidAt?:string|null},previous:Row) {
   const finance=input.finance;
-  const previousSuccess=previous.financial_capture?.commercial_net!=null ? previous.financial_capture : previous.financial_capture?.previous_success;
+  const previousSuccess=confirmedSaleFinance(previous.financial_capture);
+  const incoming=finance?.state==='complete' ? confirmedSaleFinance(finance) : undefined;
+  const success=incoming && (!previousSuccess || !olderCapture(incoming,previousSuccess)) ? incoming : previousSuccess;
+  const raw=success===incoming && incoming ? incoming : {
+    ...(finance || previous.financial_capture || {}), state:'partial', commercial_net:null,
+    reconciliation_status:success ? 'previous_confirmed' : 'pending',
+    previous_success:success || null
+  };
   return {
     ...(input.paidAt ? {data_pagamento:input.paidAt} : {}),
-    ...(finance?.commercial_net!=null ? {valor_liquido:finance.commercial_net} : previousSuccess?.commercial_net!=null ? {valor_liquido:previousSuccess.commercial_net} : {}),
-    raw: finance ? {...finance,...(finance.commercial_net==null && previousSuccess ? {previous_success:previousSuccess} : {})} : previous.financial_capture
+    // Technical NOT NULL placeholder, explicitly pending in raw and UI.
+    valor_liquido:success ? Number(success.commercial_net) : 0, raw
   };
+}
+
+// Displayed order freight is informational, never a fallback for commercial net.
+export function approvedOrderShipping(payments: Row[]): number {
+  const seen = new Set<string>();
+  let cents = 0;
+  for (const payment of payments) {
+    if (payment.status !== 'approved') continue;
+    const id = String(payment.id || '');
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    cents += financialCents(payment.shipping_cost) ?? 0;
+  }
+  return cents / 100;
+}
+
+// A pending ML sale makes the aggregate unavailable, rather than a false total.
+// Other marketplaces retain the existing dashboard calculation.
+export function saleNetTotal(sales: Row[]): number | null {
+  let total = 0;
+  for (const sale of sales) {
+    if (sale.marketplace === 'mercado_livre') {
+      const capture = confirmedSaleFinance(sale.raw_data?.financial_capture);
+      if (!capture) return null;
+      total += Number(capture.commercial_net);
+    } else {
+      total += Number(sale.valor_produtos || 0) - Number(sale.valor_taxas || 0)
+        - Number(sale.valor_descontos || 0) - Number(sale.valor_frete || 0);
+    }
+  }
+  return total;
 }

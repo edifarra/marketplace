@@ -1,3 +1,4 @@
+import { confirmedSaleFinance } from "@/lib/mercado-livre-sale-finance";
 import { loadAllSalesRows } from "@/lib/sales-data";
 import { Sidebar } from "../components/sidebar";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -43,6 +44,7 @@ export default async function SalesPage({ searchParams }: { searchParams?: Promi
   const rows = sortedSales.map((sale): SaleGridRow => {
     const raw = sale.raw_data || {};
     const financial = raw.financial_capture as {state?:string;commercial_net?:number|null} | undefined;
+    const confirmedFinancial = confirmedSaleFinance(financial);
     const account = resolveAccount(sale, raw, accounts || []);
     const saleItems = itemMap.get(sale.id) || [];
     const saleAudits = auditMap.get(sale.id) || [];
@@ -102,8 +104,8 @@ export default async function SalesPage({ searchParams }: { searchParams?: Promi
         { label: "Frete", value: money(sale.valor_frete) },
         { label: "Descontos", value: money(sale.valor_descontos) },
         { label: "Faturamento (produtos + frete)", value: money(Number(sale.valor_produtos) + Number(sale.valor_frete)) },
-        { label: sale.marketplace === "mercado_livre" ? financial?.state === 'complete' ? "Líquido comercial (cobranças MP)" : "Líquido comercial estimado" : "Valor líquido", value: money(sale.valor_liquido) },
-        ...(sale.marketplace === "mercado_livre" ? [{ label: "Informação financeira", value: financial?.state === 'complete' ? "Capturada no processamento. Movimentação financeira: consulte o extrato." : "Captura incompleta ou anterior à validação financeira. Valor não certificado como movimento do extrato." }] : []),
+        { label: sale.marketplace === "mercado_livre" ? confirmedFinancial ? "Líquido comercial (cobranças MP)" : "Líquido comercial" : "Valor líquido", value: sale.marketplace === "mercado_livre" ? confirmedFinancial ? money(Number(confirmedFinancial.commercial_net)) : "Aguardando conciliação" : money(sale.valor_liquido) },
+        ...(sale.marketplace === "mercado_livre" ? [{ label: "Informação financeira", value: confirmedFinancial ? "Último líquido confirmado. Capturada no processamento. Movimentação financeira: consulte o extrato." : "Aguardando conciliação. Sem líquido confirmado; eventual zero armazenado é apenas técnico." }] : []),
         { label: "Última atualização", value: dateTime(sale.updated_at) }
       ],
       customer,

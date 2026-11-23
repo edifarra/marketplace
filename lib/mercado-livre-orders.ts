@@ -10,7 +10,7 @@ import {
 } from "./mercado-livre";
 import { supabaseAdmin } from "./supabase-admin";
 import { getValidMercadoLivreAccessToken } from "./mercado-livre";
-import { captureSaleFinance } from "./mercado-livre-sale-finance";
+import { captureSaleFinance, approvedOrderShipping } from "./mercado-livre-sale-finance";
 
 export async function processMercadoLivreOrder(
   orderId: string,
@@ -47,7 +47,7 @@ export async function processMercadoLivreOrder(
   ].join(":");
   const currentShippingStatus = normalizeMercadoLivreShippingStatus(shipment);
   const fees = (order.order_items || []).reduce((total: number, item: Record<string, any>) => total + Number(item.sale_fee || 0), 0);
-  const shippingCost = (order.payments || []).reduce((total: number, payment: Record<string, any>) => total + Number(payment.shipping_cost || 0), 0);
+  const shippingCost = approvedOrderShipping(order.payments || []);
   const finance=await captureSaleFinance(order,String(account.seller_id || account.account_id || ''),async id=>{
     const token=await getValidMercadoLivreAccessToken(account);
     const response=await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(id)}`,{

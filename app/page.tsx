@@ -1,3 +1,4 @@
+import { saleNetTotal } from "@/lib/mercado-livre-sale-finance";
 import { PipelineProgressButton } from "./components/pipeline-progress-button";
 import { ProductLoadButton } from "./components/product-load-button";
 import { Sidebar } from "./components/sidebar";
@@ -297,17 +298,17 @@ function Metric({ label, value, helper, alert = false }: { label: string; value:
   );
 }
 
-function MetricWithTrend({ label, value, trend, previousMonthTotal }: { label: string; value: string; trend: number; previousMonthTotal: string }) {
-  const direction = trend > 0 ? "up" : trend < 0 ? "down" : "neutral";
+function MetricWithTrend({ label, value, trend, previousMonthTotal }: { label: string; value: string; trend: number | null; previousMonthTotal: string }) {
+  const direction = (trend ?? 0) > 0 ? "up" : (trend ?? 0) < 0 ? "down" : "neutral";
   return (
     <div className="card">
       <div className="metric-label">{label}</div>
       <div className="metric-value metric-value-with-trend">
         <span>{value}</span>
-        <span className={`metric-trend ${direction}`} title="Comparação com o mês anterior">
+        {trend !== null && <span className={`metric-trend ${direction}`} title="Comparação com o mês anterior">
           <span aria-hidden="true">{trend > 0 ? "↑" : trend < 0 ? "↓" : "→"}</span>
           {Math.abs(trend)}%
-        </span>
+        </span>}
       </div>
       <div className="metric-comparison">comparado ao mesmo período do mês anterior</div>
       <div className="metric-comparison">Total do mês anterior: {previousMonthTotal}</div>
@@ -373,21 +374,18 @@ function sumSaleField(sales: DashboardSale[], field: "valor_frete" | "valor_taxa
   return sales.reduce((total, sale) => total + Number(sale[field] || 0), 0);
 }
 
-function sumNetSales(sales: DashboardSale[]) {
-  return sales.reduce((total, sale) =>
-    total
-    + Number(sale.valor_produtos || 0)
-    - Number(sale.valor_taxas || 0)
-    - Number(sale.valor_descontos || 0)
-    - Number(sale.valor_frete || 0), 0);
+function sumNetSales(sales: DashboardSale[]): number | null {
+  return saleNetTotal(sales);
 }
 
-function percentageChange(current: number, previous: number) {
+function percentageChange(current: number | null, previous: number | null) {
+  if (current === null || previous === null) return null;
   if (previous === 0) return current === 0 ? 0 : 100;
   return Math.round(((current - previous) / previous) * 100);
 }
 
-function formatCurrency(value: number) {
+function formatCurrency(value: number | null) {
+  if (value === null) return "Aguardando conciliação";
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 

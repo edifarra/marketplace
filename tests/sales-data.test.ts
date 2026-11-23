@@ -1,3 +1,4 @@
+import { confirmedSaleFinance } from '../lib/mercado-livre-sale-finance';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadAllSalesRows } from '../lib/sales-data';
@@ -50,6 +51,7 @@ test('sales page joins recent items and audits across API pages and preserves re
   }};
   const page=loadPage('app/vendas/page.tsx',{
     '@/lib/supabase-admin':{supabaseAdmin:()=>db},
+    '@/lib/mercado-livre-sale-finance':{confirmedSaleFinance},
     '@/lib/sales-data':{loadAllSalesRows},
     '@/lib/sales-fulfillment':{deferredShipping:()=>null,overduePrintedLabel:()=>false,saleShippingAction:()=>null,saleLabelPrintedAt:()=>null,extractSaleShipping:()=>({})}
   }).default;

@@ -30,7 +30,7 @@ test('release date requires every payment to be released with a valid timestamp 
 test('failure/identity mismatch/unknown deductions remain incomplete and cannot erase a valid liquid',async()=>{
  for(const read of [async()=>{throw new Error('Bearer secret');},async()=>({...payment,collector_id:'other'}),async()=>({...payment,transaction_details:{net_received_amount:0}})]){
   const f=await captureSaleFinance(order,'seller',read);assert.equal(f.commercial_net,null);assert.equal(f.state,'partial');assert.doesNotMatch(JSON.stringify(f),/Bearer secret/);
-  const p=saleFinancialPatch({finance:f},{financial_capture:{commercial_net:15.02}});assert.equal(p.valor_liquido,15.02);
+  const p=saleFinancialPatch({finance:f},{financial_capture:{state:'complete',commercial_net:15.02}});assert.equal(p.valor_liquido,15.02);
   assert.equal(saleFinancialPatch({finance:f},{financial_capture:p.raw}).valor_liquido,15.02);
  }
 });
@@ -43,7 +43,7 @@ test('financing credit/debit cancel, recovered charges are never counted as a se
 test('late refund/dispute snapshots preserve the original commercial sale instead of subtracting refund costs again',async()=>{
  for(const fields of [{status:'refunded'},{status:'in_mediation'},{transaction_amount_refunded:1}]){
   const f=await captureSaleFinance(order,'seller',async()=>({...payment,...fields}));assert.equal(f.commercial_net,null);
-  assert.equal(saleFinancialPatch({finance:f},{financial_capture:{commercial_net:15.02}}).valor_liquido,15.02);
+  assert.equal(saleFinancialPatch({finance:f},{financial_capture:{state:'complete',commercial_net:15.02}}).valor_liquido,15.02);
  }
 });
 test('finance is captured before registration, and no scheduler/page consumes the capture helper',()=>{

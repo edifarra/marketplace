@@ -16,7 +16,7 @@ function payment(overrides: Record<string, unknown> = {}) {
   };
 }
 function finance(payments = [payment()]) {
-  return { state: "complete", errors: [], payments, commercial_net: 10, approved_at: "2026-11-20T15:00:00.000Z", effective_release_at: null };
+  return { state: "complete", errors: [], payments, commercial_net: 10, approved_at: "2026-11-20T15:00:00.000Z", effective_release_at: "2026-11-30T15:00:00.000Z" };
 }
 function fixture(options: { saleAccount?: string; sale?: boolean; failRpc?: boolean; finance?: any } = {}) {
   const writes: any[] = [];
@@ -38,7 +38,7 @@ function fixture(options: { saleAccount?: string; sale?: boolean; failRpc?: bool
       return { throwOnError: async () => {
         if (options.failRpc) throw new Error("database unavailable");
         writes.push(args);
-        return { data: { updated: true, sale_id: "sale-1" }, error: null };
+        return { data: { updated: true, sale_id: "sale-1", effective_release_at: options.finance?.effective_release_at || "2026-11-30T15:00:00.000Z" }, error: null };
       }};
     }
   };
@@ -67,13 +67,13 @@ test("payments webhook extracts payment identity and routes to the finance proce
   assert.match(readFileSync("app/api/webhooks/mercado-livre/route.ts", "utf8"), /enqueueMarketplaceActivity/);
 });
 
-test("released payment captures prediction and approval then persists existing sale without effective release date", async () => {
+test("released payment captures official effective release date and persists the existing sale", async () => {
   const f = fixture();
   const result = await processMercadoLivrePaymentNotification({ topic: "payments", user_id: "seller-ed", resource: "/collections/1001" }, account, "activity-1", f.deps as any);
   assert.equal(result.persisted, true);
   assert.equal(result.releaseStatus, "released");
-  assert.equal(result.predictedReleaseAt, f.target.money_release_date);
-  assert.equal(result.effectiveReleaseAt, null);
+  assert.equal(result.predictedReleaseAt, null);
+  assert.equal(result.effectiveReleaseAt, "2026-11-30T15:00:00.000Z");
   assert.equal(f.rpcCalls.length, 1);
   assert.equal(f.rpcCalls[0].name, "persist_mercado_livre_payment_finance");
   assert.deepEqual(f.rpcCalls[0].args.p_expected_payment_ids, ["1001", "1002"]);
@@ -87,7 +87,13 @@ test("account identity mismatch and missing existing sale fail closed without cr
   await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "event", wrongAccount.deps as any), /belongs to another|pertence a outra conta/i);
   assert.equal(wrongAccount.rpcCalls.length, 0);
   const absent = fixture({ sale: false });
-  await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "event", absent.deps as any), /not registered|nao cadastrada/i);
+  await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "event", absent.deps as any), error => {
+    assert.match(String(error), /nao localizada/i);
+    assert.match(String(error), /conta=ML-ED\/account-ed/i);
+    assert.match(String(error), /pagamento=1001/i);
+    assert.match(String(error), /ordem=9001/i);
+    return true;
+  });
   assert.equal(absent.rpcCalls.length, 0);
 });
 
@@ -98,6 +104,9 @@ test("collector, order, currency and notification account are checked before per
     await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "event", f.deps as any));
     assert.equal(f.rpcCalls.length, 0);
   }
+  const missingSeller = fixture();
+  missingSeller.deps.getOrder = async () => ({ id: "9001", currency_id: "BRL", payments: [{ id: "1001" }] } as any);
+  await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "event", missingSeller.deps as any), /seller|conta/i);
   const f = fixture();
   await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-gi", resource: "/collections/1001" }, account, "event", f.deps as any), /diverge/i);
   assert.equal(f.rpcCalls.length, 0);
@@ -113,8 +122,8 @@ test("partial sibling refresh persists observations but cannot overwrite aggrega
 test("API and persistence failures reject the event so the queue can retry", async () => {
   const failedApi = fixture();
   failedApi.deps.readPayment = async () => { throw new Error("Mercado Pago unavailable"); };
-  await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "api-failure", failedApi.deps as any), /unavailable/);
+  await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "api-failure", failedApi.deps as any), /indisponivel/);
   assert.equal(failedApi.rpcCalls.length, 0);
   const failedWrite = fixture({ failRpc: true });
-  await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "db-failure", failedWrite.deps as any), /database unavailable/);
+  await assert.rejects(processMercadoLivrePaymentNotification({ user_id: "seller-ed", resource: "/collections/1001" }, account, "db-failure", failedWrite.deps as any), /persistencia financeira falhou/);
 });

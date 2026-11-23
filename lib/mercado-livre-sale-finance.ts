@@ -51,10 +51,20 @@ export async function captureSaleFinance(order: Row, sellerId: string, read: (id
     p.commercial_net_cents=paymentComplete ? current : null;
     net+=current;
   }
+  const expected = new Set(ids);
+  const releaseObservations = new Map(payments.map(payment => [String(payment.id), payment]));
+  const releasedDates = ids.map(id => {
+    const payment = releaseObservations.get(id);
+    return payment?.money_release_status === 'released' ? validTimestamp(payment.money_release_date) : null;
+  });
+  const effectiveReleaseAt = ids.length > 0 && expected.size === releasedDates.length
+    && releasedDates.every((date): date is string => date !== null)
+    ? new Date(Math.max(...releasedDates.map(date => Date.parse(date)))).toISOString()
+    : null;
   return {state:complete?'complete':'partial',payments,errors,commercial_net:complete?net/100:null,
-    approved_at:approvalDate([...(order.payments || []),...payments]),effective_release_at:null,
+    approved_at:approvalDate([...(order.payments || []),...payments]),effective_release_at:effectiveReleaseAt,
     collected_at:new Date().toISOString(),basis:'original collector charges; snapshot is not a statement movement',
-    release_limitation:'money_release_date is forecast; effective release is not proved by this source'};
+    release_limitation:effectiveReleaseAt ? 'all expected payments report released with valid money_release_date' : 'effective release is not proven until all expected payments report released with valid money_release_date'};
 }
 
 function validTimestamp(value: unknown) {

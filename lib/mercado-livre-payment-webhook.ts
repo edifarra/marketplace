@@ -7,6 +7,13 @@ import { captureSaleFinance } from "./mercado-livre-sale-finance";
 import { supabaseAdmin } from "./supabase-admin";
 
 type Row = Record<string, any>;
+export class MercadoLivrePaymentIntegrityError extends Error {
+  readonly code = "mercado_livre_payment_integrity";
+  constructor(message: string, readonly context: { accountId: string; accountName: string; sellerId: string; paymentId: string | null; orderId: string | null }) {
+    super(`${message} [conta=${context.accountName}/${context.accountId}; seller=${context.sellerId}; pagamento=${context.paymentId || "nao identificado"}; ordem=${context.orderId || "nao identificada"}]`);
+    this.name = "MercadoLivrePaymentIntegrityError";
+  }
+}
 type PaymentProcessorDependencies = {
   getToken: typeof getValidMercadoLivreAccessToken;
   getOrder: typeof getMercadoLivreOrder;
@@ -26,80 +33,114 @@ export async function processMercadoLivrePaymentNotification(
   payload: Row,
   account: MarketplaceAccountConfig,
   activityId: string,
-  dependencies: Partial<PaymentProcessorDependencies> = {}
+  dependencies: Partial<PaymentProcessorDependencies> = {},
+  expectedOrderId?: string
 ) {
   const deps = { ...defaultDependencies, ...dependencies };
   const sellerId = String(account.seller_id || account.account_id || "").trim();
-  if (!sellerId || String(payload.user_id || "").trim() !== sellerId) {
-    throw new Error("Conta da notificacao de pagamento diverge da conta autorizada.");
-  }
   const paymentId = paymentIdFromNotification(payload);
   if (!paymentId) throw new Error("ID do pagamento nao encontrado na notificacao Mercado Livre.");
+  const integrityError = (message: string, orderId: string | null = null) => new MercadoLivrePaymentIntegrityError(message, {
+    accountId: String(account.id), accountName: String(account.name), sellerId, paymentId, orderId
+  });
+  const contextError = (message: string, orderId: string | null = null) => new Error(`${message} [conta=${account.name}/${account.id}; seller=${sellerId}; pagamento=${paymentId}; ordem=${orderId || "nao identificada"}]`);
+  if (!sellerId || String(payload.user_id || "").trim() !== sellerId) {
+    throw integrityError("Conta da notificacao de pagamento diverge da conta autorizada.");
+  }
 
-  const token = await deps.getToken(account);
-  const targetPayment = await deps.readPayment(paymentId, token);
+  let token: string;
+  let targetPayment: Row;
+  try {
+    token = await deps.getToken(account);
+    targetPayment = await deps.readPayment(paymentId, token);
+  } catch {
+    throw contextError("Consulta do pagamento Mercado Pago falhou ou esta indisponivel.");
+  }
   if (String(targetPayment.id) !== paymentId
     || String(targetPayment.collector_id) !== sellerId
     || targetPayment.order?.type !== "mercadolibre"
     || !/^\d+$/.test(String(targetPayment.order?.id || ""))
     || !targetPayment.currency_id) {
-    throw new Error("Identidade do pagamento Mercado Livre divergente da conta autorizada.");
+    throw integrityError("Identidade do pagamento Mercado Pago diverge da conta autorizada.");
   }
 
   const orderId = String(targetPayment.order.id);
-  const order = await deps.getOrder(orderId, account);
+  if (expectedOrderId && orderId !== expectedOrderId) {
+    throw integrityError(`Pagamento aponta para ordem ${orderId}, diferente da ordem esperada ${expectedOrderId}.`, orderId);
+  }
+  let order: Row;
+  try {
+    order = await deps.getOrder(orderId, account);
+  } catch {
+    throw contextError("Consulta da ordem Mercado Livre falhou ou esta indisponivel.", orderId);
+  }
   if (String(order.id) !== orderId
     || String(order.currency_id) !== String(targetPayment.currency_id)
-    || (order.seller?.id != null && String(order.seller.id) !== sellerId)) {
-    throw new Error("Identidade do pedido Mercado Livre divergente do pagamento.");
+    || String(order.seller?.id || "") !== sellerId) {
+    throw integrityError("Identidade do pedido Mercado Livre diverge do pagamento ou da conta.", orderId);
   }
   const expectedPaymentIds = [...new Set<string>((order.payments || []).map((payment: Row) => String(payment.id || "")).filter(Boolean))];
   if (!expectedPaymentIds.includes(paymentId)) {
-    throw new Error("O pagamento nao consta entre os pagamentos do pedido informado pela API.");
+    throw integrityError("O pagamento nao consta entre os pagamentos da ordem informada pela API.", orderId);
   }
 
   const db = deps.database();
-  const saleResult = await db.from("venda")
-    .select("id,raw_data,valor_liquido,data_pagamento")
-    .eq("marketplace", "mercado_livre")
-    .eq("order_id", orderId)
-    .maybeSingle()
-    .throwOnError();
+  let saleResult: any;
+  try {
+    saleResult = await db.from("venda")
+      .select("id,raw_data,valor_liquido,data_pagamento")
+      .eq("marketplace", "mercado_livre")
+      .eq("order_id", orderId)
+      .maybeSingle()
+      .throwOnError();
+  } catch {
+    throw contextError("Consulta da venda existente no Supabase falhou.", orderId);
+  }
   const sale = saleResult.data as Row | null;
-  if (!sale) throw new Error(`Venda Mercado Livre ${orderId} ainda nao cadastrada; pagamento nao foi aplicado.`);
+  if (!sale) throw integrityError("Venda existente nao localizada; atualizacao financeira abortada sem criar venda.", orderId);
   const rawData = (sale.raw_data || {}) as Row;
   if (String(rawData.marketplace_account_id || "") !== String(account.id)) {
-    throw new Error("A venda existente pertence a outra conta Mercado Livre ou nao tem conta verificavel.");
+    throw integrityError("A venda localizada pertence a outra conta ou nao tem conta verificavel.", orderId);
   }
 
-  const finance = await deps.capture(order, sellerId, async id => id === paymentId ? targetPayment : deps.readPayment(id, token));
-  if (!finance.payments.some(payment => String(payment.id) === paymentId)) {
-    throw new Error("O pagamento notificado nao foi capturado; a atividade sera repetida.");
+  let finance: Row;
+  try {
+    finance = await deps.capture(order, sellerId, async id => id === paymentId ? targetPayment : deps.readPayment(id, token));
+  } catch {
+    throw contextError("Captura financeira oficial falhou.", orderId);
   }
-  const persisted = await db.rpc("persist_mercado_livre_payment_finance", {
-    p_marketplace_account_id: account.id,
-    p_seller_id: sellerId,
-    p_order_id: orderId,
-    p_expected_payment_ids: expectedPaymentIds,
-    p_payment_observations: finance.payments,
-    p_financial_capture: finance,
-    p_allow_net_update: finance.state === "complete" && finance.errors.length === 0,
-    p_activity_id: activityId
-  }).throwOnError();
-  if (!persisted.data?.updated) throw new Error("A persistencia financeira nao confirmou a venda existente.");
+  if (!finance.payments.some((payment: Row) => String(payment.id) === paymentId)) {
+    throw contextError("O pagamento notificado nao foi capturado; a atividade sera repetida.", orderId);
+  }
+  let persisted: any;
+  try {
+    persisted = await db.rpc("persist_mercado_livre_payment_finance", {
+      p_marketplace_account_id: account.id,
+      p_seller_id: sellerId,
+      p_order_id: orderId,
+      p_expected_payment_ids: expectedPaymentIds,
+      p_payment_observations: finance.payments,
+      p_financial_capture: finance,
+      p_allow_net_update: finance.state === "complete" && finance.errors.length === 0,
+      p_activity_id: activityId
+    }).throwOnError();
+  } catch {
+    throw contextError("RPC de persistencia financeira falhou no Supabase.", orderId);
+  }
+  if (!persisted.data?.updated) throw contextError("Persistencia financeira da venda existente nao foi confirmada.", orderId);
 
   // Successful target persistence is not enough to mark the event complete if
   // a sibling payment could not be refreshed: a retry can safely merge again.
   if (finance.errors.length) {
-    throw new Error(`Captura financeira parcial; ${finance.errors.length} pagamento(s) aguardam nova tentativa.`);
+    throw contextError(`Captura financeira parcial; ${finance.errors.length} pagamento(s) aguardam nova tentativa.`, orderId);
   }
   return {
     orderId,
     paymentId,
     accountId: account.id,
     releaseStatus: targetPayment.money_release_status || null,
-    predictedReleaseAt: targetPayment.money_release_date || null,
-    effectiveReleaseAt: null,
+    predictedReleaseAt: targetPayment.money_release_status === "released" ? null : targetPayment.money_release_date || null,
+    effectiveReleaseAt: persisted.data.effective_release_at || null,
     financeState: finance.state,
     persisted: true
   };

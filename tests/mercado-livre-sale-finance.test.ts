@@ -11,9 +11,21 @@ const payment={id:'payment',collector_id:'seller',order:{id:'order',type:'mercad
 test('original charges explain 51.22 versus 15.02 in the same sale trigger',async()=>{
  const calls:string[]=[];const f=await captureSaleFinance(order,'seller',async id=>{calls.push(id);return payment;});
  assert.deepEqual(calls,['payment']);assert.equal(f.commercial_net,15.02);assert.equal(f.state,'complete');
- assert.equal(f.approved_at,'2026-10-01T03:09:35.000Z');assert.equal(f.effective_release_at,null);
+ assert.equal(f.approved_at,'2026-10-01T03:09:35.000Z');assert.equal(f.effective_release_at,'2026-10-15T13:18:28.000Z');
  const patch=saleFinancialPatch({finance:f,paidAt:f.approved_at},{});
  assert.equal(patch.valor_liquido,15.02);assert.equal(patch.data_pagamento,'2026-10-01T03:09:35.000Z');assert.equal('data_liberacao' in patch,false);
+});
+test('release date requires every payment to be released with a valid timestamp and uses the latest release',async()=>{
+ const multi={...order,payments:[{id:'payment',status:'approved'},{id:'payment-2',status:'approved'}]};
+ const second={...payment,id:'payment-2',money_release_date:'2026-10-16T10:18:28-03:00'};
+ const released=await captureSaleFinance(multi,'seller',async id=>id==='payment'?payment:second);
+ assert.equal(released.effective_release_at,'2026-10-16T13:18:28.000Z');
+ const pending=await captureSaleFinance(multi,'seller',async id=>id==='payment'?payment:{...second,money_release_status:'pending'});
+ assert.equal(pending.effective_release_at,null);
+ const invalid=await captureSaleFinance(order,'seller',async()=>({...payment,money_release_date:'tomorrow'}));
+ assert.equal(invalid.effective_release_at,null);
+ const missing=await captureSaleFinance(multi,'seller',async id=>{if(id==='payment-2')throw new Error('unavailable');return payment;});
+ assert.equal(missing.effective_release_at,null);
 });
 test('failure/identity mismatch/unknown deductions remain incomplete and cannot erase a valid liquid',async()=>{
  for(const read of [async()=>{throw new Error('Bearer secret');},async()=>({...payment,collector_id:'other'}),async()=>({...payment,transaction_details:{net_received_amount:0}})]){

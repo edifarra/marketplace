@@ -1,8 +1,9 @@
 import { getMercadoLivreAccountForNotification, getMercadoLivreItem, getMercadoLivreLastModeration } from "./mercado-livre";
 import { processMercadoLivreOrder, processMercadoLivreShipment } from "./mercado-livre-orders";
-import { processMercadoLivrePaymentNotification } from "./mercado-livre-payment-webhook";
+import { MercadoLivrePaymentIntegrityError, processMercadoLivrePaymentNotification } from "./mercado-livre-payment-webhook";
 import {
   completeQueuedActivity,
+  failQueuedActivity,
   retryQueuedActivity
 } from "./marketplace-queue";
 import { processShopeeOrderSynchronized } from "./shopee-orders";
@@ -45,7 +46,11 @@ export async function processMarketplaceQueue(limit = 10) {
             });
       results.push({ id: activity.id, marketplace: activity.marketplace, ok: true, result });
     } catch (error) {
-      await retryQueuedActivity(activity, error);
+      if (error instanceof MercadoLivrePaymentIntegrityError) {
+        await failQueuedActivity(String(activity.id), error, error.context);
+      } else {
+        await retryQueuedActivity(activity, error);
+      }
       results.push({
         id: activity.id,
         marketplace: activity.marketplace,

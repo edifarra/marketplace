@@ -60,14 +60,27 @@ export async function completeQueuedActivity(
   description: string,
   details: Record<string, unknown> = {}
 ) {
-  await supabaseAdmin().from("marketplace_activities").update({
+  const update = await supabaseAdmin().from("marketplace_activities").update({
     status: "processed",
     description,
+    ...(typeof details.orderId === "string" ? { order_id: details.orderId } : {}),
     processing_error: null,
     processed_at: new Date().toISOString(),
     locked_at: null
-  }).eq("id", activityId).throwOnError();
+  }).eq("id", activityId).select("id").maybeSingle().throwOnError();
+  if (!update.data?.id) throw new Error(`Atividade ${activityId} nao localizada; status processed nao confirmado.`);
   await appendActivityHistory(activityId, "completed", "success", details);
+}
+
+export async function failQueuedActivity(activityId: string, error: Error, details: Record<string, unknown> = {}) {
+  const update = await supabaseAdmin().from("marketplace_activities").update({
+    status: "error",
+    processing_error: error.message,
+    processed_at: null,
+    locked_at: null
+  }).eq("id", activityId).select("id").maybeSingle().throwOnError();
+  if (!update.data?.id) throw new Error(`Atividade ${activityId} nao localizada; falha de integridade nao registrada.`);
+  await appendActivityHistory(activityId, "integrity_failure", "error", { ...details, error: error.message });
 }
 
 export async function retryQueuedActivity(activity: Record<string, any>, error: unknown) {

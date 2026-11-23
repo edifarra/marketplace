@@ -15,7 +15,8 @@
     "tests/mercado-livre-finance-prevention.test.ts",
     "tests/mercado-livre-sale-finance.test.ts",
     "tests/mercado-livre-sale-write.test.ts",
-    "tests/sales-data.test.ts"
+    "tests/sales-data.test.ts",
+    "tests/search-params-pages.test.ts"
   ],
   "dependenciesChanged": false
 }

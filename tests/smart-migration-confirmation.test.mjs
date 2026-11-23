@@ -85,3 +85,210 @@ test('installed-version capability gate rejects unknown version/help and malform
   assert.throws(()=>cliHistoryArgs('2.121.0','--output',projectRef),/Unvalidated/);
   assert.throws(()=>cliHistoryArgs('2.121.0',help,'bad'),/ref required/);
 });
+
+test('Supabase CLI 3.2.0 uses validated remote history arguments', () => {
+  const ref = 'abcdefghijklmnopqrst';
+
+  assert.deepEqual(
+    cliHistoryArgs('3.2.0', '--remote --output-format', ref),
+    ['migration', 'list', '--remote', '--output-format', 'text']
+  );
+
+  assert.throws(
+    () => cliHistoryArgs('3.2.0', '--remote', ref),
+    /Unvalidated/
+  );
+
+  assert.throws(
+    () => cliHistoryArgs('3.3.0', '--remote --output-format', ref),
+    /Unvalidated/
+  );
+
+  assert.throws(
+    () => cliHistoryArgs('3.2.0', '--remote --output-format', 'invalid'),
+    /ref required/
+  );
+});
+
+test('Windows resolves configured Supabase CLI without shell', async () => {
+  const { resolveCommand } = await import('../scripts/smart-command-runner.mjs');
+
+  const cli = path.join(
+    fixtureRoot, 'node_modules', '.bin', 'supabase.cmd'
+  );
+
+  const entry = path.join(
+    fixtureRoot, 'node_modules', 'supabase',
+    'dist', 'supabase.js'
+  );
+
+  const resolved = resolveCommand(cli, ['--version'], {
+    platform: 'win32',
+    nodePath: process.execPath,
+    env: { SMART_SUPABASE_BIN: cli },
+    existsSync: p => p === entry
+  });
+
+  assert.equal(resolved.file, process.execPath);
+  assert.deepEqual(resolved.args, [entry, '--version']);
+  assert.equal(resolved.shell, false);
+});
+
+test('out-of-order migration plan validates CLI 3.2.0 output and rejects unexpected changes', async () => {
+  const { validateOutOfOrderMigrationPlan: validate } =
+    await import('../scripts/smart-migration-confirmation.mjs');
+
+  const projectRef = 'abcdefghijklmnopqrst';
+  const filename = '20261122120000_persist_mercado_livre_payment_finance.sql';
+
+  const history = {
+    projectRef,
+    cliVersion: '3.2.0',
+    pending: ['20261122120000']
+  };
+
+  const result = {
+    status: 0,
+    signal: null,
+    stdout: 'Finished supabase db push.\n',
+    stderr: [
+      `Target: project teste (${projectRef}) \u00b7 production`,
+      'Initialising login role...',
+      'DRY RUN: migrations will *not* be pushed to the database.',
+      'Would push these migrations:',
+      ` \u2022 ${filename}`
+    ].join('\n')
+  };
+
+  assert.deepEqual(
+    validate(history, result),
+    ['db', 'push', '--remote', '--include-all', '--yes']
+  );
+
+  for (const changed of [
+    { status: 1 },
+    { stdout: 'Unexpected output' },
+    { stderr: result.stderr + '\nUnexpected migration' },
+    { stderr: result.stderr.replace(projectRef, 'zyxwvutsrqponmlkjihg') },
+    { stderr: result.stderr.replace(filename, '20261123000000_outra.sql') }
+  ]) {
+    assert.throws(() => validate(history, { ...result, ...changed }));
+  }
+
+  assert.throws(
+    () => validate(
+      { ...history, pending: ['20261123000000'] },
+      result
+    ),
+    /not explicitly authorized/
+  );
+});
+
+test('validated migration executes only after successful dry-run', async () => {
+  const { executeValidatedMigration } =
+    await import('../scripts/smart-migration-confirmation.mjs');
+
+  const projectRef = 'abcdefghijklmnopqrst';
+  const filename = '20261122120000_persist_mercado_livre_payment_finance.sql';
+  const calls = [];
+
+  const history = {
+    projectRef,
+    cliVersion: '3.2.0',
+    pending: ['20261122120000']
+  };
+
+  const result = {
+    status: 0,
+    signal: null,
+    stdout: 'Finished supabase db push.\n',
+    stderr: [
+      `Target: project teste (${projectRef}) \u00b7 production`,
+      'Initialising login role...',
+      'DRY RUN: migrations will *not* be pushed to the database.',
+      'Would push these migrations:',
+      `\u2022 ${filename}`
+    ].join('\n')
+  };
+
+  const config = {
+    linkedProject: projectRef,
+    assertProject: () => calls.push('project'),
+    readHistory: () => {
+      calls.push('history');
+      return history;
+    },
+    dryRun: () => {
+      calls.push('dry-run');
+      return result;
+    },
+    apply: args => {
+      calls.push('apply');
+      assert.deepEqual(args, [
+        'db', 'push', '--remote', '--include-all', '--yes'
+      ]);
+    }
+  };
+
+  executeValidatedMigration(config);
+
+  assert.deepEqual(calls, [
+    'project', 'history', 'dry-run',
+    'project', 'project', 'apply'
+  ]);
+});
+
+test('validated migration blocks writes on unsafe inputs', async () => {
+  const { executeValidatedMigration } =
+    await import('../scripts/smart-migration-confirmation.mjs');
+
+  const projectRef = 'abcdefghijklmnopqrst';
+  let writes = 0;
+
+  const base = {
+    linkedProject: projectRef,
+    assertProject: () => {},
+    readHistory: () => ({
+      projectRef,
+      cliVersion: '3.2.0',
+      pending: ['20261122120000']
+    }),
+    dryRun: () => ({
+      status: 1,
+      stdout: '',
+      stderr: 'Failure'
+    }),
+    apply: () => { writes++; }
+  };
+
+  assert.throws(
+    () => executeValidatedMigration(base),
+    /dry-run failed/
+  );
+
+  assert.throws(
+    () => executeValidatedMigration({
+      ...base,
+      readHistory: () => ({
+        projectRef,
+        cliVersion: '3.2.0',
+        pending: ['20261122120000', '20261123000000']
+      })
+    }),
+    /Unexpected pending migrations/
+  );
+
+  assert.throws(
+    () => executeValidatedMigration({
+      ...base,
+      readHistory: () => ({
+        projectRef: 'zyxwvutsrqponmlkjihg',
+        cliVersion: '3.2.0',
+        pending: ['20261122120000']
+      })
+    }),
+    /project mismatch/
+  );
+
+  assert.equal(writes, 0);
+});

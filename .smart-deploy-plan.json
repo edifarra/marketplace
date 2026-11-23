@@ -6,10 +6,16 @@
     "lib/marketplace-queue-worker.ts",
     "lib/mercado-livre-payment-webhook.ts",
     "lib/mercado-livre-sale-finance.ts",
+    "scripts/smart-command-runner.mjs",
+    "scripts/smart-deploy.mjs",
+    "scripts/smart-migration-confirmation.mjs",
     "scripts/smart-test-runner.mjs",
+    "supabase/migrations/20261121171911_schedule_marketplace_activities_and_history_60_day_retention.sql",
     "supabase/migrations/20261122120000_persist_mercado_livre_payment_finance.sql",
+    "supabase/migrations/20261122223426_criar_configuracao_frete_flex_e_cidades_extremo.sql",
     "tests/mercado-livre-payment-finance-sql.test.mjs",
     "tests/mercado-livre-payment-webhook.test.ts",
+    "tests/smart-migration-confirmation.test.mjs",
     "tests/smart-test-runner.test.mjs"
   ],
   "dependenciesChanged": false

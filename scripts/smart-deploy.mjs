@@ -8,7 +8,7 @@ import { git, assertDeploymentRepository } from './smart-git.mjs';
 import { updateWorker } from './smart-worker-update.mjs';
 import { findRelatedTests } from './smart-change-classifier.mjs';
 import { executeDeployment } from './smart-deploy-flow.mjs';
-import { confirmLinkedMigrations } from './smart-migration-confirmation.mjs';
+import { confirmLinkedMigrations, readLinkedHistory, executeValidatedMigration } from './smart-migration-confirmation.mjs';
 import { IGNORE_COMMAND, classifyRange, assertDeploymentMetadata, atomicJson, readJson, migrationVersions, migrationStatus } from './smart-deploy-support.mjs';
 import { waitForVercel, assertVercelProject } from './smart-vercel.mjs';
 import { createVercelReader, assertLinkedVercelProject } from './smart-vercel-auth.mjs';
@@ -139,7 +139,24 @@ try {
         assertLinkedProject();
         return confirmLinkedMigrations(versions, { cwd: root });
       },
-      migrate: () => { assertLinkedProject(); run(process.env.SMART_SUPABASE_BIN, ['db', 'push', '--linked', '--yes']); },
+      migrate: () => executeValidatedMigration({
+        linkedProject,
+        assertProject: assertLinkedProject,
+        readHistory: () => readLinkedHistory(versions, { cwd: root }),
+        dryRun: () => spawnCommand(
+          process.env.SMART_SUPABASE_BIN,
+          ['db', 'push', '--remote', '--dry-run', '--include-all'],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 120_000,
+            maxBuffer: 8 * 1024 * 1024
+          }
+        ),
+        apply: approvedArgs =>
+          run(process.env.SMART_SUPABASE_BIN, approvedArgs)
+      }),
       isPublished: () => remoteHead() === target,
       push: () => run('git', ['push', 'origin', `${target}:refs/heads/main`]),
       verifyPublished: () => {

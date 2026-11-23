@@ -9,6 +9,30 @@ export function resolveCommand(command, args, {
   env = process.env,
   existsSync = fs.existsSync
 } = {}) {
+  if (
+    platform === "win32" &&
+    command === env.SMART_SUPABASE_BIN &&
+    path.isAbsolute(command) &&
+    /\.cmd$/i.test(command)
+  ) {
+    const cliPath = path.resolve(
+      path.dirname(command),
+      "..",
+      "supabase",
+      "dist",
+      "supabase.js"
+    );
+
+    if (!existsSync(cliPath)) {
+      throw new Error("Validated Supabase CLI JavaScript entrypoint not found.");
+    }
+
+    return {
+      file: nodePath,
+      args: [cliPath, ...args],
+      shell: false
+    };
+  }
   if (platform !== "win32" || !["npm", "npx"].includes(command)) {
     return { file: command, args, shell: false };
   }

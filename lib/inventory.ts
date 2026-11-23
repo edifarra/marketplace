@@ -33,6 +33,7 @@ export type MarketplaceSaleInput = {
   soldAt?: string;
   paidAt?: string | null;
   finance?: Record<string, any>;
+  saleIdentifiers?: Array<{ identifierType: string; identifierValue: string }>;
   rawPayload: unknown;
 };
 
@@ -96,6 +97,10 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       .select("id,raw_data,updated_at")
       .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
     const previousRawData = (previousSale.data?.raw_data as Record<string, unknown> | null) || {};
+    if (input.marketplace === "mercado_livre" && previousRawData.marketplace_account_id
+        && previousRawData.marketplace_account_id !== input.marketplaceAccountId) {
+      throw new Error("Venda pertence a outra conta Mercado Livre.");
+    }
     const {raw:financialCapture,...financialColumns}=input.marketplace === "mercado_livre"
       ? saleFinancialPatch(input,previousRawData) : {raw:undefined};
     const detectedPostedAt = salePostedAt({
@@ -119,6 +124,9 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       shipment_id: input.shipmentId || null,
       raw_data: {
         ...previousRawData,
+        ...(input.marketplace === "mercado_livre" && input.saleIdentifiers ? {
+          sale_identifiers: { source: "mercado_livre.orders", identifiers: input.saleIdentifiers }
+        } : {}),
         ...(financialCapture ? {financial_capture:financialCapture} : {}),
         payload: input.rawPayload,
         marketplace_account_id: input.marketplaceAccountId || null,

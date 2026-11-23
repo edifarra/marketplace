@@ -139,12 +139,12 @@ test('out-of-order migration plan validates CLI 3.2.0 output and rejects unexpec
     await import('../scripts/smart-migration-confirmation.mjs');
 
   const projectRef = 'abcdefghijklmnopqrst';
-  const filename = '20261123130000_exclude_nonreceiving_ml_attempts_release.sql';
+  const filename = '20261123170000_create_sale_financial_identifiers.sql';
 
   const history = {
     projectRef,
     cliVersion: '3.2.0',
-    pending: ['20261123130000']
+    pending: ['20261123170000']
   };
 
   const result = {
@@ -189,13 +189,13 @@ test('validated migration executes only after successful dry-run', async () => {
     await import('../scripts/smart-migration-confirmation.mjs');
 
   const projectRef = 'abcdefghijklmnopqrst';
-  const filename = '20261123130000_exclude_nonreceiving_ml_attempts_release.sql';
+  const filename = '20261123170000_create_sale_financial_identifiers.sql';
   const calls = [];
 
   const history = {
     projectRef,
     cliVersion: '3.2.0',
-    pending: ['20261123130000']
+    pending: ['20261123170000']
   };
 
   const result = {
@@ -251,7 +251,7 @@ test('validated migration blocks writes on unsafe inputs', async () => {
     readHistory: () => ({
       projectRef,
       cliVersion: '3.2.0',
-      pending: ['20261123130000']
+      pending: ['20261123170000']
     }),
     dryRun: () => ({
       status: 1,
@@ -272,7 +272,7 @@ test('validated migration blocks writes on unsafe inputs', async () => {
       readHistory: () => ({
         projectRef,
         cliVersion: '3.2.0',
-        pending: ['20261123130000', '20261123000000']
+        pending: ['20261123170000', '20261123000000']
       })
     }),
     /Unexpected pending migrations/
@@ -284,11 +284,37 @@ test('validated migration blocks writes on unsafe inputs', async () => {
       readHistory: () => ({
         projectRef: 'zyxwvutsrqponmlkjihg',
         cliVersion: '3.2.0',
-        pending: ['20261123130000']
+        pending: ['20261123170000']
       })
     }),
     /project mismatch/
   );
 
   assert.equal(writes, 0);
+});
+
+test('GMUD1 refuses GMUD2 migration alone or mixed', async () => {
+ const {executeValidatedMigration}=await import('../scripts/smart-migration-confirmation.mjs');
+ for(const pending of [['20261123130000'],['20261123130000','20261123170000']]) {
+  let writes=0;
+  assert.throws(()=>executeValidatedMigration({linkedProject:'abcdefghijklmnopqrst',assertProject(){},
+   readHistory:()=>({projectRef:'abcdefghijklmnopqrst',cliVersion:'3.2.0',pending}),
+   dryRun(){throw new Error('must not reach dry run');},apply(){writes++;}}),/Unexpected pending migrations/);
+  assert.equal(writes,0);
+ }
+});
+
+test('CLI structured dry-run validates the exact GMUD1 project, migration and empty seed/role plan', async () => {
+ const {validateOutOfOrderMigrationPlan}=await import('../scripts/smart-migration-confirmation.mjs');
+ const projectRef='abcdefghijklmnopqrst';
+ const filename='20261123170000_create_sale_financial_identifiers.sql';
+ const history={projectRef,cliVersion:'3.2.0',pending:['20261123170000']};
+ const output={upToDate:false,dryRun:true,migrations:[filename],seeds:[],roles:[],message:'Finished supabase db push.',
+  target:{kind:'linked',project_ref:projectRef,project_name:'test',environment:'production'}};
+ const result={status:0,stdout:JSON.stringify(output),stderr:`Target: project test (${projectRef}) · production\nInitialising login role...\nDRY RUN: migrations will *not* be pushed to the database.\nWould push these migrations:\n • ${filename}`};
+ assert.deepEqual(validateOutOfOrderMigrationPlan(history,result),['db','push','--remote','--include-all','--yes']);
+ for(const changed of [{...output,seeds:['seed.sql']},{...output,migrations:[filename,'20261123130000_exclude_nonreceiving_ml_attempts_release.sql']},
+  {...output,target:{...output.target,project_ref:'zyxwvutsrqponmlkjihg'}},{...output,unexpected:true}]){
+  assert.throws(()=>validateOutOfOrderMigrationPlan(history,{...result,stdout:JSON.stringify(changed)}),/differs/);
+ }
 });

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { spawnCommand } from './smart-command-runner.mjs';
 import { migrationStatus } from './smart-deploy-support.mjs';
 
@@ -56,8 +57,8 @@ export function confirmLinkedMigrations(versions, options = {}) {
 }
 
 export function validateOutOfOrderMigrationPlan(history, result) {
-  const allowed = '20261123130000';
-  const filename = '20261123130000_exclude_nonreceiving_ml_attempts_release.sql';
+  const allowed = '20261123170000';
+  const filename = '20261123170000_create_sale_financial_identifiers.sql';
 
   if (history?.cliVersion !== '3.2.0' ||
       !/^[a-z0-9]{20}$/.test(history.projectRef ?? '') ||
@@ -92,7 +93,16 @@ export function validateOutOfOrderMigrationPlan(history, result) {
     `\u2022 ${filename}`
   ];
 
-  if (stdout !== 'Finished supabase db push.' ||
+  let structuredOutput = false;
+  try {
+    structuredOutput = isDeepStrictEqual(JSON.parse(stdout), {
+      upToDate: false, dryRun: true, migrations: [filename], seeds: [], roles: [],
+      message: 'Finished supabase db push.',
+      target: { kind: 'linked', project_ref: history.projectRef,
+        project_name: /^Target: project (.+) \(/.exec(lines[0])[1], environment: 'production' }
+    });
+  } catch { /* Only the exact previously validated text or JSON envelope is accepted. */ }
+  if ((!structuredOutput && stdout !== 'Finished supabase db push.') ||
       lines.length !== expected.length + 1 ||
       lines.slice(1).some((line, index) => line !== expected[index])) {
     throw new Error('Migration dry-run differs from the authorized plan.');
@@ -117,7 +127,7 @@ export function executeValidatedMigration({
   }
 
   if (history.pending?.length !== 1 ||
-      history.pending[0] !== '20261123130000') {
+      history.pending[0] !== '20261123170000') {
     throw new Error('Unexpected pending migrations; deployment blocked.');
   }
 

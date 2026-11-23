@@ -11,6 +11,7 @@ import {
 import { supabaseAdmin } from "./supabase-admin";
 import { getValidMercadoLivreAccessToken } from "./mercado-livre";
 import { captureSaleFinance, approvedOrderShipping } from "./mercado-livre-sale-finance";
+import { extractMercadoLivreSaleIdentifiers } from "./mercado-livre-sale-identifiers";
 
 export async function processMercadoLivreOrder(
   orderId: string,
@@ -82,6 +83,7 @@ export async function processMercadoLivreOrder(
     soldAt: String(order.date_created || ""),
     paidAt: finance.approved_at,
     finance,
+    saleIdentifiers: extractMercadoLivreSaleIdentifiers(order),
     rawPayload: { notification, order, shipment, shipmentHistory, shipmentSla, ...supplementalPayload }
   });
 }

@@ -1,14 +1,17 @@
 {
   "schemaVersion": 1,
-  "base": "a8cdf8ea145511dc464f24e478df4145bde94f01",
+  "base": "adaf38fb71d17448afa151106cf6713bbb84c344",
   "files": [
     ".smart-deploy-plan.json",
-    "lib/mercado-livre-sale-finance.ts",
+    "lib/inventory.ts",
+    "lib/mercado-livre-orders.ts",
+    "lib/mercado-livre-sale-identifiers.ts",
     "scripts/smart-migration-confirmation.mjs",
-    "supabase/migrations/20261123130000_exclude_nonreceiving_ml_attempts_release.sql",
-    "tests/mercado-livre-payment-finance-sql.test.mjs",
-    "tests/mercado-livre-payment-integrity.test.ts",
-    "tests/mercado-livre-sale-finance.test.ts",
+    "scripts/smart-test-runner.mjs",
+    "scripts/validate-gmud1-identifiers.ts",
+    "supabase/migrations/20261123170000_create_sale_financial_identifiers.sql",
+    "tests/mercado-livre-sale-identifiers-sql.test.mjs",
+    "tests/mercado-livre-sale-identifiers.test.ts",
     "tests/smart-migration-confirmation.test.mjs"
   ],
   "dependenciesChanged": false

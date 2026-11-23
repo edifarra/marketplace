@@ -34,3 +34,19 @@ test("effective release persistence requires released status and a valid date, w
   assert.doesNotMatch(migration, /data_liberacao\s*=\s*(?:now\(\)|current_timestamp)/i);
   assert.doesNotMatch(migration, /insert into public\.venda|update\s+public\.estoque/i);
 });
+
+test("current release reconciliation excludes only proven non-receipt attempts and preserves prior proof separately", () => {
+  const migration = readFileSync("supabase/migrations/20261123130000_exclude_nonreceiving_ml_attempts_release.sql", "utf8");
+  assert.match(migration, /status' in \('cancelled', 'rejected'\)/);
+  assert.match(migration, /net_received_amount/);
+  assert.match(migration, /transaction_amount_refunded/);
+  assert.match(migration, /ambiguous_terminal_count > 0/);
+  assert.match(migration, /current_expected_ids/);
+  assert.match(migration, /incoming_order_version > previous_order_version/);
+  assert.match(migration, /previous_effective_release_at/);
+  assert.match(migration, /when current_effective_release_at is not null then greatest\(data_liberacao, current_effective_release_at\)/i);
+  assert.match(migration, /create or replace function public\.persist_mercado_livre_payment_finance\(\s*p_marketplace_account_id uuid,[\s\S]*p_activity_id text\s*\) returns jsonb/i);
+  assert.match(migration, /revoke all on function public\.persist_mercado_livre_payment_finance\(uuid, text, text, jsonb, jsonb, jsonb, boolean, text\)[\s\S]*to service_role/i);
+  assert.doesNotMatch(migration, /data_liberacao\s*=\s*(?:now\(\)|current_timestamp)/i);
+  assert.doesNotMatch(migration, /insert into public\.venda|update\s+public\.estoque/i);
+});

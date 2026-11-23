@@ -56,8 +56,8 @@ export function confirmLinkedMigrations(versions, options = {}) {
 }
 
 export function validateOutOfOrderMigrationPlan(history, result) {
-  const allowed = '20261122130000';
-  const filename = '20261122130000_persist_mercado_livre_release_date.sql';
+  const allowed = '20261123130000';
+  const filename = '20261123130000_exclude_nonreceiving_ml_attempts_release.sql';
 
   if (history?.cliVersion !== '3.2.0' ||
       !/^[a-z0-9]{20}$/.test(history.projectRef ?? '') ||
@@ -117,7 +117,7 @@ export function executeValidatedMigration({
   }
 
   if (history.pending?.length !== 1 ||
-      history.pending[0] !== '20261122130000') {
+      history.pending[0] !== '20261123130000') {
     throw new Error('Unexpected pending migrations; deployment blocked.');
   }
 

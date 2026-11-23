@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {captureSaleFinance,saleFinancialPatch,financialCents} from '../lib/mercado-livre-sale-finance';
+import {captureSaleFinance,saleFinancialPatch,financialCents,isNonReceivingTerminalPayment,paymentReleaseClass} from '../lib/mercado-livre-sale-finance';
 const order={id:'order',currency_id:'BRL',payments:[{id:'payment',status:'approved',date_approved:'2026-09-30T23:09:35-04:00'}]};
 const payment={id:'payment',collector_id:'seller',order:{id:'order',type:'mercadolibre'},currency_id:'BRL',status:'approved',transaction_amount:29,shipping_amount:25.99,money_release_date:'2026-10-15T10:18:28-03:00',money_release_status:'released',transaction_details:{net_received_amount:15.02},charges_details:[
  {id:'shipping',name:'shp_cross_docking',accounts:{from:'collector',to:'carrier'},amounts:{original:36.2,refunded:0}},
@@ -26,6 +26,51 @@ test('release date requires every payment to be released with a valid timestamp 
  assert.equal(invalid.effective_release_at,null);
  const missing=await captureSaleFinance(multi,'seller',async id=>{if(id==='payment-2')throw new Error('unavailable');return payment;});
  assert.equal(missing.effective_release_at,null);
+});
+test('terminal cancelled and rejected attempts are ignored only with explicit zero receipt and no conflicting evidence',async()=>{
+ const officialRelease='2026-11-02T13:28:21-04:00';
+ const failed=(id:string,status:'cancelled'|'rejected',overrides:Record<string,unknown>={})=>({
+  id,collector_id:'seller',order:{id:'order',type:'mercadolibre'},currency_id:'BRL',status,
+  transaction_amount:11.99,transaction_details:{net_received_amount:0},transaction_amount_refunded:null,
+  ...overrides
+ });
+ const orderWithAttempts={...order,date_last_updated:'2026-11-02T17:29:00Z',payments:[...order.payments,
+  {id:'cancelled',status:'cancelled'},{id:'rejected',status:'rejected'}]};
+ const result=await captureSaleFinance(orderWithAttempts,'seller',async id=>{
+  if(id==='payment')return {...payment,money_release_date:officialRelease};
+  return failed(id,id==='cancelled'?'cancelled':'rejected');
+ });
+ assert.equal(result.effective_release_at,'2026-11-02T17:28:21.000Z');
+ assert.deepEqual(result.order_payment_ids,['payment','cancelled','rejected']);
+ assert.equal(result.order_api_updated_at,'2026-11-02T17:29:00.000Z');
+ assert.equal(isNonReceivingTerminalPayment({status:'cancelled',net_received_amount:0}),true);
+ for(const evidence of [
+  {status:'rejected',net_received_amount:null},
+  {status:'cancelled',net_received_amount:0,transaction_amount_refunded:1},
+  {status:'rejected',net_received_amount:0,date_approved:'2026-11-02T17:00:00Z'},
+  {status:'cancelled',net_received_amount:0,money_release_status:'released'},
+  {status:'rejected',net_received_amount:0,money_release_date:'2026-11-02T17:00:00Z'},
+  {status:'approved',net_received_amount:0}
+ ]) assert.equal(isNonReceivingTerminalPayment(evidence),false);
+ assert.equal(paymentReleaseClass({status:'cancelled',net_received_amount:null}), 'blocked_terminal_ambiguous');
+ const contradictory=await captureSaleFinance({...order,payments:[{id:'cancelled',status:'cancelled'}]},'seller',async()=>failed('cancelled','cancelled',{
+  money_release_status:'released',money_release_date:'2026-11-02T17:28:21Z'
+ }));
+ assert.equal(contradictory.effective_release_at,null);
+});
+test('only terminal attempts cannot prove a release; partial and refund/dispute payments remain relevant',async()=>{
+ const terminalOrder={...order,payments:[{id:'cancelled',status:'cancelled'}]};
+ const cancelled=await captureSaleFinance(terminalOrder,'seller',async()=>({
+  id:'cancelled',collector_id:'seller',order:{id:'order',type:'mercadolibre'},currency_id:'BRL',status:'cancelled',
+  transaction_details:{net_received_amount:0},transaction_amount_refunded:null
+ }));
+ assert.equal(cancelled.effective_release_at,null);
+ for(const status of ['refunded','in_mediation','charged_back']){
+  const result=await captureSaleFinance({...order,payments:[{id:'payment',status}]},'seller',async()=>({...payment,status}));
+  assert.equal(result.effective_release_at,'2026-10-15T13:18:28.000Z',`${status} retains the existing released-date treatment`);
+ }
+ const partial=await captureSaleFinance({...order,payments:[{id:'payment',status:'approved'},{id:'pending',status:'pending'}]},'seller',async id=>id==='payment'?payment:{...payment,id:'pending',status:'pending',money_release_status:'pending'});
+ assert.equal(partial.effective_release_at,null);
 });
 test('failure/identity mismatch/unknown deductions remain incomplete and cannot erase a valid liquid',async()=>{
  for(const read of [async()=>{throw new Error('Bearer secret');},async()=>({...payment,collector_id:'other'}),async()=>({...payment,transaction_details:{net_received_amount:0}})]){

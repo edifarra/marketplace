@@ -7,6 +7,23 @@ export function financialCents(value: unknown): number | null {
   const amount = Number(match[2]) * 100 + Number((match[3] || '').padEnd(2, '0'));
   return Number.isSafeInteger(amount) ? (match[1] ? -amount : amount) : null;
 }
+// Only terminal attempts with an explicit zero receipt and no approval,
+// release or refund evidence may be ignored when proving a sale-level release.
+// Missing or contradictory API fields leave the attempt relevant (fail-closed).
+export function isNonReceivingTerminalPayment(payment: Row): boolean {
+  if (!['cancelled', 'rejected'].includes(String(payment.status || ''))) return false;
+  if (financialCents(payment.net_received_amount) !== 0) return false;
+  const refunded = payment.transaction_amount_refunded;
+  if (refunded != null && financialCents(refunded) !== 0) return false;
+  if (payment.date_approved != null && payment.date_approved !== '') return false;
+  if (payment.money_release_status === 'released') return false;
+  if (payment.money_release_date != null && payment.money_release_date !== '') return false;
+  return true;
+}
+export function paymentReleaseClass(payment: Row): 'excluded_no_receipt' | 'blocked_terminal_ambiguous' | 'requires_release' {
+  if (!['cancelled', 'rejected'].includes(String(payment.status || ''))) return 'requires_release';
+  return isNonReceivingTerminalPayment(payment) ? 'excluded_no_receipt' : 'blocked_terminal_ambiguous';
+}
 export function approvalDate(payments: Row[]): string | null {
   const dates=payments.filter(p=>['approved','refunded','in_mediation','charged_back'].includes(p.status))
     .map(p=>p.date_approved).filter(d=>typeof d==='string' && /(Z|[+-]\d{2}:?\d{2})$/.test(d) && Number.isFinite(Date.parse(d)));
@@ -16,7 +33,9 @@ export function approvalDate(payments: Row[]): string | null {
 export async function captureSaleFinance(order: Row, sellerId: string, read: (id: string)=>Promise<Row>) {
   const payments: Row[]=[], errors: Row[]=[];
   const ids=[...new Set<string>((order.payments || []).map((p:Row)=>String(p.id || '')).filter(Boolean))];
-  if(ids.length>20) return { state:'partial', errors:[{code:'payment_limit'}], payments, commercial_net:null, approved_at:approvalDate(order.payments || []), effective_release_at:null };
+  const orderPaymentIds = ids;
+  const orderApiUpdatedAt = validTimestamp(order.date_last_updated || order.last_updated);
+  if(ids.length>20) return { state:'partial', errors:[{code:'payment_limit'}], payments, commercial_net:null, approved_at:approvalDate(order.payments || []), effective_release_at:null, order_payment_ids:orderPaymentIds, order_api_updated_at:orderApiUpdatedAt };
   for(let offset=0;offset<ids.length;offset+=3) await Promise.all(ids.slice(offset,offset+3).map(async id=>{
     try {
       const p=await read(id);
@@ -52,18 +71,26 @@ export async function captureSaleFinance(order: Row, sellerId: string, read: (id
     p.commercial_net_cents=paymentComplete ? current : null;
     net+=current;
   }
-  const expected = new Set(ids);
   const releaseObservations = new Map(payments.map(payment => [String(payment.id), payment]));
-  const releasedDates = ids.map(id => {
+  let hasAmbiguousTerminal = false;
+  const relevantIds = ids.filter(id => {
+    const payment = releaseObservations.get(id);
+    if (!payment) return true;
+    const classification = paymentReleaseClass(payment);
+    if (classification === 'blocked_terminal_ambiguous') hasAmbiguousTerminal = true;
+    return classification !== 'excluded_no_receipt';
+  });
+  const releasedDates = relevantIds.map(id => {
     const payment = releaseObservations.get(id);
     return payment?.money_release_status === 'released' ? validTimestamp(payment.money_release_date) : null;
   });
-  const effectiveReleaseAt = ids.length > 0 && expected.size === releasedDates.length
+  const effectiveReleaseAt = relevantIds.length > 0 && !hasAmbiguousTerminal
     && releasedDates.every((date): date is string => date !== null)
     ? new Date(Math.max(...releasedDates.map(date => Date.parse(date)))).toISOString()
     : null;
   return {state:complete?'complete':'partial',payments,errors,commercial_net:complete?net/100:null,
     approved_at:approvalDate([...(order.payments || []),...payments]),effective_release_at:effectiveReleaseAt,
+    order_payment_ids:orderPaymentIds,order_api_updated_at:orderApiUpdatedAt,
     collected_at:new Date().toISOString(),basis:'original collector charges; snapshot is not a statement movement',
     release_limitation:effectiveReleaseAt ? 'all expected payments report released with valid money_release_date' : 'effective release is not proven until all expected payments report released with valid money_release_date'};
 }

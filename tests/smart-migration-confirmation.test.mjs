@@ -139,12 +139,12 @@ test('out-of-order migration plan validates CLI 3.2.0 output and rejects unexpec
     await import('../scripts/smart-migration-confirmation.mjs');
 
   const projectRef = 'abcdefghijklmnopqrst';
-  const filename = '20261122130000_persist_mercado_livre_release_date.sql';
+  const filename = '20261123130000_exclude_nonreceiving_ml_attempts_release.sql';
 
   const history = {
     projectRef,
     cliVersion: '3.2.0',
-    pending: ['20261122130000']
+    pending: ['20261123130000']
   };
 
   const result = {
@@ -189,13 +189,13 @@ test('validated migration executes only after successful dry-run', async () => {
     await import('../scripts/smart-migration-confirmation.mjs');
 
   const projectRef = 'abcdefghijklmnopqrst';
-  const filename = '20261122130000_persist_mercado_livre_release_date.sql';
+  const filename = '20261123130000_exclude_nonreceiving_ml_attempts_release.sql';
   const calls = [];
 
   const history = {
     projectRef,
     cliVersion: '3.2.0',
-    pending: ['20261122130000']
+    pending: ['20261123130000']
   };
 
   const result = {
@@ -251,7 +251,7 @@ test('validated migration blocks writes on unsafe inputs', async () => {
     readHistory: () => ({
       projectRef,
       cliVersion: '3.2.0',
-      pending: ['20261122130000']
+      pending: ['20261123130000']
     }),
     dryRun: () => ({
       status: 1,
@@ -272,7 +272,7 @@ test('validated migration blocks writes on unsafe inputs', async () => {
       readHistory: () => ({
         projectRef,
         cliVersion: '3.2.0',
-        pending: ['20261122130000', '20261123000000']
+        pending: ['20261123130000', '20261123000000']
       })
     }),
     /Unexpected pending migrations/
@@ -284,7 +284,7 @@ test('validated migration blocks writes on unsafe inputs', async () => {
       readHistory: () => ({
         projectRef: 'zyxwvutsrqponmlkjihg',
         cliVersion: '3.2.0',
-        pending: ['20261122130000']
+        pending: ['20261123130000']
       })
     }),
     /project mismatch/

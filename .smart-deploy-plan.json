@@ -1,17 +1,16 @@
 {
   "schemaVersion": 1,
-  "base": "e5205a4b830a87f1e0c900bc428082dee557c9e0",
+  "base": "3feaa8152fc138644729bc7f186c63bcbc8b7697",
   "files": [
     ".smart-deploy-plan.json",
-    "app/components/sidebar-navigation.tsx",
-    "app/configuracoes/frete-flex/actions.ts",
-    "app/configuracoes/frete-flex/delete-city-button.tsx",
-    "app/configuracoes/frete-flex/page.tsx",
-    "app/globals.css",
-    "lib/frete-flex-validation.ts",
-    "tests/frete-flex-access.test.ts",
-    "tests/frete-flex-validation.test.ts",
-    "tests/search-params-pages.test.ts"
+    "lib/marketplace-queue-worker.ts",
+    "lib/mercado-livre-payment-webhook.ts",
+    "lib/mercado-livre-sale-finance.ts",
+    "scripts/smart-test-runner.mjs",
+    "supabase/migrations/20261122120000_persist_mercado_livre_payment_finance.sql",
+    "tests/mercado-livre-payment-finance-sql.test.mjs",
+    "tests/mercado-livre-payment-webhook.test.ts",
+    "tests/smart-test-runner.test.mjs"
   ],
   "dependenciesChanged": false
 }

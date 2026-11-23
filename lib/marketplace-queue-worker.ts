@@ -1,5 +1,6 @@
 import { getMercadoLivreAccountForNotification, getMercadoLivreItem, getMercadoLivreLastModeration } from "./mercado-livre";
 import { processMercadoLivreOrder, processMercadoLivreShipment } from "./mercado-livre-orders";
+import { processMercadoLivrePaymentNotification } from "./mercado-livre-payment-webhook";
 import {
   completeQueuedActivity,
   retryQueuedActivity
@@ -75,6 +76,11 @@ async function processMercadoLivreActivity(activity: Record<string, any>) {
   if (["questions", "messages"].includes(topic)) {
     const result = await processMercadoLivreConversationNotification(activity, payload);
     return completeQueuedActivity(String(activity.id), result?.description || "Conversa atualizada.", { topic, ...(result || {}) });
+  }
+  if (topic === "payments") {
+    const account = await getMercadoLivreAccountForNotification(payload.user_id);
+    const result = await processMercadoLivrePaymentNotification(payload, account, String(activity.id));
+    return completeQueuedActivity(String(activity.id), "Pagamento Mercado Livre atualizado na venda existente.", { topic, ...result });
   }
   if (topic === "items") return processMercadoLivreItemActivity(activity, payload);
   if (caseReference("mercado_livre", payload)) {

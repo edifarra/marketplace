@@ -4,6 +4,7 @@ import {
   MarketplaceAccountConfig
 } from "./mercado-livre";
 import { captureSaleFinance } from "./mercado-livre-sale-finance";
+import { extractMercadoLivreSaleIdentifiers } from "./mercado-livre-sale-identifiers";
 import { supabaseAdmin } from "./supabase-admin";
 
 type Row = Record<string, any>;
@@ -85,24 +86,6 @@ export async function processMercadoLivrePaymentNotification(
   }
 
   const db = deps.database();
-  let saleResult: any;
-  try {
-    saleResult = await db.from("venda")
-      .select("id,raw_data,valor_liquido,data_pagamento")
-      .eq("marketplace", "mercado_livre")
-      .eq("order_id", orderId)
-      .maybeSingle()
-      .throwOnError();
-  } catch {
-    throw contextError("Consulta da venda existente no Supabase falhou.", orderId);
-  }
-  const sale = saleResult.data as Row | null;
-  if (!sale) throw integrityError("Venda existente nao localizada; atualizacao financeira abortada sem criar venda.", orderId);
-  const rawData = (sale.raw_data || {}) as Row;
-  if (String(rawData.marketplace_account_id || "") !== String(account.id)) {
-    throw integrityError("A venda localizada pertence a outra conta ou nao tem conta verificavel.", orderId);
-  }
-
   let finance: Row;
   try {
     finance = await deps.capture(order, sellerId, async id => id === paymentId ? targetPayment : deps.readPayment(id, token));
@@ -112,6 +95,47 @@ export async function processMercadoLivrePaymentNotification(
   if (!finance.payments.some((payment: Row) => String(payment.id) === paymentId)) {
     throw contextError("O pagamento notificado nao foi capturado; a atividade sera repetida.", orderId);
   }
+  const officialIdentifiers = extractMercadoLivreSaleIdentifiers(order);
+  for (const payment of finance.payments as Row[]) {
+    for (const [identifierType, value] of [["SOURCE_ID", payment.source_id], ["OPERATION_ID", payment.operation_id]] as const) {
+      if (value !== null && value !== undefined && String(value).trim()) {
+        officialIdentifiers.push({ identifierType, identifierValue: String(value).trim() });
+      }
+    }
+    for (const operation of Array.isArray(payment.operation_ids) ? payment.operation_ids : []) {
+      const operationId = typeof operation === "string" || typeof operation === "number"
+        ? String(operation).trim() : String(operation?.id || "").trim();
+      if (operationId) officialIdentifiers.push({ identifierType: "OPERATION_ID", identifierValue: operationId });
+    }
+    for (const charge of Array.isArray(payment.charges) ? payment.charges as Row[] : []) {
+      const chargeId = String(charge.id || "").trim();
+      if (chargeId) officialIdentifiers.push({ identifierType: "CHARGE_ID", identifierValue: chargeId });
+    }
+  }
+  const persistedCapture = {
+    ...finance,
+    official_order: {
+      id: orderId,
+      seller_id: sellerId,
+      currency_id: order.currency_id,
+      shipping_id: order.shipping?.id ?? order.shipping_id ?? null,
+      pack_id: order.pack_id ?? order.pack?.id ?? null,
+      payment_ids: expectedPaymentIds
+    },
+    order_identifiers: officialIdentifiers,
+    original_references: {
+      resource: payload.resource ?? null,
+      notification_payment_id: paymentId,
+      notification_topic: payload.topic ?? null,
+      notification_action: payload.action ?? null,
+      notification_payload: payload,
+      official_order_reference: {
+        order_id: orderId,
+        shipping_id: order.shipping?.id ?? order.shipping_id ?? null,
+        pack_id: order.pack_id ?? order.pack?.id ?? null
+      }
+    }
+  };
   let persisted: any;
   try {
     persisted = await db.rpc("persist_mercado_livre_payment_finance", {
@@ -120,17 +144,17 @@ export async function processMercadoLivrePaymentNotification(
       p_order_id: orderId,
       p_expected_payment_ids: expectedPaymentIds,
       p_payment_observations: finance.payments,
-      p_financial_capture: finance,
+      p_financial_capture: persistedCapture,
       p_allow_net_update: finance.state === "complete" && finance.errors.length === 0,
       p_activity_id: activityId
     }).throwOnError();
   } catch {
     throw contextError("RPC de persistencia financeira falhou no Supabase.", orderId);
   }
-  if (!persisted.data?.updated) throw contextError("Persistencia financeira da venda existente nao foi confirmada.", orderId);
+  if (!persisted.data?.persisted) throw contextError("Persistencia financeira nao foi confirmada.", orderId);
 
-  // Successful target persistence is not enough to mark the event complete if
-  // a sibling payment could not be refreshed: a retry can safely merge again.
+  // Keep successfully captured sibling observations, but leave the event in
+  // error for explicit review when any expected payment could not be refreshed.
   if (finance.errors.length) {
     throw contextError(`Captura financeira parcial; ${finance.errors.length} pagamento(s) aguardam nova tentativa.`, orderId);
   }
@@ -140,7 +164,9 @@ export async function processMercadoLivrePaymentNotification(
     accountId: account.id,
     releaseStatus: targetPayment.money_release_status || null,
     predictedReleaseAt: targetPayment.money_release_status === "released" ? null : targetPayment.money_release_date || null,
-    effectiveReleaseAt: persisted.data.effective_release_at || null,
+    effectiveReleaseAt: finance.effective_release_at || null,
+    saleId: persisted.data.sale_id || null,
+    saleLinkStatus: persisted.data.sale_id ? "linked" : "pending",
     financeState: finance.state,
     persisted: true
   };

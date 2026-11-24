@@ -33,7 +33,7 @@ for(const entry of entries) {
  assert.equal(response.account_id,entry.account_id);assert.equal(response.source,entry.source);
  const run=runs.find(r=>r.id===response.run_id);assert.ok(run);
  assert.ok(Date.parse(entry.occurred_at)>=Date.parse(run.period_start) && Date.parse(entry.occurred_at)<Date.parse(run.period_end));
- const key=[entry.account_id,entry.source,entry.semantic,entry.external_id,entry.payload_sha256].join('|'); assert.ok(!identities.has(key));identities.add(key);
+ const key=[entry.account_id,entry.source,entry.semantic,entry.external_id,entry.transaction_type ?? '',entry.payload_sha256].join('|'); assert.ok(!identities.has(key));identities.add(key);
  let candidates;
  if(entry.source==='shopee_wallet') candidates=response.payload.response.transaction_list;
  else if(entry.source==='shopee_escrow') candidates=response.payload.response.escrow_list;

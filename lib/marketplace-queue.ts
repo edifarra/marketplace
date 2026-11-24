@@ -72,7 +72,7 @@ export async function completeQueuedActivity(
   await appendActivityHistory(activityId, "completed", "success", details);
 }
 
-export async function failQueuedActivity(activityId: string, error: Error, details: Record<string, unknown> = {}) {
+export async function failQueuedActivity(activityId: string, error: Error, details: Record<string, unknown> = {}, historyStage = "integrity_failure") {
   const update = await supabaseAdmin().from("marketplace_activities").update({
     status: "error",
     processing_error: error.message,
@@ -80,7 +80,7 @@ export async function failQueuedActivity(activityId: string, error: Error, detai
     locked_at: null
   }).eq("id", activityId).select("id").maybeSingle().throwOnError();
   if (!update.data?.id) throw new Error(`Atividade ${activityId} nao localizada; falha de integridade nao registrada.`);
-  await appendActivityHistory(activityId, "integrity_failure", "error", { ...details, error: error.message });
+  await appendActivityHistory(activityId, historyStage, "error", { ...details, error: error.message });
 }
 
 export async function retryQueuedActivity(activity: Record<string, any>, error: unknown) {

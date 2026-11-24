@@ -42,6 +42,7 @@ export async function captureSaleFinance(order: Row, sellerId: string, read: (id
       if(String(p.id)!==id || String(p.collector_id)!==sellerId || p.order?.type!=='mercadolibre' || String(p.order?.id)!==String(order.id) || p.currency_id!==order.currency_id || typeof p.status!=='string' || !p.status) throw new Error('identity');
       const charges=Array.isArray(p.charges_details) ? p.charges_details.map((c:Row)=>({ id:String(c.id || ''), name:c.name, type:c.type, accounts:c.accounts, amounts:c.amounts })) : null;
       payments.push({id,status:p.status,currency_id:p.currency_id,date_approved:p.date_approved,money_release_date:p.money_release_date,money_release_status:p.money_release_status,
+        source_id:p.source_id ?? null,operation_id:p.operation_id ?? null,operation_ids:p.operation_ids ?? null,
         api_updated_at:validTimestamp(p.date_last_updated), observed_at:new Date().toISOString(),
         net_received_amount:p.transaction_details?.net_received_amount ?? null,transaction_amount:p.transaction_amount,transaction_amount_refunded:p.transaction_amount_refunded ?? null,shipping_amount:p.shipping_amount ?? p.shipping_cost,charges});
     } catch(e) { errors.push({payment_id:id,endpoint:`/v1/payments/${id}`,code:e instanceof Error && e.message==='identity' ? 'identity_mismatch' : 'payment_unavailable'}); }
@@ -115,30 +116,6 @@ export function confirmedSaleFinance(value?: unknown): Row | undefined {
       && validTimestamp(legacy.collected_at)) return legacy;
   return undefined;
 }
-function olderCapture(incoming:Row, previous:Row) {
-  return (previous.payments || []).some((p:Row)=>{
-    const next=(incoming.payments || []).find((n:Row)=>String(n.id)===String(p.id));
-    const before=validTimestamp(p.api_updated_at), after=validTimestamp(next?.api_updated_at);
-    return !next || (before && (!after || Date.parse(after)<Date.parse(before)));
-  });
-}
-export function saleFinancialPatch(input:{finance?:Row;paidAt?:string|null},previous:Row) {
-  const finance=input.finance;
-  const previousSuccess=confirmedSaleFinance(previous.financial_capture);
-  const incoming=finance?.state==='complete' ? confirmedSaleFinance(finance) : undefined;
-  const success=incoming && (!previousSuccess || !olderCapture(incoming,previousSuccess)) ? incoming : previousSuccess;
-  const raw=success===incoming && incoming ? incoming : {
-    ...(finance || previous.financial_capture || {}), state:'partial', commercial_net:null,
-    reconciliation_status:success ? 'previous_confirmed' : 'pending',
-    previous_success:success || null
-  };
-  return {
-    ...(input.paidAt ? {data_pagamento:input.paidAt} : {}),
-    // Technical NOT NULL placeholder, explicitly pending in raw and UI.
-    valor_liquido:success ? Number(success.commercial_net) : 0, raw
-  };
-}
-
 // Displayed order freight is informational, never a fallback for commercial net.
 export function approvedOrderShipping(payments: Row[]): number {
   const seen = new Set<string>();

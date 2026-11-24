@@ -3,7 +3,7 @@ import {loadAllSalesRows} from '../lib/sales-data';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {captureSaleFinance,saleFinancialPatch,confirmedSaleFinance,approvedOrderShipping,saleNetTotal} from '../lib/mercado-livre-sale-finance';
+import {captureSaleFinance,confirmedSaleFinance,approvedOrderShipping,saleNetTotal} from '../lib/mercado-livre-sale-finance';
 const order={id:'2000019059510612',currency_id:'BRL',payments:[{id:'ok'},{id:'cancel'},{id:'reject'},{id:'ok'}]};
 const approved={id:'ok',collector_id:'seller',order:{id:order.id,type:'mercadolibre'},currency_id:'BRL',status:'approved',transaction_amount:79,shipping_amount:27.99,transaction_details:{net_received_amount:68.73},date_last_updated:'2026-11-20T12:00:00Z',charges_details:[
  {id:'shipping',accounts:{from:'collector',to:'carrier'},amounts:{original:27.99}},
@@ -14,33 +14,27 @@ test('proven ML-ED case excludes failed attempts and deduplicates payments',asyn
  const calls:string[]=[];
  const f=await captureSaleFinance(order,'seller',async id=>{calls.push(id);return id==='ok'?approved:{...approved,id,status:id==='cancel'?'cancelled':'rejected',shipping_amount:11.99};});
  assert.equal(f.state,'complete');assert.equal(f.commercial_net,68.73);assert.equal(calls.length,3);
- assert.equal(saleFinancialPatch({finance:f},{}).valor_liquido,68.73);
+ assert.equal(f.commercial_net,68.73);
 });
-test('partial or failed captures never promote an unreliable net, including legacy fallback',()=>{
+test('partial or failed captures never become sale values, including legacy fallback',()=>{
  for(const finance of [undefined,{state:'partial',commercial_net:108.71},{state:'complete',commercial_net:'NaN'},{state:'complete',commercial_net:108.71,errors:[{code:'unavailable'}]}]) {
-  const p=saleFinancialPatch({finance},{});assert.equal(p.valor_liquido,0);assert.equal(p.raw.reconciliation_status,'pending');assert.equal(confirmedSaleFinance(p.raw),undefined);
-  const prior={state:'complete',commercial_net:68.73};
-  const preserved=saleFinancialPatch({finance},{financial_capture:prior});assert.equal(preserved.valor_liquido,68.73);
-  assert.equal(saleFinancialPatch({finance},{financial_capture:preserved.raw}).valor_liquido,68.73);
+  assert.equal(confirmedSaleFinance(finance),undefined);
  }
 });
-test('multiple approved payments sum once; duplicate and older events retain confirmed capture',async()=>{
+test('multiple approved payments are aggregated once as a payment observation',async()=>{
  const f=await captureSaleFinance({...order,payments:[{id:'ok'},{id:'second'},{id:'second'}]},'seller',async id=>({...approved,id}));
  assert.equal(f.commercial_net,137.46);
- const original=saleFinancialPatch({finance:f},{});
- assert.equal(saleFinancialPatch({finance:f},{financial_capture:original.raw}).valor_liquido,137.46);
- const older={...f,commercial_net:100,payments:f.payments.map(p=>({...p,api_updated_at:'2026-11-19T12:00:00Z'}))};
- const preserved=saleFinancialPatch({finance:older},{financial_capture:f});assert.equal(preserved.valor_liquido,137.46);assert.equal(confirmedSaleFinance(preserved.raw)?.commercial_net,137.46);
+ assert.equal(f.payments.length,2);
 });
-test('no approved payment is pending, while a confirmed zero is a real result',async()=>{
+test('no approved payment has no computed payment net, while zero remains a real value',async()=>{
  const f=await captureSaleFinance({...order,payments:[{id:'cancel'}]},'seller',async()=>({...approved,id:'cancel',status:'cancelled'}));
  assert.equal(f.commercial_net,null);
  assert.equal(confirmedSaleFinance({state:'complete',commercial_net:0})?.commercial_net,0);
 });
-test('UI gates ML net on confirmed capture, keeps Shopee display, and scripts fail closed',()=>{
+test('existing screens remain untouched and sale registration has no financial capture write',()=>{
  const ui=readFileSync('app/vendas/page.tsx','utf8');
  assert.match(ui,/confirmedSaleFinance\(financial\)/);assert.match(ui,/Aguardando conciliação/);assert.match(ui,/: money\(sale.valor_liquido\)/);
- const inventory=readFileSync('lib/inventory.ts','utf8');assert.match(inventory,/input.marketplace === "mercado_livre"\s*\? saleFinancialPatch/);
+ const inventory=readFileSync('lib/inventory.ts','utf8');assert.doesNotMatch(inventory,/saleFinancialPatch|financialColumns|financialCapture/);
  const reprocess=readFileSync('scripts/reprocess-mercado-livre-sales.mjs','utf8');assert.ok(reprocess.indexOf('throw new Error')<(reprocess.indexOf('loadEnvConfig(process.cwd())') < 0 ? Infinity : reprocess.indexOf('loadEnvConfig(process.cwd())')));
  const audit=readFileSync('scripts/audit-mercado-livre-sales-30d.mjs','utf8');assert.match(audit,/async function saveOrder[^]*?throw new Error/);
  for(const s of [reprocess,audit])assert.doesNotMatch(s,/valor_liquido: value \+/);
@@ -58,10 +52,10 @@ test('dashboard never substitutes old formula or technical zero; Shopee calculat
  assert.equal(saleNetTotal([{...ml,raw_data:{financial_capture:{state:'partial',previous_success:{state:'complete',commercial_net:68.73}}}}]),68.73);
 });
 
-test('existing RPC compact previous_success retains provenance, bare legacy numbers stay pending',()=>{
+test('legacy financial capture remains readable without being rewritten into the sale',()=>{
  const legacy={commercial_net:68.73,basis:'original collector charges; snapshot is not a statement movement',collected_at:'2026-11-20T12:00:00Z'};
- assert.equal(saleFinancialPatch({finance:{state:'partial'}},{financial_capture:{state:'partial',previous_success:legacy}}).valor_liquido,68.73);
- assert.equal(saleFinancialPatch({},{financial_capture:{previous_success:{commercial_net:108.71}}}).valor_liquido,0);
+ assert.equal(confirmedSaleFinance({state:'partial',previous_success:legacy})?.commercial_net,68.73);
+ assert.equal(confirmedSaleFinance({previous_success:{commercial_net:108.71}}),undefined);
 });
 
 test('sales page renders pending without technical zero and retains confirmed ML and Shopee values',async()=>{

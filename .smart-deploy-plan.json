@@ -1,18 +1,26 @@
 {
   "schemaVersion": 1,
-  "base": "adaf38fb71d17448afa151106cf6713bbb84c344",
+  "base": "59f324760d49dc5ae0119a9d3a6eee2eea1241a9",
   "files": [
     ".smart-deploy-plan.json",
     "lib/inventory.ts",
+    "lib/marketplace-queue-worker.ts",
+    "lib/marketplace-queue.ts",
     "lib/mercado-livre-orders.ts",
-    "lib/mercado-livre-sale-identifiers.ts",
-    "scripts/smart-migration-confirmation.mjs",
+    "lib/mercado-livre-payment-webhook.ts",
+    "lib/mercado-livre-sale-finance.ts",
+    "lib/shopee-orders.ts",
+    "scripts/import-financial-october-2026.mjs",
     "scripts/smart-test-runner.mjs",
-    "scripts/validate-gmud1-identifiers.ts",
-    "supabase/migrations/20261123170000_create_sale_financial_identifiers.sql",
-    "tests/mercado-livre-sale-identifiers-sql.test.mjs",
-    "tests/mercado-livre-sale-identifiers.test.ts",
-    "tests/smart-migration-confirmation.test.mjs"
+    "scripts/verify-financial-october-2026.mjs",
+    "supabase/migrations/20261123190000_separate_sale_and_payment_finance.sql",
+    "tests/inventory-sale-financial-persistence.test.ts",
+    "tests/mercado-livre-finance-prevention.test.ts",
+    "tests/mercado-livre-finance-separation-sql.test.mjs",
+    "tests/mercado-livre-payment-integrity.test.ts",
+    "tests/mercado-livre-payment-queue-failure.test.ts",
+    "tests/mercado-livre-payment-webhook.test.ts",
+    "tests/mercado-livre-sale-finance.test.ts"
   ],
   "dependenciesChanged": false
 }

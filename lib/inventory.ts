@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "crypto";
 import { supabaseAdmin } from "./supabase-admin";
 import { Marketplace } from "./types";
 import { salePostedAt } from "./sales-fulfillment";
-import { saleFinancialPatch } from "./mercado-livre-sale-finance";
 import { activityDescription } from "./marketplace-activity-labels";
 import { notifyNewSale } from "./telegram-notifications";
 import { drainOutgoingActivities, enqueueOutgoingActivity } from "./outgoing-activities";
@@ -23,7 +22,7 @@ export type MarketplaceSaleInput = {
   items?: Array<{ sku: string; title?: string; quantity: number; unitPrice?: number; totalPrice?: number; listingId?: string; variationId?: string }>;
   sku?: string;
   quantity?: number;
-  value?: number;
+  value?: number | null;
   shipping?: number;
   fees?: number;
   discounts?: number;
@@ -94,15 +93,13 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
     );
 
     const previousSale = await supabase.from("venda")
-      .select("id,raw_data,updated_at")
+      .select("id,raw_data,updated_at,valor_liquido")
       .eq("marketplace", input.marketplace).eq("order_id", orderId).maybeSingle().throwOnError();
     const previousRawData = (previousSale.data?.raw_data as Record<string, unknown> | null) || {};
     if (input.marketplace === "mercado_livre" && previousRawData.marketplace_account_id
         && previousRawData.marketplace_account_id !== input.marketplaceAccountId) {
       throw new Error("Venda pertence a outra conta Mercado Livre.");
     }
-    const {raw:financialCapture,...financialColumns}=input.marketplace === "mercado_livre"
-      ? saleFinancialPatch(input,previousRawData) : {raw:undefined};
     const detectedPostedAt = salePostedAt({
       marketplace: input.marketplace,
       status_original: status,
@@ -118,16 +115,16 @@ export async function registerMarketplaceSale(input: MarketplaceSaleInput) {
       valor_frete: number(input.shipping),
       valor_taxas: number(input.fees),
       valor_descontos: number(input.discounts),
-      valor_liquido: number(input.value) + number(input.shipping) - number(input.fees) - number(input.discounts),
+      valor_liquido: input.marketplace === "shopee" && input.value == null
+        ? previousSale.data?.valor_liquido ?? null
+        : number(input.value) + number(input.shipping) - number(input.fees) - number(input.discounts),
       data_venda: input.soldAt || undefined,
-      ...financialColumns,
       shipment_id: input.shipmentId || null,
       raw_data: {
         ...previousRawData,
         ...(input.marketplace === "mercado_livre" && input.saleIdentifiers ? {
           sale_identifiers: { source: "mercado_livre.orders", identifiers: input.saleIdentifiers }
         } : {}),
-        ...(financialCapture ? {financial_capture:financialCapture} : {}),
         payload: input.rawPayload,
         marketplace_account_id: input.marketplaceAccountId || null,
         marketplace_nickname: input.marketplaceNickname || null,

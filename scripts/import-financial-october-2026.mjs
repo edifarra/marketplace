@@ -64,7 +64,7 @@ async function save(a, source, semantic, externalId, date, dateBasis, currency, 
   if (!inPeriod(date, window)) return { excluded: 1 };
   if (!externalId) throw new Error(`${source}: missing identity`);
   const digest = source === 'mp_settlement_report' ? statementPayloadKey(payload) : sha(JSON.stringify(payload));
-  const row = { id: randomUUID(), account_id: a.id, account_name: a.name, source, semantic, external_id: String(externalId), occurred_at: new Date(date).toISOString(), date_basis: dateBasis, currency: currency || null, currency_basis: currency ? 'API field' : 'not supplied by source; not inferred', amount: decimal(amount), signed_amount: decimal(sign), direction: sign === null ? 'unknown' : Number(sign) > 0 ? 'credit' : Number(sign) < 0 ? 'debit' : 'zero', amounts: amounts(payload), original_payload: payload, original_line: raw, payload_sha256: digest, response_id: evidence.id, collected_at: evidence.collected_at };
+  const row = { id: randomUUID(), account_id: a.id, account_name: a.name, source, semantic, external_id: String(externalId), transaction_type: source === 'mp_settlement_report' && typeof payload.TRANSACTION_TYPE === 'string' ? payload.TRANSACTION_TYPE : null, occurred_at: new Date(date).toISOString(), date_basis: dateBasis, currency: currency || null, currency_basis: currency ? 'API field' : 'not supplied by source; not inferred', amount: decimal(amount), signed_amount: decimal(sign), direction: sign === null ? 'unknown' : Number(sign) > 0 ? 'credit' : Number(sign) < 0 ? 'debit' : 'zero', amounts: amounts(payload), original_payload: payload, original_line: raw, payload_sha256: digest, response_id: evidence.id, collected_at: evidence.collected_at };
   let inserted = 0;
   if (write) {
     pendingRows.push(row);
@@ -79,13 +79,13 @@ async function task(accountSummary, label, work) {
   try {
     while (pendingRows.length) {
       const batch = pendingRows.slice(0, 100);
-      const options = { onConflict: 'account_id,source,semantic,external_id,payload_sha256', ignoreDuplicates: true };
+      const options = { onConflict: 'account_id,source,semantic,external_id,transaction_type,payload_sha256', ignoreDuplicates: true };
       const inserted = await checked(db.from('financial_statement_entries').upsert(batch, options).select('id,external_id,payload_sha256'));
       result.inserted += inserted.length;
       if(result.selectedEntryIds && inserted.length!==batch.length) {
-        const concurrent=await checked(db.from('financial_statement_entries').select('id,external_id,payload_sha256').eq('account_id',batch[0].account_id).eq('source',batch[0].source).in('external_id',batch.map(r=>r.external_id)));
+        const concurrent=await checked(db.from('financial_statement_entries').select('id,external_id,transaction_type,payload_sha256').eq('account_id',batch[0].account_id).eq('source',batch[0].source).in('external_id',batch.map(r=>r.external_id)));
         for(const row of batch) {
-          const saved=concurrent.find(r=>r.external_id===row.external_id && r.payload_sha256===row.payload_sha256);
+          const saved=concurrent.find(r=>r.external_id===row.external_id && r.transaction_type===row.transaction_type && r.payload_sha256===row.payload_sha256);
           if(!saved)throw new Error('Snapshot membership could not be verified');
           result.selectedEntryIds=result.selectedEntryIds.map(id=>id===row.id?saved.id:id);
         }

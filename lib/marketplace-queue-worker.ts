@@ -48,6 +48,9 @@ export async function processMarketplaceQueue(limit = 10) {
     } catch (error) {
       if (error instanceof MercadoLivrePaymentIntegrityError) {
         await failQueuedActivity(String(activity.id), error, error.context);
+      } else if (isMercadoLivrePaymentsActivity(activity)) {
+        const paymentError = error instanceof Error ? error : new Error(String(error));
+        await failQueuedActivity(String(activity.id), paymentError, { topic: "payments" }, "payment_processing");
       } else {
         await retryQueuedActivity(activity, error);
       }
@@ -65,6 +68,13 @@ export async function processMarketplaceQueue(limit = 10) {
     failed: results.filter((item) => !item.ok).length,
     results
   };
+}
+
+function isMercadoLivrePaymentsActivity(activity: Record<string, any>) {
+  if (activity.marketplace !== "mercado_livre") return false;
+  const storedPayload = (activity.raw_payload || {}) as Record<string, any>;
+  const payload = (storedPayload.notification || storedPayload) as Record<string, any>;
+  return String(payload.topic || payload.type || "") === "payments";
 }
 
 async function processMercadoLivreActivity(activity: Record<string, any>) {

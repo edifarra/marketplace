@@ -87,7 +87,7 @@ export async function processShopeeOrder(
       listingId: String(item.item_id || order.item_id || ""),
       variationId: String(item.model_id || "")
     })),
-    value: Number(order.total_amount || 0),
+    value: order.total_amount == null ? null : Number(order.total_amount),
     shipping: Number(order.actual_shipping_fee_confirmed ?? order.actual_shipping_fee ?? 0),
     shipmentId,
     marketplaceAccountId: account.id,

@@ -8,10 +8,31 @@ test("payment completion writes order_id only after processor persistence and co
   const processor = readFileSync("lib/mercado-livre-payment-webhook.ts", "utf8");
   assert.match(worker, /processMercadoLivrePaymentNotification\(payload[\s\S]*?completeQueuedActivity[\s\S]*?\{ topic, \.\.\.result \}/);
   assert.match(worker, /MercadoLivrePaymentIntegrityError[\s\S]*failQueuedActivity/);
+  assert.match(worker, /isMercadoLivrePaymentsActivity\(activity\)[\s\S]*failQueuedActivity[\s\S]*retryQueuedActivity/);
+  const failureHandler = queue.match(/export async function failQueuedActivity[\s\S]*?\n}/)?.[0] || "";
+  assert.match(failureHandler, /status: "error"[\s\S]*processing_error: error\.message/);
+  assert.doesNotMatch(failureHandler, /raw_payload|next_attempt_at/);
   assert.match(queue, /details\.orderId[\s\S]*order_id/);
   assert.match(queue, /select\("id"\)\.maybeSingle\(\)[\s\S]*processed nao confirmado/);
-  assert.match(processor, /persist_mercado_livre_payment_finance[\s\S]*if \(!persisted\.data\?\.updated\)/);
+  assert.match(processor, /persist_mercado_livre_payment_finance[\s\S]*if \(!persisted\.data\?\.persisted\)/);
   assert.doesNotMatch(processor, /insert\(|upsert\(|estoque|inventory/i);
+});
+
+test("GMUD2 writes payment snapshots to financial tables and never mutates commercial sale fields", () => {
+  const migration = readFileSync("supabase/migrations/20261123190000_separate_sale_and_payment_finance.sql", "utf8");
+  const processor = readFileSync("lib/mercado-livre-payment-webhook.ts", "utf8");
+  const inventory = readFileSync("lib/inventory.ts", "utf8");
+  const orders = readFileSync("lib/mercado-livre-orders.ts", "utf8");
+  assert.match(migration, /create table public\.marketplace_payment_finance\s*\(/i);
+  assert.match(migration, /create table public\.marketplace_payment_finance_history\s*\(/i);
+  assert.match(migration, /sale_id uuid references public\.venda\(id\)/i);
+  assert.match(migration, /transaction_type text/);
+  assert.doesNotMatch(migration, /update\s+public\.venda[\s\S]*?(?:valor_liquido|data_pagamento|data_liberacao)/i);
+  assert.match(processor, /order_identifiers/);
+  assert.match(processor, /saleLinkStatus/);
+  assert.doesNotMatch(processor, /\.from\("venda"\)/);
+  assert.doesNotMatch(inventory, /saleFinancialPatch|financialCapture|financialColumns/);
+  assert.doesNotMatch(orders, /captureSaleFinance|api\.mercadopago\.com/);
 });
 
 test("reverse validation is allowlisted to the two approved ML-GI cases and never uses the general queue", () => {

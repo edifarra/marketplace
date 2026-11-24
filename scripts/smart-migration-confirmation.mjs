@@ -57,8 +57,8 @@ export function confirmLinkedMigrations(versions, options = {}) {
 }
 
 export function validateOutOfOrderMigrationPlan(history, result) {
-  const allowed = '20261123170000';
-  const filename = '20261123170000_create_sale_financial_identifiers.sql';
+  const allowed = '20261123190000';
+  const filename = '20261123190000_separate_sale_and_payment_finance.sql';
 
   if (history?.cliVersion !== '3.2.0' ||
       !/^[a-z0-9]{20}$/.test(history.projectRef ?? '') ||
@@ -127,7 +127,7 @@ export function executeValidatedMigration({
   }
 
   if (history.pending?.length !== 1 ||
-      history.pending[0] !== '20261123170000') {
+      history.pending[0] !== '20261123190000') {
     throw new Error('Unexpected pending migrations; deployment blocked.');
   }
 

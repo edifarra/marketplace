@@ -11,6 +11,7 @@
     "lib/mercado-livre-sale-finance.ts",
     "lib/shopee-orders.ts",
     "scripts/import-financial-october-2026.mjs",
+    "scripts/smart-migration-confirmation.mjs",
     "scripts/smart-test-runner.mjs",
     "scripts/verify-financial-october-2026.mjs",
     "supabase/migrations/20261123190000_separate_sale_and_payment_finance.sql",
@@ -20,7 +21,8 @@
     "tests/mercado-livre-payment-integrity.test.ts",
     "tests/mercado-livre-payment-queue-failure.test.ts",
     "tests/mercado-livre-payment-webhook.test.ts",
-    "tests/mercado-livre-sale-finance.test.ts"
+    "tests/mercado-livre-sale-finance.test.ts",
+    "tests/smart-migration-confirmation.test.mjs"
   ],
   "dependenciesChanged": false
 }
